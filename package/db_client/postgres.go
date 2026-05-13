@@ -18,17 +18,24 @@ type PostgresClient struct {
 	logger *log.Logger
 }
 
-func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err error) {
-	newLogger := logger.New(
+func NewLogger() logger.Interface {
+	return logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
-			SlowThreshold:             time.Second, // Slow SQL threshold
-			LogLevel:                  logger.Info, // Log level
-			IgnoreRecordNotFoundError: false,       // Ignore ErrRecordNotFound error for logger
-			Colorful:                  true,        // Disable color
+			SlowThreshold:             time.Second,
+			LogLevel:                  logger.Info,
+			IgnoreRecordNotFoundError: false,
+			Colorful:                  true,
 		},
 	)
-	db, err := gorm.Open(postgres.Open(viper.GetString("postgres.postgresDsn")), &gorm.Config{Logger: newLogger})
+}
+
+func OpenByDSN(dsn string) (db *gorm.DB, err error) {
+	return gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewLogger()})
+}
+
+func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err error) {
+	db, err := OpenByDSN(viper.GetString("postgres.postgresDsn"))
 	if err != nil {
 		return
 	}
@@ -41,18 +48,9 @@ func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err 
 }
 
 func NewTestPostgresClient(_logger *log.Logger, testDockerClient dockertest.Pool) (testPostgresClient PostgresClient, err error) {
-	newLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		logger.Config{
-			SlowThreshold:             time.Second, // Slow SQL threshold
-			LogLevel:                  logger.Info, // Log level
-			IgnoreRecordNotFoundError: false,       // Ignore ErrRecordNotFound error for logger
-			Colorful:                  true,        // Disable color
-		},
-	)
 	var gdb *gorm.DB
 	if err = testDockerClient.Retry(func() error {
-		gdb, err = gorm.Open(postgres.Open(viper.GetString("postgres.postgresDsn")), &gorm.Config{Logger: newLogger})
+		gdb, err = OpenByDSN(viper.GetString("postgres.postgresDsn"))
 		if err != nil {
 			log.Println("Test database not ready yet (it is booting up, wait for a few tries)...")
 			return err

@@ -54,8 +54,9 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 							AllowedHeaders: []string{"*"},
 						},
 					).Handler(router),
-					ReadTimeout:    10 * time.Second,
-					WriteTimeout:   10 * time.Second,
+					// Larger write window so large .sb3 downloads complete (BYTEA payloads).
+					ReadTimeout:    120 * time.Second,
+					WriteTimeout:   20 * time.Minute,
 					MaxHeaderBytes: 1 << 20,
 				}
 

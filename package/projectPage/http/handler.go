@@ -1,13 +1,17 @@
 package http
 
 import (
+	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
 	"log"
-	"net/http"
 )
 
 type Handler struct {
@@ -32,6 +36,7 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 	projectPage := router.Group("/projectPage")
 	{
 		projectPage.POST("/", h.CreateProjectPage)
+		projectPage.GET("/:projectPageId/download", h.DownloadProjectSb3)
 		projectPage.GET("/:projectPageId", h.GetProjectPageById)
 		projectPage.GET("/", h.GetAllProjectPageByUserId)
 		projectPage.PUT("/", h.UpdateProjectPage)
@@ -102,6 +107,52 @@ func (h *Handler) GetProjectPageById(c *gin.Context) {
 	c.JSON(http.StatusOK, getProjectPageResponse{
 		&projectPage,
 	})
+}
+
+func asciiAttachmentFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '.' || r == '-' || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	s := b.String()
+	if s == "" || s == ".sb3" || !strings.HasSuffix(strings.ToLower(s), ".sb3") {
+		return "scratch-project.sb3"
+	}
+	return s
+}
+
+func (h *Handler) DownloadProjectSb3(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		log.Println(userIdentityErr)
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
+	if accessErr != nil {
+		log.Println(accessErr)
+		ErrorHandling(accessErr, c)
+		return
+	}
+	projectPageId := c.Param("projectPageId")
+	data, filename, err := h.projectPageDelegate.DownloadProjectSb3(projectPageId, userId)
+	if err != nil {
+		log.Println(err)
+		ErrorHandling(err, c)
+		return
+	}
+
+	cd := fmt.Sprintf(
+		`attachment; filename="%s"; filename*=UTF-8''%s`,
+		asciiAttachmentFilename(filename),
+		url.PathEscape(filename),
+	)
+	c.Header("Content-Disposition", cd)
+	c.Header("Content-Type", "application/zip")
+	c.Data(http.StatusOK, "application/zip", data)
 }
 
 type getAllProjectPageResponse struct {
@@ -206,6 +257,8 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
 	case projectPage.ErrPageNotFound:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
+	case projectPage.ErrSb3ArchiveNotFound:
+		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case projectPage.ErrBadRequestBody:
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
 	case projects.ErrProjectNotFound:

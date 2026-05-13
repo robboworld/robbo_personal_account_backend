@@ -19,6 +19,9 @@ projectPage:
 postgres:
   postgresDsn: "host=localhost port=5432 user=robbo password=robbo_pwd dbname=robbo_db sslmode=disable"
 
+projectsPostgres:
+  postgresDsn: "host=localhost port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable"
+
 api_urls:
   refreshToken: "https://edx-test.ru/oauth2/access_token"
   getUser: "https://edx-test.ru/api/user/v1/me"

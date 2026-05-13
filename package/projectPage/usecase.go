@@ -8,4 +8,5 @@ type UseCase interface {
 	DeleteProjectPage(projectId string, authorId string) (err error)
 	GetAllProjectPageByUserId(authorId string, page int, pageSize int) (projectPages []*models.ProjectPageCore, countRows int64, err error)
 	GetProjectPageById(projectPageId string, authorId string) (projectPage *models.ProjectPageCore, err error)
+	DownloadProjectSb3(projectPageId string, authorId string) (data []byte, filename string, err error)
 }

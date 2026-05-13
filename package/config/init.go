@@ -17,6 +17,9 @@ func Init() error {
 	if os.Getenv("POSTGRES_HOST") != "" {
 		viper.Set("postgres.postgresDsn", "host="+os.Getenv("POSTGRES_HOST")+" port=5432 user="+os.Getenv("POSTGRES_USER")+" password="+os.Getenv("POSTGRES_PASSWORD")+" dbname="+os.Getenv("POSTGRES_DB")+" sslmode=disable")
 	}
+	if os.Getenv("PROJECTS_POSTGRES_DSN") != "" {
+		viper.Set("projectsPostgres.postgresDsn", os.Getenv("PROJECTS_POSTGRES_DSN"))
+	}
 
 	err := viper.ReadInConfig()
 	return err

@@ -59,13 +59,23 @@ func (p *ProjectPageDelegateImpl) GetProjectPageById(projectPageId string, autho
 	return
 }
 
+func (p *ProjectPageDelegateImpl) DownloadProjectSb3(projectPageId string, authorId string) (data []byte, filename string, err error) {
+	return p.UseCase.DownloadProjectSb3(projectPageId, authorId)
+}
+
 func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pageSize string) (
 	projectPages []*models.ProjectPageHTTP,
 	countRows int,
 	err error,
 ) {
-	pageInt32, _ := strconv.ParseInt(page, 10, 32)
-	pageSizeInt32, _ := strconv.ParseInt(pageSize, 10, 32)
+	pageInt32, parsePageErr := strconv.ParseInt(page, 10, 32)
+	pageSizeInt32, parseSzErr := strconv.ParseInt(pageSize, 10, 32)
+	if parsePageErr != nil || pageInt32 < 1 {
+		pageInt32 = 1
+	}
+	if parseSzErr != nil || pageSizeInt32 < 1 {
+		pageSizeInt32 = 10
+	}
 	projectPagesCore, countRowsInt64, err := p.UseCase.GetAllProjectPageByUserId(
 		authorId,
 		int(pageInt32),

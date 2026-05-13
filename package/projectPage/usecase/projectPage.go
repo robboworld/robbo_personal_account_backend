@@ -1,6 +1,9 @@
 package usecase
 
 import (
+	"strings"
+	"unicode"
+
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
@@ -157,4 +160,55 @@ func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, author
 	}
 
 	return projectPage, nil
+}
+
+func sb3DownloadFilename(title, fallbackPageID string) string {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		base = "project"
+	}
+	var b strings.Builder
+	for _, r := range base {
+		switch {
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteRune(r)
+		case r == ' ' || r == '-' || r == '_':
+			b.WriteRune('_')
+		case r == '.':
+			b.WriteRune('.')
+		default:
+			if r < 128 {
+				b.WriteRune('_')
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "._")
+	if out == "" {
+		short := fallbackPageID
+		if len(short) > 12 {
+			short = short[:12]
+		}
+		out = "project-" + short
+	}
+	const maxRunes = 120
+	runes := []rune(out)
+	if len(runes) > maxRunes {
+		out = string(runes[:maxRunes])
+	}
+	return out + ".sb3"
+}
+
+func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, authorId string) (data []byte, filename string, err error) {
+	core, err := p.GetProjectPageById(projectPageId, authorId)
+	if err != nil {
+		return nil, "", err
+	}
+	data, err = p.projectPageGateway.GetLatestSb3Archive(projectPageId)
+	if err != nil {
+		return nil, "", err
+	}
+	filename = sb3DownloadFilename(core.Title, core.ProjectPageId)
+	return data, filename, nil
 }
