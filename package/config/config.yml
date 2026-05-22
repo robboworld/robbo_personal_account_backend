@@ -5,13 +5,45 @@ graphqlServer:
   port: "8080"
 
 auth:
-  # Override via env: AUTH_HASH_SALT, AUTH_ACCESS_SIGNING_KEY, AUTH_REFRESH_SIGNING_KEY
+  # legacy_jwt | oidc_bff | lms_db
+  mode: "oidc_bff"
+  # When true with oidc_bff: email+password fallback via LMS MySQL (openedx.auth_user)
+  lmsPasswordFallback: true
+  # Override via env: AUTH_HASH_SALT, AUTH_ACCESS_SIGNING_KEY, AUTH_REFRESH_SIGNING_KEY, AUTH_MODE
   hash_salt: ""
   access_signing_key: ""
   refresh_signing_key: ""
   access_token_ttl: 300 # 5 min 60*5
   refresh_token_ttl: 604800 # 7 day
   refresh_cookie_secure: false
+
+legacyPostgres:
+  # When false, LK uses Projects DB + OIDC only (no robbo_db).
+  enabled: false
+
+oidc:
+  enabled: true
+  issuer: "http://localhost:8081/default"
+  authorizationEndpoint: "http://localhost:8081/default/authorize"
+  tokenEndpoint: "http://localhost:8081/default/token"
+  jwksUri: "http://localhost:8081/default/jwks"
+  clientId: "lk-web"
+  redirectUri: "http://localhost:8080/auth/oidc/callback"
+  scopes: "openid profile email"
+  frontendBaseUrl: "http://localhost:3030"
+  logoutEndpoint: ""
+  postLogoutRedirectUri: "http://localhost:3030/login"
+
+lmsMysql:
+  # Or env LMS_MYSQL_DSN — read-only user for workers/scripts
+  dsn: "lk_readonly:lk_readonly_change_me@tcp(localhost:3307)/openedx"
+
+lmsNotifications:
+  enabled: false
+  ingestBearerToken: ""
+
+portalOutbox:
+  enabled: true
 
 projectPage:
   scratchLink: "0.0.0.0:8601/"

@@ -30,7 +30,7 @@ auth:
   token_super_admin: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAiLCJyb2xlIjo1fQ.Ha3K9LpCV4AP_AJiY-Gt6WcyKn2pRGxXM0kA4eLR-nU"
 
 projectPage:
-  scratchLink: "0.0.0.0:8601/"
+  scratchLink: "scratch.ru/"
 
 api_urls:
   refreshToken: "https://edx-test.ru/oauth2/access_token"

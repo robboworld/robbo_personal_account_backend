@@ -24,6 +24,9 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	edxusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/edx/usecase"
+	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
+	oidchttp "github.com/skinnykaen/robbo_student_personal_account.git/package/oidc/http"
+	portalhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/http"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	ppagedelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/delegate"
 	ppagegateway "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/gateway"
@@ -91,9 +94,9 @@ type UseCaseModule struct {
 	UsersUseCase        users.UseCase
 }
 
-func SetupUseCase(gateway GatewayModule) UseCaseModule {
+func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) UseCaseModule {
 	return UseCaseModule{
-		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway),
+		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway, portalGateway),
 		CohortsUseCase:      chrtusecase.SetupCohortUseCase(gateway.CohortsGateway),
 		CoursePacketUseCase: coursePacketusecase.SetupCoursePacketUseCase(gateway.CoursePacketGateway),
 		CoursesUseCase: crsusecase.SetupCourseUseCase(
@@ -138,18 +141,24 @@ func SetupDelegate(usecase UseCaseModule) DelegateModule {
 }
 
 type HandlerModule struct {
-	ProjectsHandler     prjhttp.Handler
-	ProjectPageHandler  ppagehttp.Handler
-	AuthHandler         authhttp.Handler
-	CoursesHandler      crshttp.Handler
-	CohortsHandler      chrthttp.Handler
-	UsersHandler        usershtpp.Handler
-	RobboUnitsHandler   robboUnitshttp.Handler
-	RobboGroupHandler   robboGrouphttp.Handler
-	CoursePacketHandler coursePackethttp.Handler
+	ProjectsHandler              prjhttp.Handler
+	ProjectPageHandler           ppagehttp.Handler
+	AuthHandler                  authhttp.Handler
+	CoursesHandler               crshttp.Handler
+	CohortsHandler               chrthttp.Handler
+	UsersHandler                 usershtpp.Handler
+	RobboUnitsHandler            robboUnitshttp.Handler
+	RobboGroupHandler            robboGrouphttp.Handler
+	CoursePacketHandler          coursePackethttp.Handler
+	PortalNotificationsHandler   portalhttp.NotificationsHandler
+	OIDCHandler                  *oidchttp.Handler
 }
 
-func SetupHandler(delegate DelegateModule) HandlerModule {
+func SetupHandler(
+	delegate DelegateModule,
+	portalNotifications portalhttp.NotificationsHandler,
+	oidcHandler *oidchttp.Handler,
+) HandlerModule {
 	return HandlerModule{
 		ProjectsHandler: prjhttp.NewProjectsHandler(delegate.AuthDelegate, delegate.ProjectsDelegate),
 		ProjectPageHandler: ppagehttp.NewProjectPageHandler(
@@ -163,7 +172,9 @@ func SetupHandler(delegate DelegateModule) HandlerModule {
 		UsersHandler:        usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
 		RobboUnitsHandler:   robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
 		RobboGroupHandler:   robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
-		CoursePacketHandler: coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
+		CoursePacketHandler:        coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
+		PortalNotificationsHandler: portalNotifications,
+		OIDCHandler:                oidcHandler,
 	}
 }
 

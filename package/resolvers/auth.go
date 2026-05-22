@@ -9,6 +9,7 @@ import (
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/gin-gonic/gin"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
@@ -22,11 +23,9 @@ func (r *mutationResolver) SingIn(ctx context.Context, input models.SignInInput)
 	accessToken, refreshToken, err := r.authDelegate.SignIn(input.Email, input.Password, uint(input.UserRole))
 	if err != nil {
 		return nil, &gqlerror.Error{
-			Path:    graphql.GetPath(ctx),
-			Message: err.Error(),
-			Extensions: map[string]interface{}{
-				"code": "500",
-			},
+			Path:       graphql.GetPath(ctx),
+			Message:    err.Error(),
+			Extensions: map[string]interface{}{"code": signInErrorCode(err)},
 		}
 	}
 	setRefreshToken(refreshToken, ginContext)
@@ -83,6 +82,21 @@ func (r *mutationResolver) Refresh(ctx context.Context) (models.SignInResult, er
 //  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
 //    it when you're done.
 //  - You have helper methods in this file. Move them out to keep these resolver files clean.
+func signInErrorCode(err error) string {
+	switch {
+	case errors.Is(err, auth.ErrUserNotFound):
+		return "404"
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		return "401"
+	case errors.Is(err, auth.ErrUserInactive):
+		return "403"
+	case errors.Is(err, auth.ErrLegacyAuthDisabled):
+		return "410"
+	default:
+		return "500"
+	}
+}
+
 func getRefreshToken(c *gin.Context) (refreshToken string, err error) {
 	refreshToken = c.Value("refresh_token").(string)
 	if refreshToken == "" {

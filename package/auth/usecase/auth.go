@@ -3,17 +3,20 @@ package usecase
 import (
 	"crypto/sha1"
 	"fmt"
+	"time"
+
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
-	"time"
 )
 
 type AuthUseCaseImpl struct {
 	users.Gateway
+	portal                portalgateway.Gateway
 	hashSalt              string
 	accessSigningKey      []byte
 	refreshSigningKey     []byte
@@ -26,7 +29,7 @@ type AuthUseCaseModule struct {
 	auth.UseCase
 }
 
-func SetupAuthUseCase(gateway users.Gateway) AuthUseCaseModule {
+func SetupAuthUseCase(gateway users.Gateway, portal portalgateway.Gateway) AuthUseCaseModule {
 	hashSalt := viper.GetString("auth.hash_salt")
 	accessSigningKey := []byte(viper.GetString("auth.access_signing_key"))
 	refreshSigningKey := []byte(viper.GetString("auth.refresh_signing_key"))
@@ -36,6 +39,7 @@ func SetupAuthUseCase(gateway users.Gateway) AuthUseCaseModule {
 	return AuthUseCaseModule{
 		UseCase: &AuthUseCaseImpl{
 			Gateway:               gateway,
+			portal:                portal,
 			hashSalt:              hashSalt,
 			accessSigningKey:      accessSigningKey,
 			refreshSigningKey:     refreshSigningKey,
@@ -46,6 +50,16 @@ func SetupAuthUseCase(gateway users.Gateway) AuthUseCaseModule {
 }
 
 func (a *AuthUseCaseImpl) SignIn(email, password string, role uint) (accessToken, refreshToken string, err error) {
+	if viper.GetBool("legacyPostgres.enabled") {
+		return a.signInLegacy(email, password, role)
+	}
+	if auth.LmsPasswordFallbackEnabled() {
+		return a.signInLMS(email, password)
+	}
+	return "", "", auth.ErrLegacyAuthDisabled
+}
+
+func (a *AuthUseCaseImpl) signInLegacy(email, password string, role uint) (accessToken, refreshToken string, err error) {
 	pwd := sha1.New()
 	pwd.Write([]byte(password))
 	pwd.Write([]byte(a.hashSalt))
@@ -116,6 +130,9 @@ func (a *AuthUseCaseImpl) SignIn(email, password string, role uint) (accessToken
 }
 
 func (a *AuthUseCaseImpl) SignUp(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
+	if !viper.GetBool("legacyPostgres.enabled") {
+		return "", "", auth.ErrSignUpDisabled
+	}
 	pwd := sha1.New()
 	pwd.Write([]byte(userCore.Password))
 	pwd.Write([]byte(a.hashSalt))

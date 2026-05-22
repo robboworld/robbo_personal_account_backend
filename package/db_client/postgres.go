@@ -34,8 +34,21 @@ func OpenByDSN(dsn string) (db *gorm.DB, err error) {
 	return gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewLogger()})
 }
 
+func postgresDSN() string {
+	if viper.GetBool("legacyPostgres.enabled") {
+		if dsn := viper.GetString("postgres.postgresDsn"); dsn != "" {
+			return dsn
+		}
+	}
+	dsn := viper.GetString("projectsPostgres.postgresDsn")
+	if dsn == "" {
+		panic("projectsPostgres.postgresDsn required when legacyPostgres.enabled is false")
+	}
+	return dsn
+}
+
 func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err error) {
-	db, err := OpenByDSN(viper.GetString("postgres.postgresDsn"))
+	db, err := OpenByDSN(postgresDSN())
 	if err != nil {
 		return
 	}
@@ -72,28 +85,34 @@ func NewTestPostgresClient(_logger *log.Logger, testDockerClient dockertest.Pool
 }
 
 func (c *PostgresClient) Migrate() (err error) {
-	err = c.Db.AutoMigrate(
-		&models.ProjectDB{},
-		&models.ProjectPageDB{},
+	// Scratch/project tables live in Projects DB only (see projects gateway).
+	robboMeta := []interface{}{
 		&models.CourseDB{},
-		&models.AbsoluteMediaDB{},
-		&models.ImageDB{},
-		&models.CourseApiMediaCollectionDB{},
-		&models.MediaDB{},
-		&models.TeacherDB{},
-		&models.StudentDB{},
-		&models.ParentDB{},
-		&models.SuperAdminDB{},
-		&models.UnitAdminDB{},
-		&models.FreeListenerDB{},
-		&models.ChildrenOfParentDB{},
-		&models.RobboUnitDB{},
 		&models.CoursePacketDB{},
+		&models.RobboUnitDB{},
 		&models.RobboGroupDB{},
 		&models.UnitAdminsRobboUnitsDB{},
 		&models.TeachersRobboGroupsDB{},
 		&models.StudentsOfTeacherDB{},
 		&models.CourseRelationDB{},
-	)
-	return
+		&models.CohortDB{},
+	}
+	if viper.GetBool("legacyPostgres.enabled") {
+		return c.Db.AutoMigrate(append([]interface{}{
+			&models.ProjectDB{},
+			&models.ProjectPageDB{},
+			&models.AbsoluteMediaDB{},
+			&models.ImageDB{},
+			&models.CourseApiMediaCollectionDB{},
+			&models.MediaDB{},
+			&models.TeacherDB{},
+			&models.StudentDB{},
+			&models.ParentDB{},
+			&models.SuperAdminDB{},
+			&models.UnitAdminDB{},
+			&models.FreeListenerDB{},
+			&models.ChildrenOfParentDB{},
+		}, robboMeta...)...)
+	}
+	return c.Db.AutoMigrate(robboMeta...)
 }
