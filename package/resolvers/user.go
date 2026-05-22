@@ -19,11 +19,15 @@ func (r *mutationResolver) UpdateSuperAdmin(ctx context.Context, input models.Up
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
-	allowedRoles := []models.Role{models.SuperAdmin}
-	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
+	accessErr := profileSelfOrAdminAccess(
+		ctx, ginContext, r.authDelegate, input.ID, models.SuperAdmin,
+		[]models.Role{models.SuperAdmin},
+	)
 	if accessErr != nil {
 		return nil, accessErr
+	}
+	if err := r.validateUsernameImmutable(ctx, input, models.SuperAdmin); err != nil {
+		return nil, err
 	}
 	updateSuperAdminInput := &models.SuperAdminHTTP{
 		UserHTTP: &models.UserHTTP{
@@ -161,11 +165,15 @@ func (r *mutationResolver) UpdateFreeListener(ctx context.Context, input models.
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
-	allowedRoles := []models.Role{models.FreeListener, models.UnitAdmin, models.SuperAdmin}
-	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
+	accessErr := profileSelfOrAdminAccess(
+		ctx, ginContext, r.authDelegate, input.ID, models.FreeListener,
+		[]models.Role{models.UnitAdmin, models.SuperAdmin},
+	)
 	if accessErr != nil {
 		return nil, accessErr
+	}
+	if err := r.validateUsernameImmutable(ctx, input, models.FreeListener); err != nil {
+		return nil, err
 	}
 
 	updateInput := &models.FreeListenerHttp{

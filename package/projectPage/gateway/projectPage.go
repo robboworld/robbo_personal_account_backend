@@ -24,7 +24,7 @@ func SetupProjectPageGateway(postgresClient db_client.PostgresClient) ProjectPag
 	_ = postgresClient
 	projectDSN := viper.GetString("projectsPostgres.postgresDsn")
 	if projectDSN == "" {
-		projectDSN = viper.GetString("postgres.postgresDsn")
+		panic("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required; robbo_db fallback is disabled")
 	}
 	projectStorageDB, err := db_client.OpenByDSN(projectDSN)
 	if err != nil {

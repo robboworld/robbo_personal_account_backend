@@ -1,12 +1,13 @@
 module github.com/skinnykaen/robbo_student_personal_account.git
 
-go 1.18
+go 1.24.0
 
 require (
 	github.com/99designs/gqlgen v0.17.16
 	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-playground/assert/v2 v2.0.1
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/hasura/go-graphql-client v0.8.1
 	github.com/jackc/pgconn v1.12.0
 	github.com/ory/dockertest/v3 v3.9.1
@@ -20,6 +21,7 @@ require (
 )
 
 require (
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.5.2 // indirect
 	github.com/Nvveen/Gotty v0.0.0-20120604004816-cd527374f1e5 // indirect

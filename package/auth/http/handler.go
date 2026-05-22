@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -136,21 +137,23 @@ func (h *Handler) CheckAuth(c *gin.Context) {
 }
 
 func ErrorHandling(err error, c *gin.Context) {
-	switch err {
-	case auth.ErrUserAlreadyExist:
-		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case auth.ErrInvalidAccessToken:
-		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrInvalidTypeClaims:
-		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrUserNotFound:
-		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrTokenNotFound:
-		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case http.ErrNoCookie:
-		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
+	switch {
+	case errors.Is(err, auth.ErrUserAlreadyExist):
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrInvalidAccessToken), errors.Is(err, auth.ErrInvalidTypeClaims), errors.Is(err, auth.ErrTokenNotFound):
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrLegacyAuthDisabled):
+		c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrUserNotFound):
+		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrUserInactive):
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, http.ErrNoCookie):
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
-		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
+		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 	}
 }
 

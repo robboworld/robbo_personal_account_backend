@@ -56,6 +56,9 @@ func (r *UsersGatewayImpl) AddStudentToRobboGroup(studentId, robboGroupId, robbo
 }
 
 func (r *UsersGatewayImpl) GetStudent(email, password string) (student *models.StudentCore, err error) {
+	if !legacyUsersEnabled() {
+		return nil, ErrLegacyUsersDisabled
+	}
 	var studentDb models.StudentDB
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Where("email = ? AND  password = ?", email, password).First(&studentDb).Error; err != nil {
@@ -74,6 +77,9 @@ func (r *UsersGatewayImpl) SearchStudentsByEmail(email string, page, pageSize in
 	countRows int64,
 	err error,
 ) {
+	if !legacyUsersEnabled() {
+		return r.searchPortalStudentsByEmail(email, page, pageSize)
+	}
 	var studentsDb []*models.StudentDB
 	offset := (page - 1) * pageSize
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
@@ -121,6 +127,13 @@ func (r *UsersGatewayImpl) DeleteStudent(studentId string) (err error) {
 }
 
 func (r *UsersGatewayImpl) GetStudentById(studentId string) (student *models.StudentCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.portalUserCoreByID(studentId)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.StudentCore{UserCore: core}, nil
+	}
 	var studentDb models.StudentDB
 
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
@@ -153,6 +166,13 @@ func (r *UsersGatewayImpl) GetStudentsByRobboGroupId(robboGroupId string) (stude
 }
 
 func (r *UsersGatewayImpl) UpdateStudent(student *models.StudentCore) (studentUpdated *models.StudentCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.updatePortalUserProfile(student.Id, student.UserCore)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.StudentCore{UserCore: core}, nil
+	}
 	studentDb := models.StudentDB{}
 	studentDb.FromCore(student)
 
@@ -206,6 +226,13 @@ func (r *UsersGatewayImpl) GetAllTeachers(page, pageSize int) (teachers []models
 }
 
 func (r *UsersGatewayImpl) GetTeacherById(userId string) (teacher models.TeacherCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.portalUserCoreByID(userId)
+		if pErr != nil {
+			return models.TeacherCore{}, pErr
+		}
+		return models.TeacherCore{UserCore: core}, nil
+	}
 	var teacherDb models.TeacherDB
 
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
@@ -247,6 +274,13 @@ func (r *UsersGatewayImpl) DeleteTeacher(teacherId string) (err error) {
 }
 
 func (r *UsersGatewayImpl) UpdateTeacher(teacher *models.TeacherCore) (teacherUpdated models.TeacherCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.updatePortalUserProfile(teacher.Id, teacher.UserCore)
+		if pErr != nil {
+			return models.TeacherCore{}, pErr
+		}
+		return models.TeacherCore{UserCore: core}, nil
+	}
 	teacherDb := models.TeacherDB{}
 	teacherDb.FromCore(teacher)
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
@@ -322,6 +356,13 @@ func (r *UsersGatewayImpl) GetAllParent(page, pageSize int) (parents []*models.P
 }
 
 func (r *UsersGatewayImpl) GetParentById(parentId string) (parent *models.ParentCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.portalUserCoreByID(parentId)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.ParentCore{UserCore: core}, nil
+	}
 	var parentDb models.ParentDB
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Where("id = ?", parentId).First(&parentDb).Error; err != nil {
@@ -362,6 +403,13 @@ func (r *UsersGatewayImpl) DeleteParent(parentId string) (err error) {
 }
 
 func (r *UsersGatewayImpl) UpdateParent(parent *models.ParentCore) (parentUpdated *models.ParentCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.updatePortalUserProfile(parent.Id, parent.UserCore)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.ParentCore{UserCore: core}, nil
+	}
 	parentDb := models.ParentDB{}
 	parentDb.FromCore(parent)
 
@@ -396,6 +444,13 @@ func (r *UsersGatewayImpl) GetFreeListener(email, password string) (freeListener
 }
 
 func (r *UsersGatewayImpl) GetFreeListenerById(freeListenerId string) (freeListener *models.FreeListenerCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.portalUserCoreByID(freeListenerId)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.FreeListenerCore{UserCore: core}, nil
+	}
 	var freeListenerDb models.FreeListenerDB
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Where("id = ?", freeListenerId).First(&freeListenerDb).Error; err != nil {
@@ -438,6 +493,13 @@ func (r *UsersGatewayImpl) DeleteFreeListener(freeListenerId string) (err error)
 }
 
 func (r *UsersGatewayImpl) UpdateFreeListener(freeListener *models.FreeListenerCore) (freeListenerUpdated *models.FreeListenerCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.updatePortalUserProfile(freeListener.Id, freeListener.UserCore)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.FreeListenerCore{UserCore: core}, nil
+	}
 	freeListenerDb := models.FreeListenerDB{}
 	freeListenerDb.FromCore(freeListener)
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
@@ -474,6 +536,13 @@ func (r *UsersGatewayImpl) GetUnitAdmin(email, password string) (unitAdmin *mode
 }
 
 func (r *UsersGatewayImpl) GetUnitAdminById(unitAdminId string) (unitAdmin *models.UnitAdminCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.portalUserCoreByID(unitAdminId)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.UnitAdminCore{UserCore: core}, nil
+	}
 	var unitAdminDb models.UnitAdminDB
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Where("id = ?", unitAdminId).First(&unitAdminDb).Error; err != nil {
@@ -532,6 +601,13 @@ func (r *UsersGatewayImpl) DeleteUnitAdmin(unitAdminId string) (err error) {
 }
 
 func (r *UsersGatewayImpl) UpdateUnitAdmin(unitAdmin *models.UnitAdminCore) (unitAdminUpdated *models.UnitAdminCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.updatePortalUserProfile(unitAdmin.Id, unitAdmin.UserCore)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.UnitAdminCore{UserCore: core}, nil
+	}
 	unitAdminDb := models.UnitAdminDB{}
 	unitAdminDb.FromCore(unitAdmin)
 
@@ -574,6 +650,13 @@ func (r *UsersGatewayImpl) SearchUnitAdminByEmail(email string, page, pageSize i
 }
 
 func (r *UsersGatewayImpl) GetSuperAdminById(superAdminId string) (superAdmin *models.SuperAdminCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.portalUserCoreByID(superAdminId)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.SuperAdminCore{UserCore: core}, nil
+	}
 	var superAdminDb models.SuperAdminDB
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Where("id = ?", superAdminId).First(&superAdminDb).Error; err != nil {
@@ -601,6 +684,13 @@ func (r *UsersGatewayImpl) GetSuperAdmin(email, password string) (superAdmin *mo
 }
 
 func (r *UsersGatewayImpl) UpdateSuperAdmin(superAdmin *models.SuperAdminCore) (superAdminUpdated *models.SuperAdminCore, err error) {
+	if !legacyUsersEnabled() {
+		core, pErr := r.updatePortalUserProfile(superAdmin.Id, superAdmin.UserCore)
+		if pErr != nil {
+			return nil, pErr
+		}
+		return &models.SuperAdminCore{UserCore: core}, nil
+	}
 	superAdminDb := models.SuperAdminDB{}
 	superAdminDb.FromCore(superAdmin)
 
