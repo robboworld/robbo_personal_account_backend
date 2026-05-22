@@ -4,58 +4,40 @@
 name: rpa2
 
 services:
-  postgres:
-    restart: always
-    image: postgres:13
-    ports:
-      - 5432:5432
-    environment:
-      - DEBUG=false
-      - POSTGRES_USER=robbo
-      - POSTGRES_PASSWORD=robbo_pwd
-      - POSTGRES_DB=robbo_db
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - postgres
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U robbo -d robbo_db"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
   app:
     build:
       context: .
       network: host
-    # PROJECT DB запуск отдельно: robbo_projects_db (host :5433). Для приложения в Docker указывать
-    # REACHABLE хост: host.docker.internal + extra_hosts (или общая docker network со стеком projects).
     environment:
       - DEBUG=false
-      - POSTGRES_HOST=postgres
-      - POSTGRES_USER=robbo
-      - POSTGRES_PASSWORD=robbo_pwd
-      - POSTGRES_DB=robbo_db
+      - LEGACY_POSTGRES_ENABLED=false
+      - AUTH_MODE=oidc_bff
+      - AUTH_LMS_PASSWORD_FALLBACK=true
+      - LK_SSO_WITH_LMS_ENABLED=true
+      - PROJECTS_POSTGRES_DSN=host=host.docker.internal port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable
+      - LMS_MYSQL_DSN=lk_readonly:lk_readonly_change_me@tcp(host.docker.internal:3307)/openedx
+      - OIDC_ISSUER=http://host.docker.internal:8081/default
+      - OIDC_AUTHORIZATION_ENDPOINT=http://host.docker.internal:8081/default/authorize
+      - OIDC_TOKEN_ENDPOINT=http://host.docker.internal:8081/default/token
+      - OIDC_JWKS_URI=http://host.docker.internal:8081/default/jwks
+      - OIDC_CLIENT_ID=lk-web
+      - OIDC_REDIRECT_URI=http://localhost:8080/auth/oidc/callback
+      - OIDC_FRONTEND_BASE_URL=http://localhost:3030
       - AUTH_HASH_SALT=hash_salt
       - AUTH_ACCESS_SIGNING_KEY=access_signing_key
       - AUTH_REFRESH_SIGNING_KEY=refresh_signing_key
       - AUTH_REFRESH_COOKIE_SECURE=false
+      - PORTAL_OUTBOX_ENABLED=true
       - API_TOKEN=GiafmKI2tyt9pyXDpEVYto0Ar2qmOS
       - API_CLIENT_ID=uYSlyzAlmR2dEuukRWkqjcYjK6BplIYyXo8SawJl
       - API_CLIENT_SECRET=vWXLUQf9KsOFtl5RhxkNozjIVV3gWZDcUERpLXd8ypAtrHmiCo1tLG0N9TV4ryIgnOcZZt3Cnc4oUXLUpfacXB3ocSBJCIJAK5cax6xm9ElhBjHlc6dKPE8rd72lZWQM
-      - PROJECTS_POSTGRES_DSN=host=host.docker.internal port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    depends_on:
-      postgres:
-        condition: service_healthy
     ports:
       - 8080:8080
     networks:
-      - postgres
-volumes:
-  postgres_data:
-    name: robbo_personal_account_backend_postgres_data
+      - lk
+
 networks:
-  postgres:
+  lk:
     driver: bridge

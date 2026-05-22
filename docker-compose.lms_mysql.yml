@@ -1,0 +1,34 @@
+# Local Open edX MySQL from dump.sql (read-only user for LK workers/scripts).
+# Usage:
+#   ln -sf ../../dump.sql lms_dump/01-dump.sql
+#   docker compose -f docker-compose.lms_mysql.yml up -d
+
+name: lms_mysql_local
+
+services:
+  lms_mysql:
+    image: mysql:8.0
+    container_name: lms_mysql_local
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: lms_root_change_me
+      MYSQL_DATABASE: openedx
+      MYSQL_USER: lk_readonly
+      MYSQL_PASSWORD: lk_readonly_change_me
+    ports:
+      - "3307:3306"
+    volumes:
+      - lms_mysql_data:/var/lib/mysql
+      - ./lms_dump:/docker-entrypoint-initdb.d:ro
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-plms_root_change_me"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 180s
+
+volumes:
+  lms_mysql_data:

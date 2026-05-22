@@ -1,0 +1,21 @@
+# Mock OIDC for local LK SSO development (no production Open edX).
+# Usage: docker compose -f docker-compose.oidc.dev.yml up -d
+#
+# Env for backend / frontend:
+#   OIDC_ISSUER=http://localhost:8081/default
+#   OIDC_AUTHORIZATION_ENDPOINT=http://localhost:8081/default/authorize
+#   OIDC_TOKEN_ENDPOINT=http://localhost:8081/default/token
+#   OIDC_JWKS_URI=http://localhost:8081/default/jwks
+#   OIDC_CLIENT_ID=lk-web
+#   OIDC_REDIRECT_URI=http://localhost:3030/auth/oidc/callback
+#   LK_SSO_WITH_LMS_ENABLED=true
+#   AUTH_MODE=oidc_bff
+
+services:
+  mock-oauth2:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.5
+    ports:
+      - "8081:8081"
+    environment:
+      SERVER_PORT: 8081
+      LOG_LEVEL: info

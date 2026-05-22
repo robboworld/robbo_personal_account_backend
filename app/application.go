@@ -19,10 +19,12 @@ func InvokeWith(options ...fx.Option) *fx.App {
 		fx.Provide(logger.NewLogger),
 		fx.Provide(db_client.NewPostgresClient),
 		fx.Provide(modules.SetupGateway),
+		fx.Provide(modules.SetupPortalModule),
 		fx.Provide(modules.SetupUseCase),
 		fx.Provide(modules.SetupDelegate),
 		fx.Provide(modules.SetupHandler),
 		fx.Provide(modules.SetupGraphQLModule),
+		fx.Invoke(modules.StartPortalOutboxWorker),
 	}
 	for _, option := range options {
 		di = append(di, option)

@@ -55,11 +55,15 @@ func (r *mutationResolver) UpdateUnitAdmin(ctx context.Context, input models.Upd
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
-	allowedRoles := []models.Role{models.SuperAdmin}
-	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
+	accessErr := profileSelfOrAdminAccess(
+		ctx, ginContext, r.authDelegate, input.ID, models.UnitAdmin,
+		[]models.Role{models.SuperAdmin},
+	)
 	if accessErr != nil {
 		return nil, accessErr
+	}
+	if err := r.validateUsernameImmutable(ctx, input, models.UnitAdmin); err != nil {
+		return nil, err
 	}
 
 	updateUnitAdminInput := &models.UnitAdminHTTP{
