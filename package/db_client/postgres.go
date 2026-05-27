@@ -35,19 +35,19 @@ func OpenByDSN(dsn string) (db *gorm.DB, err error) {
 }
 
 func postgresDSN() string {
-	if viper.GetBool("legacyPostgres.enabled") {
-		if dsn := viper.GetString("postgres.postgresDsn"); dsn != "" {
-			return dsn
-		}
+	if !viper.GetBool("legacyPostgres.enabled") {
+		return ""
 	}
-	dsn := viper.GetString("projectsPostgres.postgresDsn")
-	if dsn == "" {
-		panic("projectsPostgres.postgresDsn required when legacyPostgres.enabled is false")
+	if dsn := viper.GetString("postgres.postgresDsn"); dsn != "" {
+		return dsn
 	}
-	return dsn
+	panic("postgres.postgresDsn required when legacyPostgres.enabled is true")
 }
 
 func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err error) {
+	if !viper.GetBool("legacyPostgres.enabled") {
+		return PostgresClient{Db: nil, logger: _logger}, nil
+	}
 	db, err := OpenByDSN(postgresDSN())
 	if err != nil {
 		return
@@ -85,7 +85,9 @@ func NewTestPostgresClient(_logger *log.Logger, testDockerClient dockertest.Pool
 }
 
 func (c *PostgresClient) Migrate() (err error) {
-	// Scratch/project tables live in Projects DB only (see projects gateway).
+	if c.Db == nil {
+		return nil
+	}
 	robboMeta := []interface{}{
 		&models.CourseDB{},
 		&models.CoursePacketDB{},

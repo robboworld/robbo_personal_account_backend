@@ -16,6 +16,7 @@ services:
       - LK_SSO_WITH_LMS_ENABLED=true
       - PROJECTS_POSTGRES_DSN=host=host.docker.internal port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable
       - LMS_MYSQL_DSN=lk_readonly:lk_readonly_change_me@tcp(host.docker.internal:3307)/openedx
+      - LMS_MYSQL_WRITE_DSN=root:lms_root_change_me@tcp(host.docker.internal:3307)/openedx
       - OIDC_ISSUER=http://host.docker.internal:8081/default
       - OIDC_AUTHORIZATION_ENDPOINT=http://host.docker.internal:8081/default/authorize
       - OIDC_TOKEN_ENDPOINT=http://host.docker.internal:8081/default/token
@@ -27,7 +28,7 @@ services:
       - AUTH_ACCESS_SIGNING_KEY=access_signing_key
       - AUTH_REFRESH_SIGNING_KEY=refresh_signing_key
       - AUTH_REFRESH_COOKIE_SECURE=false
-      - PORTAL_OUTBOX_ENABLED=true
+      - PORTAL_OUTBOX_ENABLED=false
       - API_TOKEN=GiafmKI2tyt9pyXDpEVYto0Ar2qmOS
       - API_CLIENT_ID=uYSlyzAlmR2dEuukRWkqjcYjK6BplIYyXo8SawJl
       - API_CLIENT_SECRET=vWXLUQf9KsOFtl5RhxkNozjIVV3gWZDcUERpLXd8ypAtrHmiCo1tLG0N9TV4ryIgnOcZZt3Cnc4oUXLUpfacXB3ocSBJCIJAK5cax6xm9ElhBjHlc6dKPE8rd72lZWQM

@@ -181,11 +181,11 @@ ROWS = [
         "История версий .sb3 (поле archive BYTEA) для проекта.",
     ),
     (
-        "scratch_project_legacy_map",
-        "ScratchProjectLegacyMapDB",
+        "scratch_project_audit_events",
+        "—",
         "проекты",
-        "используется",
-        "Сопоставление старых идентификаторов проекта/страницы с UUID в новом хранилище.",
+        "схема",
+        "Журнал действий с проектом (open/save); запись в коде — отдельный этап.",
     ),
     (
         "cohort_dbs (условное имя GORM)",

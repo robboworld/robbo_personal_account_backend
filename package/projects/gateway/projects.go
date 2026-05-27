@@ -37,17 +37,10 @@ func SetupProjectsGateway(postgresClient db_client.PostgresClient) ProjectsGatew
 
 func (r *ProjectsGatewayImpl) resolveStorageProjectID(tx *gorm.DB, rawID string) (string, error) {
 	var projectDB models.ScratchProjectDB
-	if err := tx.Where("id = ? AND deleted_at IS NULL", rawID).First(&projectDB).Error; err == nil {
-		return rawID, nil
-	}
-
-	var legacyMap models.ScratchProjectLegacyMapDB
-	if err := tx.
-		Where("legacy_project_id = ? OR legacy_project_page_id = ?", rawID, rawID).
-		First(&legacyMap).Error; err != nil {
+	if err := tx.Where("id = ? AND deleted_at IS NULL", rawID).First(&projectDB).Error; err != nil {
 		return "", err
 	}
-	return legacyMap.StorageProjectID, nil
+	return rawID, nil
 }
 
 func (r *ProjectsGatewayImpl) CreateProject(project *models.ProjectCore) (id string, err error) {

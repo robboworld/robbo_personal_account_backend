@@ -24,7 +24,7 @@ func NewReaderFromConfig() (*Reader, error) {
 	if dsn == "" {
 		return nil, errors.New("lmsMysql.dsn or LMS_MYSQL_DSN is not configured")
 	}
-	db, err := sql.Open("mysql", dsn)
+	db, err := sql.Open("mysql", ensureParseTimeDSN(dsn))
 	if err != nil {
 		return nil, err
 	}

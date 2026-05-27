@@ -78,17 +78,10 @@ func toProjectPageCore(projectDB *models.ScratchProjectDB) *models.ProjectPageCo
 
 func (r *ProjectPageGatewayImpl) resolveStorageProjectID(tx *gorm.DB, rawID string) (string, error) {
 	var projectDB models.ScratchProjectDB
-	if err := tx.Where("id = ? AND deleted_at IS NULL", rawID).First(&projectDB).Error; err == nil {
-		return rawID, nil
-	}
-
-	var legacyMap models.ScratchProjectLegacyMapDB
-	if err := tx.
-		Where("legacy_project_page_id = ? OR legacy_project_id = ?", rawID, rawID).
-		First(&legacyMap).Error; err != nil {
+	if err := tx.Where("id = ? AND deleted_at IS NULL", rawID).First(&projectDB).Error; err != nil {
 		return "", err
 	}
-	return legacyMap.StorageProjectID, nil
+	return rawID, nil
 }
 
 func (r *ProjectPageGatewayImpl) GetProjectPageById(projectPageId string) (projectPageCore *models.ProjectPageCore, err error) {

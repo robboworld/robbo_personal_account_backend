@@ -30,21 +30,6 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string) (accessToken, refres
 	}
 
 	edxID := strconv.FormatInt(u.ID, 10)
-	if a.portal != nil {
-		link, linkErr := a.portal.UpsertUserLinkByOIDC("", u.Email, u.Username, edxID)
-		if linkErr == nil {
-			_, found, rErr := a.portal.FindPrimaryRoleByUserLinkID(link.ID)
-			if rErr == nil && !found {
-				code := "student"
-				if u.IsSuperuser {
-					code = "super_admin"
-				} else if u.IsStaff {
-					code = "teacher"
-				}
-				_ = a.portal.EnsureDefaultRole(link.ID, code)
-			}
-		}
-	}
 
 	user := &models.UserCore{
 		Id:    edxID,
