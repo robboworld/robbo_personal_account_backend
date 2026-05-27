@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"log"
 	"strconv"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
@@ -29,6 +30,8 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string) (accessToken, refres
 		return "", "", err
 	}
 
+	touchLastLogin(u.ID)
+
 	edxID := strconv.FormatInt(u.ID, 10)
 
 	user := &models.UserCore{
@@ -43,4 +46,16 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string) (accessToken, refres
 	}
 	refreshToken, err = a.GenerateToken(user, a.refreshExpireDuration, a.refreshSigningKey)
 	return accessToken, refreshToken, err
+}
+
+func touchLastLogin(userID int64) {
+	writer, err := lmsdb.NewWriterFromConfig()
+	if err != nil {
+		log.Printf("lms auth: writer for last_login: %v", err)
+		return
+	}
+	defer writer.Close()
+	if err := writer.TouchLastLogin(userID); err != nil {
+		log.Printf("lms auth: touch last_login for user %d: %v", userID, err)
+	}
 }

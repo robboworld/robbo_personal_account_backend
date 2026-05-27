@@ -4,9 +4,15 @@ type UserHttp {
     password: String!
     role: Int!
     nickname: String!
+    fullName: String!
     firstname: String!
     lastname: String!
     middlename: String!
+    levelOfEducation: String
+    country: String
+    yearOfBirth: Int
+    gender: String
+    language: String
     createdAt: Timestamp!
 }
 
@@ -14,9 +20,15 @@ input UpdateProfileInput {
     id: String!
     email: String!
     nickname: String!
+    fullName: String!
     firstname: String!
     lastname: String!
     middlename: String!
+    levelOfEducation: String
+    country: String
+    yearOfBirth: Int
+    gender: String
+    language: String
 }
 
 type SuperAdminHttp {
