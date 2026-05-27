@@ -37,28 +37,42 @@ type UserDB struct {
 }
 
 type UserCore struct {
-	Id         string
-	Email      string
-	Password   string
-	Role       Role
-	Nickname   string
-	Firstname  string
-	Middlename string
-	Lastname   string
-	CreatedAt  string
+	Id               string
+	Email            string
+	Password         string
+	Role             Role
+	Nickname         string
+	FullName         string
+	Firstname        string
+	Middlename       string
+	Lastname         string
+	Company          string
+	LevelOfEducation string
+	Country          string
+	YearOfBirth      *int
+	Gender           string
+	Language         string
+	CreatedAt        string
 }
 
 func (em *UserHTTP) ToCore() UserCore {
 	return UserCore{
-		Id:         em.ID,
-		Email:      em.Email,
-		Password:   em.Password,
-		Role:       Role(em.Role),
-		Nickname:   em.Nickname,
-		Firstname:  em.Firstname,
-		Lastname:   em.Lastname,
-		Middlename: em.Middlename,
-		CreatedAt:  em.CreatedAt,
+		Id:               em.ID,
+		Email:            em.Email,
+		Password:         em.Password,
+		Role:             Role(em.Role),
+		Nickname:         em.Nickname,
+		FullName:         em.FullName,
+		Firstname:        em.Firstname,
+		Lastname:         em.Lastname,
+		Middlename:       em.Middlename,
+		Company:          em.Company,
+		LevelOfEducation: StrPtrVal(em.LevelOfEducation),
+		Country:          StrPtrVal(em.Country),
+		YearOfBirth:      em.YearOfBirth,
+		Gender:           StrPtrVal(em.Gender),
+		Language:         StrPtrVal(em.Language),
+		CreatedAt:        em.CreatedAt,
 	}
 }
 
@@ -68,9 +82,16 @@ func (em *UserHTTP) FromCore(user *UserCore) {
 	em.Password = user.Password
 	em.Role = int(user.Role)
 	em.Nickname = user.Nickname
+	em.FullName = user.FullName
 	em.Firstname = user.Firstname
 	em.Lastname = user.Lastname
 	em.Middlename = user.Middlename
+	em.Company = user.Company
+	em.LevelOfEducation = StrPtr(user.LevelOfEducation)
+	em.Country = StrPtr(user.Country)
+	em.YearOfBirth = user.YearOfBirth
+	em.Gender = StrPtr(user.Gender)
+	em.Language = StrPtr(user.Language)
 	em.CreatedAt = user.CreatedAt
 }
 

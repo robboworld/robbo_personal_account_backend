@@ -2941,9 +2941,15 @@ extend type Mutation {
     password: String!
     role: Int!
     nickname: String!
+    fullName: String!
     firstname: String!
     lastname: String!
     middlename: String!
+    levelOfEducation: String
+    country: String
+    yearOfBirth: Int
+    gender: String
+    language: String
     createdAt: Timestamp!
 }
 
@@ -2951,9 +2957,15 @@ input UpdateProfileInput {
     id: String!
     email: String!
     nickname: String!
+    fullName: String!
     firstname: String!
     lastname: String!
     middlename: String!
+    levelOfEducation: String
+    country: String
+    yearOfBirth: Int
+    gender: String
+    language: String
 }
 
 type SuperAdminHttp {
@@ -7321,6 +7333,18 @@ func (ec *executionContext) fieldContext_FreeListenerHttp_userHttp(ctx context.C
 				return ec.fieldContext_UserHttp_role(ctx, field)
 			case "nickname":
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
+			case "fullName":
+				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "levelOfEducation":
+				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+			case "country":
+				return ec.fieldContext_UserHttp_country(ctx, field)
+			case "yearOfBirth":
+				return ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+			case "gender":
+				return ec.fieldContext_UserHttp_gender(ctx, field)
+			case "language":
+				return ec.fieldContext_UserHttp_language(ctx, field)
 			case "firstname":
 				return ec.fieldContext_UserHttp_firstname(ctx, field)
 			case "lastname":
@@ -10039,6 +10063,18 @@ func (ec *executionContext) fieldContext_ParentHttp_userHttp(ctx context.Context
 				return ec.fieldContext_UserHttp_role(ctx, field)
 			case "nickname":
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
+			case "fullName":
+				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "levelOfEducation":
+				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+			case "country":
+				return ec.fieldContext_UserHttp_country(ctx, field)
+			case "yearOfBirth":
+				return ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+			case "gender":
+				return ec.fieldContext_UserHttp_gender(ctx, field)
+			case "language":
+				return ec.fieldContext_UserHttp_language(ctx, field)
 			case "firstname":
 				return ec.fieldContext_UserHttp_firstname(ctx, field)
 			case "lastname":
@@ -14154,6 +14190,18 @@ func (ec *executionContext) fieldContext_StudentHttp_userHttp(ctx context.Contex
 				return ec.fieldContext_UserHttp_role(ctx, field)
 			case "nickname":
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
+			case "fullName":
+				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "levelOfEducation":
+				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+			case "country":
+				return ec.fieldContext_UserHttp_country(ctx, field)
+			case "yearOfBirth":
+				return ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+			case "gender":
+				return ec.fieldContext_UserHttp_gender(ctx, field)
+			case "language":
+				return ec.fieldContext_UserHttp_language(ctx, field)
 			case "firstname":
 				return ec.fieldContext_UserHttp_firstname(ctx, field)
 			case "lastname":
@@ -14554,6 +14602,18 @@ func (ec *executionContext) fieldContext_SuperAdminHttp_userHttp(ctx context.Con
 				return ec.fieldContext_UserHttp_role(ctx, field)
 			case "nickname":
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
+			case "fullName":
+				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "levelOfEducation":
+				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+			case "country":
+				return ec.fieldContext_UserHttp_country(ctx, field)
+			case "yearOfBirth":
+				return ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+			case "gender":
+				return ec.fieldContext_UserHttp_gender(ctx, field)
+			case "language":
+				return ec.fieldContext_UserHttp_language(ctx, field)
 			case "firstname":
 				return ec.fieldContext_UserHttp_firstname(ctx, field)
 			case "lastname":
@@ -14618,6 +14678,18 @@ func (ec *executionContext) fieldContext_TeacherHttp_userHttp(ctx context.Contex
 				return ec.fieldContext_UserHttp_role(ctx, field)
 			case "nickname":
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
+			case "fullName":
+				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "levelOfEducation":
+				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+			case "country":
+				return ec.fieldContext_UserHttp_country(ctx, field)
+			case "yearOfBirth":
+				return ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+			case "gender":
+				return ec.fieldContext_UserHttp_gender(ctx, field)
+			case "language":
+				return ec.fieldContext_UserHttp_language(ctx, field)
 			case "firstname":
 				return ec.fieldContext_UserHttp_firstname(ctx, field)
 			case "lastname":
@@ -14774,6 +14846,18 @@ func (ec *executionContext) fieldContext_UnitAdminHttp_userHttp(ctx context.Cont
 				return ec.fieldContext_UserHttp_role(ctx, field)
 			case "nickname":
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
+			case "fullName":
+				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "levelOfEducation":
+				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+			case "country":
+				return ec.fieldContext_UserHttp_country(ctx, field)
+			case "yearOfBirth":
+				return ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+			case "gender":
+				return ec.fieldContext_UserHttp_gender(ctx, field)
+			case "language":
+				return ec.fieldContext_UserHttp_language(ctx, field)
 			case "firstname":
 				return ec.fieldContext_UserHttp_firstname(ctx, field)
 			case "lastname":
@@ -15089,6 +15173,255 @@ func (ec *executionContext) _UserHttp_nickname(ctx context.Context, field graphq
 }
 
 func (ec *executionContext) fieldContext_UserHttp_nickname(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_fullName(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_fullName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.FullName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_fullName(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_levelOfEducation(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.LevelOfEducation, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_levelOfEducation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_country(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_country(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.Country, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_country(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_yearOfBirth(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_yearOfBirth(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.YearOfBirth, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*int)
+	fc.Result = res
+	return ec.marshalOInt2ᚖint(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_yearOfBirth(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_gender(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_gender(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.Gender, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_gender(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_language(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_language(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.Language, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_language(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "UserHttp",
 		Field:      field,
@@ -17721,7 +18054,7 @@ func (ec *executionContext) unmarshalInputUpdateProfileInput(ctx context.Context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"id", "email", "nickname", "firstname", "lastname", "middlename"}
+	fieldsInOrder := [...]string{"id", "email", "nickname", "fullName", "firstname", "lastname", "middlename", "levelOfEducation", "country", "yearOfBirth", "gender", "language"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -17752,6 +18085,14 @@ func (ec *executionContext) unmarshalInputUpdateProfileInput(ctx context.Context
 			if err != nil {
 				return it, err
 			}
+		case "fullName":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("fullName"))
+			it.FullName, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
 		case "firstname":
 			var err error
 
@@ -17773,6 +18114,46 @@ func (ec *executionContext) unmarshalInputUpdateProfileInput(ctx context.Context
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("middlename"))
 			it.Middlename, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "levelOfEducation":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("levelOfEducation"))
+			it.LevelOfEducation, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "country":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("country"))
+			it.Country, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "yearOfBirth":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("yearOfBirth"))
+			it.YearOfBirth, err = ec.unmarshalOInt2ᚖint(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "gender":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("gender"))
+			it.Gender, err = ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "language":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("language"))
+			it.Language, err = ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -21666,6 +22047,28 @@ func (ec *executionContext) _UserHttp(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
+		case "fullName":
+
+			out.Values[i] = ec._UserHttp_fullName(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "levelOfEducation":
+
+			out.Values[i] = ec._UserHttp_levelOfEducation(ctx, field, obj)
+		case "country":
+
+			out.Values[i] = ec._UserHttp_country(ctx, field, obj)
+		case "yearOfBirth":
+
+			out.Values[i] = ec._UserHttp_yearOfBirth(ctx, field, obj)
+		case "gender":
+
+			out.Values[i] = ec._UserHttp_gender(ctx, field, obj)
+		case "language":
+
+			out.Values[i] = ec._UserHttp_language(ctx, field, obj)
 		case "firstname":
 
 			out.Values[i] = ec._UserHttp_firstname(ctx, field, obj)

@@ -2,6 +2,7 @@ package http
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -182,6 +183,7 @@ func (h Handler) Callback(c *gin.Context) {
 	if profile, err := lookupLMSProfileByEmail(claims.Email); err == nil && profile != nil {
 		edxUserID = strconv.FormatInt(profile.ID, 10)
 		role = lmsRoleFromProfile(profile)
+		touchLastLogin(profile.ID)
 	} else {
 		role = roleCodeToModel(inferRoleCodeFromIDToken(tr.IDToken))
 	}
@@ -273,4 +275,16 @@ func lmsRoleFromProfile(u *lmsdb.AuthUserProfile) models.Role {
 		return models.Teacher
 	}
 	return models.Student
+}
+
+func touchLastLogin(userID int64) {
+	writer, err := lmsdb.NewWriterFromConfig()
+	if err != nil {
+		log.Printf("oidc: writer for last_login: %v", err)
+		return
+	}
+	defer writer.Close()
+	if err := writer.TouchLastLogin(userID); err != nil {
+		log.Printf("oidc: touch last_login for user %d: %v", userID, err)
+	}
 }

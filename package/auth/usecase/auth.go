@@ -131,7 +131,7 @@ func (a *AuthUseCaseImpl) signInLegacy(email, password string, role uint) (acces
 
 func (a *AuthUseCaseImpl) SignUp(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
 	if !viper.GetBool("legacyPostgres.enabled") {
-		return "", "", auth.ErrSignUpDisabled
+		return a.signUpLMS(userCore)
 	}
 	pwd := sha1.New()
 	pwd.Write([]byte(userCore.Password))

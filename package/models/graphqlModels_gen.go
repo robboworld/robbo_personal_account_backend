@@ -331,6 +331,7 @@ type NewStudent struct {
 	Email        string  `json:"email"`
 	Password     string  `json:"password"`
 	Nickname     string  `json:"nickname"`
+	FullName     string  `json:"fullName"`
 	Firstname    string  `json:"firstname"`
 	Lastname     string  `json:"lastname"`
 	Middlename   string  `json:"middlename"`
@@ -519,12 +520,18 @@ type UnitAdminHTTPList struct {
 func (UnitAdminHTTPList) IsUnitAdminsResult() {}
 
 type UpdateProfileInput struct {
-	ID         string `json:"id"`
-	Email      string `json:"email"`
-	Nickname   string `json:"nickname"`
-	Firstname  string `json:"firstname"`
-	Lastname   string `json:"lastname"`
-	Middlename string `json:"middlename"`
+	ID               string  `json:"id"`
+	Email            string  `json:"email"`
+	Nickname         string  `json:"nickname"`
+	FullName         string  `json:"fullName"`
+	Firstname        string  `json:"firstname"`
+	Lastname         string  `json:"lastname"`
+	Middlename       string  `json:"middlename"`
+	LevelOfEducation *string `json:"levelOfEducation,omitempty"`
+	Country          *string `json:"country,omitempty"`
+	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
+	Gender           *string `json:"gender,omitempty"`
+	Language         *string `json:"language,omitempty"`
 }
 
 type UpdateProjectPage struct {
@@ -549,13 +556,20 @@ type UpdateRobboUnit struct {
 }
 
 type UserHTTP struct {
-	ID         string `json:"id"`
-	Email      string `json:"email"`
-	Password   string `json:"password"`
-	Role       int    `json:"role"`
-	Nickname   string `json:"nickname"`
-	Firstname  string `json:"firstname"`
-	Lastname   string `json:"lastname"`
-	Middlename string `json:"middlename"`
-	CreatedAt  string `json:"createdAt"`
+	ID               string  `json:"id"`
+	Email            string  `json:"email"`
+	Password         string  `json:"password"`
+	Role             int     `json:"role"`
+	Nickname         string  `json:"nickname"`
+	FullName         string  `json:"fullName"`
+	Firstname        string  `json:"firstname"`
+	Lastname         string  `json:"lastname"`
+	Middlename       string  `json:"middlename"`
+	Company          string  `json:"company,omitempty"`
+	LevelOfEducation *string `json:"levelOfEducation,omitempty"`
+	Country          *string `json:"country,omitempty"`
+	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
+	Gender           *string `json:"gender,omitempty"`
+	Language         *string `json:"language,omitempty"`
+	CreatedAt        string  `json:"createdAt"`
 }

@@ -67,16 +67,9 @@ func (r *mutationResolver) UpdateUnitAdmin(ctx context.Context, input models.Upd
 	}
 
 	updateUnitAdminInput := &models.UnitAdminHTTP{
-		UserHTTP: &models.UserHTTP{
-			ID:         input.ID,
-			Email:      input.Email,
-			Firstname:  input.Firstname,
-			Lastname:   input.Lastname,
-			Middlename: input.Middlename,
-			Nickname:   input.Nickname,
-			Role:       4,
-		},
+		UserHTTP: userHTTPFromProfileInput(input),
 	}
+	updateUnitAdminInput.UserHTTP.Role = 4
 	unitAdminUpdated, updateUnitAdminErr := r.usersDelegate.UpdateUnitAdmin(updateUnitAdminInput)
 	if updateUnitAdminErr != nil {
 		return nil, &gqlerror.Error{

@@ -67,16 +67,9 @@ func (r *mutationResolver) UpdateParent(ctx context.Context, input models.Update
 	}
 
 	updateParentInput := &models.ParentHTTP{
-		UserHTTP: &models.UserHTTP{
-			ID:         input.ID,
-			Email:      input.Email,
-			Firstname:  input.Firstname,
-			Lastname:   input.Lastname,
-			Middlename: input.Middlename,
-			Nickname:   input.Nickname,
-			Role:       2,
-		},
+		UserHTTP: userHTTPFromProfileInput(input),
 	}
+	updateParentInput.UserHTTP.Role = 2
 	parentUpdated, updateParentErr := r.usersDelegate.UpdateParent(updateParentInput)
 	if updateParentErr != nil {
 		return nil, &gqlerror.Error{

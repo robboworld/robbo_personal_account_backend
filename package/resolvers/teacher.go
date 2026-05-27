@@ -68,16 +68,9 @@ func (r *mutationResolver) UpdateTeacher(ctx context.Context, input models.Updat
 	}
 
 	updateTeacherInput := &models.TeacherHTTP{
-		UserHTTP: &models.UserHTTP{
-			ID:         input.ID,
-			Email:      input.Email,
-			Firstname:  input.Firstname,
-			Lastname:   input.Lastname,
-			Middlename: input.Middlename,
-			Nickname:   input.Nickname,
-			Role:       1,
-		},
+		UserHTTP: userHTTPFromProfileInput(input),
 	}
+	updateTeacherInput.UserHTTP.Role = 1
 
 	teacherUpdated, updateTeacherErr := r.usersDelegate.UpdateTeacher(updateTeacherInput)
 	if updateTeacherErr != nil {

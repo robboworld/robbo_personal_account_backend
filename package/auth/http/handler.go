@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
@@ -68,17 +69,24 @@ func (h *Handler) SignIn(c *gin.Context) {
 	})
 }
 
+type signUpBody struct {
+	models.UserHTTP
+	Company string `json:"company"`
+}
+
 func (h *Handler) SignUp(c *gin.Context) {
 	fmt.Println("SignUp")
 
-	userHttp := &models.UserHTTP{}
+	body := &signUpBody{}
 
-	if err := c.BindJSON(userHttp); err != nil {
+	if err := c.BindJSON(body); err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
-	accessToken, refreshToken, err := h.delegate.SignUp(userHttp)
+	body.UserHTTP.Company = strings.TrimSpace(body.Company)
+
+	accessToken, refreshToken, err := h.delegate.SignUp(&body.UserHTTP)
 	if err != nil {
 		ErrorHandling(err, c)
 		return
@@ -138,8 +146,14 @@ func (h *Handler) CheckAuth(c *gin.Context) {
 
 func ErrorHandling(err error, c *gin.Context) {
 	switch {
+	case errors.Is(err, auth.ErrEmailAlreadyExist):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error(), "field": "email"})
+	case errors.Is(err, auth.ErrUsernameAlreadyExist):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error(), "field": "nickname"})
 	case errors.Is(err, auth.ErrUserAlreadyExist):
-		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrCompanyRequired):
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrInvalidAccessToken), errors.Is(err, auth.ErrInvalidTypeClaims), errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):

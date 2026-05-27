@@ -29,6 +29,7 @@ func (r *mutationResolver) CreateStudent(ctx context.Context, input models.NewSt
 		UserHTTP: &models.UserHTTP{
 			Email:      input.Email,
 			Password:   input.Password,
+			FullName:   input.FullName,
 			Firstname:  input.Firstname,
 			Lastname:   input.Lastname,
 			Middlename: input.Middlename,
@@ -70,16 +71,9 @@ func (r *mutationResolver) UpdateStudent(ctx context.Context, input models.Updat
 	}
 
 	updateStudentInput := &models.StudentHTTP{
-		UserHTTP: &models.UserHTTP{
-			ID:         input.ID,
-			Email:      input.Email,
-			Firstname:  input.Firstname,
-			Lastname:   input.Lastname,
-			Middlename: input.Middlename,
-			Nickname:   input.Nickname,
-			Role:       0,
-		},
+		UserHTTP: userHTTPFromProfileInput(input),
 	}
+	updateStudentInput.UserHTTP.Role = 0
 
 	studentUpdated, updateStudentErr := r.usersDelegate.UpdateStudent(updateStudentInput)
 	if updateStudentErr != nil {
