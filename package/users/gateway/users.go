@@ -78,7 +78,7 @@ func (r *UsersGatewayImpl) SearchStudentsByEmail(email string, page, pageSize in
 	err error,
 ) {
 	if !legacyUsersEnabled() {
-		return r.searchPortalStudentsByEmail(email, page, pageSize)
+		return r.searchLMSStudentsByEmail(email, page, pageSize)
 	}
 	var studentsDb []*models.StudentDB
 	offset := (page - 1) * pageSize
@@ -128,7 +128,7 @@ func (r *UsersGatewayImpl) DeleteStudent(studentId string) (err error) {
 
 func (r *UsersGatewayImpl) GetStudentById(studentId string) (student *models.StudentCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.portalUserCoreByID(studentId)
+		core, pErr := r.lmsUserCoreByID(studentId)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -167,7 +167,7 @@ func (r *UsersGatewayImpl) GetStudentsByRobboGroupId(robboGroupId string) (stude
 
 func (r *UsersGatewayImpl) UpdateStudent(student *models.StudentCore) (studentUpdated *models.StudentCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.updatePortalUserProfile(student.Id, student.UserCore)
+		core, pErr := r.updateLMSUserProfile(student.Id, student.UserCore)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -227,7 +227,7 @@ func (r *UsersGatewayImpl) GetAllTeachers(page, pageSize int) (teachers []models
 
 func (r *UsersGatewayImpl) GetTeacherById(userId string) (teacher models.TeacherCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.portalUserCoreByID(userId)
+		core, pErr := r.lmsUserCoreByID(userId)
 		if pErr != nil {
 			return models.TeacherCore{}, pErr
 		}
@@ -275,7 +275,7 @@ func (r *UsersGatewayImpl) DeleteTeacher(teacherId string) (err error) {
 
 func (r *UsersGatewayImpl) UpdateTeacher(teacher *models.TeacherCore) (teacherUpdated models.TeacherCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.updatePortalUserProfile(teacher.Id, teacher.UserCore)
+		core, pErr := r.updateLMSUserProfile(teacher.Id, teacher.UserCore)
 		if pErr != nil {
 			return models.TeacherCore{}, pErr
 		}
@@ -357,7 +357,7 @@ func (r *UsersGatewayImpl) GetAllParent(page, pageSize int) (parents []*models.P
 
 func (r *UsersGatewayImpl) GetParentById(parentId string) (parent *models.ParentCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.portalUserCoreByID(parentId)
+		core, pErr := r.lmsUserCoreByID(parentId)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -404,7 +404,7 @@ func (r *UsersGatewayImpl) DeleteParent(parentId string) (err error) {
 
 func (r *UsersGatewayImpl) UpdateParent(parent *models.ParentCore) (parentUpdated *models.ParentCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.updatePortalUserProfile(parent.Id, parent.UserCore)
+		core, pErr := r.updateLMSUserProfile(parent.Id, parent.UserCore)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -445,7 +445,7 @@ func (r *UsersGatewayImpl) GetFreeListener(email, password string) (freeListener
 
 func (r *UsersGatewayImpl) GetFreeListenerById(freeListenerId string) (freeListener *models.FreeListenerCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.portalUserCoreByID(freeListenerId)
+		core, pErr := r.lmsUserCoreByID(freeListenerId)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -494,7 +494,7 @@ func (r *UsersGatewayImpl) DeleteFreeListener(freeListenerId string) (err error)
 
 func (r *UsersGatewayImpl) UpdateFreeListener(freeListener *models.FreeListenerCore) (freeListenerUpdated *models.FreeListenerCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.updatePortalUserProfile(freeListener.Id, freeListener.UserCore)
+		core, pErr := r.updateLMSUserProfile(freeListener.Id, freeListener.UserCore)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -537,7 +537,7 @@ func (r *UsersGatewayImpl) GetUnitAdmin(email, password string) (unitAdmin *mode
 
 func (r *UsersGatewayImpl) GetUnitAdminById(unitAdminId string) (unitAdmin *models.UnitAdminCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.portalUserCoreByID(unitAdminId)
+		core, pErr := r.lmsUserCoreByID(unitAdminId)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -602,7 +602,7 @@ func (r *UsersGatewayImpl) DeleteUnitAdmin(unitAdminId string) (err error) {
 
 func (r *UsersGatewayImpl) UpdateUnitAdmin(unitAdmin *models.UnitAdminCore) (unitAdminUpdated *models.UnitAdminCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.updatePortalUserProfile(unitAdmin.Id, unitAdmin.UserCore)
+		core, pErr := r.updateLMSUserProfile(unitAdmin.Id, unitAdmin.UserCore)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -651,7 +651,7 @@ func (r *UsersGatewayImpl) SearchUnitAdminByEmail(email string, page, pageSize i
 
 func (r *UsersGatewayImpl) GetSuperAdminById(superAdminId string) (superAdmin *models.SuperAdminCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.portalUserCoreByID(superAdminId)
+		core, pErr := r.lmsUserCoreByID(superAdminId)
 		if pErr != nil {
 			return nil, pErr
 		}
@@ -685,7 +685,7 @@ func (r *UsersGatewayImpl) GetSuperAdmin(email, password string) (superAdmin *mo
 
 func (r *UsersGatewayImpl) UpdateSuperAdmin(superAdmin *models.SuperAdminCore) (superAdminUpdated *models.SuperAdminCore, err error) {
 	if !legacyUsersEnabled() {
-		core, pErr := r.updatePortalUserProfile(superAdmin.Id, superAdmin.UserCore)
+		core, pErr := r.updateLMSUserProfile(superAdmin.Id, superAdmin.UserCore)
 		if pErr != nil {
 			return nil, pErr
 		}

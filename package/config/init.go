@@ -23,6 +23,9 @@ func Init() error {
 	if os.Getenv("LMS_MYSQL_DSN") != "" {
 		viper.Set("lmsMysql.dsn", os.Getenv("LMS_MYSQL_DSN"))
 	}
+	if os.Getenv("LMS_MYSQL_WRITE_DSN") != "" {
+		viper.Set("lmsMysql.writeDsn", os.Getenv("LMS_MYSQL_WRITE_DSN"))
+	}
 	if os.Getenv("AUTH_MODE") != "" {
 		viper.Set("auth.mode", os.Getenv("AUTH_MODE"))
 	}
@@ -33,9 +36,6 @@ func Init() error {
 		viper.Set("legacyPostgres.enabled", true)
 	} else if os.Getenv("LEGACY_POSTGRES_ENABLED") == "false" {
 		viper.Set("legacyPostgres.enabled", false)
-	}
-	if os.Getenv("LMS_MYSQL_DSN") != "" {
-		viper.Set("lmsMysql.dsn", os.Getenv("LMS_MYSQL_DSN"))
 	}
 	if os.Getenv("LK_SSO_WITH_LMS_ENABLED") == "true" {
 		viper.Set("oidc.enabled", true)
@@ -72,6 +72,8 @@ func Init() error {
 	}
 	if os.Getenv("PORTAL_OUTBOX_ENABLED") == "true" {
 		viper.Set("portalOutbox.enabled", true)
+	} else if os.Getenv("PORTAL_OUTBOX_ENABLED") == "false" {
+		viper.Set("portalOutbox.enabled", false)
 	}
 	if os.Getenv("LMS_NOTIFICATIONS_ENABLED") == "true" {
 		viper.Set("lmsNotifications.enabled", true)

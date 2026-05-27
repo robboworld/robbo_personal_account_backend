@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
@@ -177,20 +179,11 @@ func (h Handler) Callback(c *gin.Context) {
 	}
 	edxUserID := ""
 	role := models.Student
-	if h.portal != nil {
-		link, linkErr := h.portal.UpsertUserLinkByOIDC(claims.Sub, claims.Email, claims.Name, "")
-		if linkErr == nil {
-			if link.EdxUserID != nil {
-				edxUserID = *link.EdxUserID
-			}
-			if r, found, err := h.portal.FindPrimaryRoleByUserLinkID(link.ID); err == nil && found {
-				role = r
-			} else if err == nil {
-				roleCode := inferRoleCodeFromIDToken(tr.IDToken)
-				_ = h.portal.EnsureDefaultRole(link.ID, roleCode)
-				role = roleCodeToModel(roleCode)
-			}
-		}
+	if profile, err := lookupLMSProfileByEmail(claims.Email); err == nil && profile != nil {
+		edxUserID = strconv.FormatInt(profile.ID, 10)
+		role = lmsRoleFromProfile(profile)
+	} else {
+		role = roleCodeToModel(inferRoleCodeFromIDToken(tr.IDToken))
 	}
 	session, err := oidc.IssueSessionToken(claims.Sub, edxUserID, claims.Email, uint(role))
 	if err != nil {
@@ -258,4 +251,26 @@ func roleCodeToModel(code string) models.Role {
 	default:
 		return models.Student
 	}
+}
+
+func lookupLMSProfileByEmail(email string) (*lmsdb.AuthUserProfile, error) {
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return reader.LookupAuthUserProfileByEmail(email)
+}
+
+func lmsRoleFromProfile(u *lmsdb.AuthUserProfile) models.Role {
+	if u == nil {
+		return models.Student
+	}
+	if u.IsSuperuser {
+		return models.SuperAdmin
+	}
+	if u.IsStaff {
+		return models.Teacher
+	}
+	return models.Student
 }
