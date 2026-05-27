@@ -36,23 +36,18 @@ type GatewayModule struct {
 }
 
 func SetupPortalGateway() GatewayModule {
-	dsn := viper.GetString("projectsPostgres.postgresDsn")
+	if !viper.GetBool("legacyPostgres.enabled") {
+		return GatewayModule{Gateway: NoopGateway{}}
+	}
+	dsn := viper.GetString("postgres.postgresDsn")
 	if dsn == "" {
-		panic("projectsPostgres.postgresDsn required for portal gateway")
+		panic("postgres.postgresDsn required for portal gateway when legacyPostgres.enabled is true")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
 		panic(err)
 	}
-	ensurePortalSchema(db)
 	return GatewayModule{Gateway: &GatewayImpl{db: db}}
-}
-
-func ensurePortalSchema(db *gorm.DB) {
-	var n int64
-	if err := db.Raw("SELECT 1 FROM robbo_portal_user_link LIMIT 1").Scan(&n).Error; err != nil {
-		panic("portal schema missing: apply robbo_projects_db/init/03_portal_schema.sql before starting LK backend")
-	}
 }
 
 func (g *GatewayImpl) UpsertUserLinkByOIDC(sub, email, name, edxUserID string) (*models.RobboPortalUserLinkDB, error) {
@@ -88,9 +83,7 @@ func (g *GatewayImpl) UpsertUserLinkByOIDC(sub, email, name, edxUserID string) (
 	if edxUserID != "" {
 		row.EdxUserID = &edxUserID
 	}
-	if name != "" {
-		row.DisplayName = &name
-	}
+	// Do not overwrite display_name on login — profile edits store FIO there.
 	return &row, g.db.Save(&row).Error
 }
 

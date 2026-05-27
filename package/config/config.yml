@@ -37,13 +37,15 @@ oidc:
 lmsMysql:
   # Or env LMS_MYSQL_DSN — read-only user for workers/scripts
   dsn: "lk_readonly:lk_readonly_change_me@tcp(localhost:3307)/openedx"
+  # Or env LMS_MYSQL_WRITE_DSN — profile updates (dev: root)
+  writeDsn: "root:lms_root_change_me@tcp(localhost:3307)/openedx"
 
 lmsNotifications:
   enabled: false
   ingestBearerToken: ""
 
 portalOutbox:
-  enabled: true
+  enabled: false
 
 projectPage:
   scratchLink: "0.0.0.0:8601/"
