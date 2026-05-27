@@ -30,16 +30,9 @@ func (r *mutationResolver) UpdateSuperAdmin(ctx context.Context, input models.Up
 		return nil, err
 	}
 	updateSuperAdminInput := &models.SuperAdminHTTP{
-		UserHTTP: &models.UserHTTP{
-			ID:         input.ID,
-			Email:      input.Email,
-			Firstname:  input.Firstname,
-			Lastname:   input.Lastname,
-			Middlename: input.Middlename,
-			Nickname:   input.Nickname,
-			Role:       5,
-		},
+		UserHTTP: userHTTPFromProfileInput(input),
 	}
+	updateSuperAdminInput.UserHTTP.Role = 5
 	superAdminUpdated, updateSuperAdminErr := r.usersDelegate.UpdateSuperAdmin(updateSuperAdminInput)
 	if updateSuperAdminErr != nil {
 		return nil, &gqlerror.Error{
@@ -176,16 +169,10 @@ func (r *mutationResolver) UpdateFreeListener(ctx context.Context, input models.
 		return nil, err
 	}
 
+	profileUser := userHTTPFromProfileInput(input)
+	profileUser.Role = int(models.FreeListener)
 	updateInput := &models.FreeListenerHttp{
-		UserHTTP: models.UserHTTP{
-			ID:         input.ID,
-			Email:      input.Email,
-			Firstname:  input.Firstname,
-			Lastname:   input.Lastname,
-			Middlename: input.Middlename,
-			Nickname:   input.Nickname,
-			Role:       int(models.FreeListener),
-		},
+		UserHTTP: *profileUser,
 	}
 
 	updated, updateErr := r.usersDelegate.UpdateFreeListener(updateInput)

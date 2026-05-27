@@ -5,6 +5,7 @@ input NewStudent {
 	email: String!
 	password: String!
 	nickname: String!
+	fullName: String!
 	firstname: String!
 	lastname: String!
 	middlename: String!

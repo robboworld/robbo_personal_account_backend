@@ -6,23 +6,20 @@
 package main
 
 import (
-	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
-	_ "github.com/go-sql-driver/mysql"
 )
 
 func main() {
-	dsn := flag.String("dsn", envOr("LMS_MYSQL_ROOT_DSN", "root:lms_root_change_me@tcp(127.0.0.1:3307)/openedx"), "MySQL DSN with INSERT rights")
 	username := flag.String("username", "1@1", "auth_user.username")
 	email := flag.String("email", "1@1", "auth_user.email (login field in LK)")
 	password := flag.String("password", "123", "plain password")
+	fullName := flag.String("name", "Ivan 1234", "auth_userprofile.name (full display name)")
 	flag.Parse()
 
 	encoded, err := lmsdb.EncodeDjangoPassword(*password)
@@ -30,49 +27,59 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db, err := sql.Open("mysql", *dsn)
+	writer, err := lmsdb.NewWriterFromConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
-	if err := db.Ping(); err != nil {
-		log.Fatal("mysql ping: ", err)
+	defer writer.Close()
+
+	userID, err := upsertDevUser(writer, encoded, *username, *email, strings.TrimSpace(*fullName))
+	if err != nil {
+		log.Fatal(err)
 	}
 
+	fmt.Printf("edx_user_id=%d fullName=%q\n", userID, *fullName)
+	fmt.Println("LK login: email", *email, "password", *password, "role: ученик (student)")
+}
+
+func upsertDevUser(writer *lmsdb.Writer, encoded, username, email, fullName string) (int64, error) {
+	db := writer.DB()
 	var existing int
 	if err := db.QueryRow(
 		`SELECT COUNT(*) FROM auth_user WHERE LOWER(email) = LOWER(?) OR username = ?`,
-		*email, *username,
+		email, username,
 	).Scan(&existing); err != nil {
-		log.Fatal(err)
-	}
-	if existing > 0 {
-		_, err = db.Exec(
-			`UPDATE auth_user SET password = ?, is_active = 1, is_staff = 0, is_superuser = 0 WHERE LOWER(email) = LOWER(?) OR username = ?`,
-			encoded, *email, *username,
-		)
-		if err != nil {
-			log.Fatal("update: ", err)
-		}
-		fmt.Printf("updated user email=%s username=%s password=%q\n", *email, *username, *password)
-	} else {
-		_, err = db.Exec(
-			`INSERT INTO auth_user (password, last_login, is_superuser, username, first_name, last_name, email, is_staff, is_active, date_joined)
-			 VALUES (?, NULL, 0, ?, '', '', ?, 0, 1, ?)`,
-			encoded, *username, *email, time.Now().UTC(),
-		)
-		if err != nil {
-			log.Fatal("insert: ", err)
-		}
-		fmt.Printf("created user email=%s username=%s password=%q\n", *email, *username, *password)
+		return 0, err
 	}
 
-	var id int64
-	if err := db.QueryRow(`SELECT id FROM auth_user WHERE LOWER(email) = LOWER(?) LIMIT 1`, *email).Scan(&id); err != nil {
-		log.Fatal("lookup id: ", err)
+	var userID int64
+	if existing > 0 {
+		if err := db.QueryRow(
+			`SELECT id FROM auth_user WHERE LOWER(email) = LOWER(?) LIMIT 1`, email,
+		).Scan(&userID); err != nil {
+			return 0, err
+		}
+		if _, err := db.Exec(
+			`UPDATE auth_user SET password = ?, is_active = 1, is_staff = 0, is_superuser = 0 WHERE id = ?`,
+			encoded, userID,
+		); err != nil {
+			return 0, err
+		}
+		fmt.Printf("updated user email=%s username=%s\n", email, username)
+	} else {
+		var err error
+		userID, err = writer.CreateUserWithProfile(username, email, encoded, fullName, "Dev Company")
+		if err != nil {
+			return 0, err
+		}
+		fmt.Printf("created user email=%s username=%s\n", email, username)
+		return userID, nil
 	}
-	fmt.Printf("edx_user_id=%d\n", id)
-	fmt.Println("LK login: email", *email, "password", *password, "role: ученик (student)")
+
+	if err := writer.UpsertProfileName(userID, fullName); err != nil {
+		return 0, err
+	}
+	return userID, nil
 }
 
 func envOr(key, fallback string) string {
