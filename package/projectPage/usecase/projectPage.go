@@ -113,16 +113,17 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	return p.projectPageGateway.UpdateProjectPage(projectPage)
 }
 
-func (p *ProjectPageUseCaseImpl) DeleteProjectPage(projectId string, authorId string) (err error) {
-	_, err = p.projectGateway.GetProjectById(projectId, authorId)
+func (p *ProjectPageUseCaseImpl) DeleteProjectPage(projectPageId string, authorId string) (err error) {
+	projectPage, err := p.projectPageGateway.GetProjectPageById(projectPageId)
 	if err != nil {
 		return err
 	}
-	err = p.projectGateway.DeleteProject(projectId)
+	_, err = p.projectGateway.GetProjectById(projectPage.ProjectId, authorId)
 	if err != nil {
-		return
+		return err
 	}
-	return p.projectPageGateway.DeleteProjectPage(projectId)
+	// Метаданные страницы и scratch-проект — одна строка scratch_projects; достаточно одного soft delete.
+	return p.projectGateway.DeleteProject(projectPage.ProjectId)
 }
 
 func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId string, page, pageSize int) (
