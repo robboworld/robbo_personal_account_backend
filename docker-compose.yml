@@ -5,6 +5,7 @@ name: rpa2
 
 services:
   app:
+    restart: unless-stopped
     build:
       context: .
       network: host
