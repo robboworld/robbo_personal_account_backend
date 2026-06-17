@@ -32,16 +32,8 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 				server := &http.Server{
 					Addr: viper.GetString("server.address"),
 					Handler: cors.New(
-						// TODO make config
 						cors.Options{
-							AllowedOrigins: []string{
-								"http://0.0.0.0:3030",
-								"http://0.0.0.0:3000",
-								"http://0.0.0.0:8601",
-								"http://localhost:3030",
-								"http://localhost:3000",
-								"http://localhost:8080",
-							},
+							AllowOriginFunc:  corsOriginAllowed,
 							AllowCredentials: true,
 							AllowedMethods: []string{
 								http.MethodGet,
