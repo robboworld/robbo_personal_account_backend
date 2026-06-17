@@ -13,6 +13,7 @@
 
 services:
   mock-oauth2:
+    restart: unless-stopped
     image: ghcr.io/navikt/mock-oauth2-server:2.1.5
     ports:
       - "8081:8081"
