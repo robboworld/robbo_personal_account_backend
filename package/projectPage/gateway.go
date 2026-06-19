@@ -8,5 +8,8 @@ type Gateway interface {
 	DeleteProjectPage(projectId string) (err error)
 	GetProjectPageById(projectPageId string) (projectPageCore *models.ProjectPageCore, err error)
 	GetProjectPageByProjectId(projectId string) (projectPageCore *models.ProjectPageCore, err error)
+	GetScratchProjectById(projectPageId string) (projectDB *models.ScratchProjectDB, err error)
+	GetPublicProjectPages(page, pageSize int) (projectPages []*models.ProjectPageCore, countRows int64, err error)
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
+	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
 }
