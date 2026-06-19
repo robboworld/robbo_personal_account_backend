@@ -160,7 +160,7 @@ func SetupHandler(
 	oidcHandler *oidchttp.Handler,
 ) HandlerModule {
 	return HandlerModule{
-		ProjectsHandler: prjhttp.NewProjectsHandler(delegate.AuthDelegate, delegate.ProjectsDelegate),
+		ProjectsHandler: prjhttp.NewProjectsHandler(delegate.AuthDelegate, delegate.ProjectsDelegate, delegate.ProjectPageDelegate),
 		ProjectPageHandler: ppagehttp.NewProjectPageHandler(
 			delegate.AuthDelegate,
 			delegate.ProjectsDelegate,

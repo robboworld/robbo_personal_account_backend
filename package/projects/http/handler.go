@@ -2,28 +2,32 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
 )
 
 type Handler struct {
-	authDelegate     auth.Delegate
-	projectsDelegate projects.Delegate
+	authDelegate        auth.Delegate
+	projectsDelegate    projects.Delegate
+	projectPageDelegate projectPage.Delegate
 }
 
 func NewProjectsHandler(
 	authDelegate auth.Delegate,
 	projectsDelegate projects.Delegate,
+	projectPageDelegate projectPage.Delegate,
 ) Handler {
 	return Handler{
-		authDelegate:     authDelegate,
-		projectsDelegate: projectsDelegate,
+		authDelegate:        authDelegate,
+		projectsDelegate:    projectsDelegate,
+		projectPageDelegate: projectPageDelegate,
 	}
 }
 
@@ -42,7 +46,6 @@ type testResponse struct {
 }
 
 func (h *Handler) CreateProject(c *gin.Context) {
-	fmt.Println("Create Project")
 	userId, userRole, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, userIdentityErr.Error())
@@ -57,7 +60,6 @@ func (h *Handler) CreateProject(c *gin.Context) {
 
 	jsonDataBytes, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		fmt.Println(err)
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
@@ -67,51 +69,70 @@ func (h *Handler) CreateProject(c *gin.Context) {
 	projectHTTP.AuthorId = userId
 
 	projectId, err := h.projectsDelegate.CreateProject(&projectHTTP)
-	fmt.Println(projectId)
-
 	if err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
-	c.JSON(http.StatusOK, testResponse{
-		Id: projectId,
-	})
+	c.JSON(http.StatusOK, testResponse{Id: projectId})
 }
 
 func (h *Handler) GetProject(c *gin.Context) {
-	userId, userRole, userIdentityErr := h.authDelegate.UserIdentity(c)
-	fmt.Println(userId)
-	fmt.Println(userRole)
-	if userIdentityErr != nil {
-		c.AbortWithError(http.StatusUnauthorized, userIdentityErr)
+	projectId := c.Param("projectId")
+	if projectId == "" {
+		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	allowedRoles := []models.Role{models.Student}
+	if playToken := strings.TrimSpace(c.Query("token")); playToken != "" {
+		jsonStr, err := h.projectPageDelegate.GetProjectJSONByToken(projectId, playToken)
+		if err != nil {
+			status := http.StatusInternalServerError
+			if err == auth.ErrInvalidAccessToken {
+				status = http.StatusUnauthorized
+			}
+			c.AbortWithStatusJSON(status, err.Error())
+			return
+		}
+		var jsonMap map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &jsonMap); err != nil {
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+		c.JSON(http.StatusOK, jsonMap)
+		return
+	}
+
+	userId, userRole, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, userIdentityErr.Error())
+		return
+	}
+	allowedRoles := []models.Role{
+		models.Student, models.Teacher, models.Parent, models.FreeListener,
+		models.UnitAdmin, models.SuperAdmin,
+	}
 	accessErr := h.authDelegate.UserAccess(userRole, allowedRoles, c)
 	if accessErr != nil {
 		c.AbortWithStatusJSON(http.StatusForbidden, accessErr.Error())
 		return
 	}
-	projectId := c.Param("projectId")
-	if projectId == "" {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
+
 	project, err := h.projectsDelegate.GetProjectById(projectId, userId)
 	if err != nil {
+		if err == auth.ErrNotAccess {
+			c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
+			return
+		}
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 
 	var jsonMap map[string]interface{}
 	json.Unmarshal([]byte(project.Json), &jsonMap)
-
 	c.JSON(http.StatusOK, jsonMap)
 }
 
 func (h *Handler) UpdateProject(c *gin.Context) {
-	fmt.Println("Update Project")
 	userId, userRole, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, userIdentityErr.Error())
@@ -126,20 +147,17 @@ func (h *Handler) UpdateProject(c *gin.Context) {
 
 	jsonDataBytes, err := ioutil.ReadAll(c.Request.Body)
 	if err != nil {
-		fmt.Println(err)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
 	projectId := c.Param("projectId")
-
 	projectHTTP := models.ProjectHTTP{}
 	projectHTTP.ID = projectId
 	projectHTTP.AuthorId = userId
 	projectHTTP.Json = string(jsonDataBytes)
 
 	err = h.projectsDelegate.UpdateProject(&projectHTTP, userId)
-
 	if err != nil {
 		if err == auth.ErrNotAccess {
 			c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
@@ -149,11 +167,8 @@ func (h *Handler) UpdateProject(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, testResponse{
-		Id: projectId,
-	})
+	c.JSON(http.StatusOK, testResponse{Id: projectId})
 }
 
 func (h *Handler) DeleteProject(c *gin.Context) {
-
 }

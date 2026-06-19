@@ -16,6 +16,12 @@ var defaultCORSOrigins = []string{
 	"http://localhost:8080",
 	"http://127.0.0.1:3030",
 	"http://127.0.0.1:3000",
+	"https://scratch.ru",
+	"http://scratch.ru",
+	"https://scratch-gui.robbo.world",
+	"http://scratch-gui.robbo.world",
+	"http://127.0.0.1:5001",
+	"http://localhost:5001",
 }
 
 func corsOriginAllowed(origin string) bool {

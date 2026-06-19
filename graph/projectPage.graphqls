@@ -8,6 +8,9 @@ type ProjectPageHttp {
 	linkScratch: String!
 	title: String!
 	isShared: Boolean!
+	authorUserId: String!
+	authorName: String!
+	isOwner: Boolean!
 }
 
 type ProjectPageHttpList {

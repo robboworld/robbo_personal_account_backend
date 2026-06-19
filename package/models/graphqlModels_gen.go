@@ -397,6 +397,9 @@ type ProjectPageHTTP struct {
 	LinkScratch   string `json:"linkScratch"`
 	Title         string `json:"title"`
 	IsShared      bool   `json:"isShared"`
+	AuthorUserID  string `json:"authorUserId"`
+	AuthorName    string `json:"authorName"`
+	IsOwner       bool   `json:"isOwner"`
 }
 
 func (ProjectPageHTTP) IsProjectPageResult() {}

@@ -15,6 +15,9 @@ type ProjectPageCore struct {
 	Preview       string
 	LinkScratch   string
 	IsShared      bool
+	AuthorUserId  string
+	AuthorName    string
+	IsOwner       bool
 }
 
 type ProjectPageDB struct {
@@ -67,6 +70,9 @@ func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 		Preview:       ht.Preview,
 		LinkScratch:   ht.LinkScratch,
 		IsShared:      ht.IsShared,
+		AuthorUserId:  ht.AuthorUserID,
+		AuthorName:    ht.AuthorName,
+		IsOwner:       ht.IsOwner,
 	}
 }
 
@@ -80,4 +86,7 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.LinkScratch = projectPage.LinkScratch
 	ht.Title = projectPage.Title
 	ht.IsShared = projectPage.IsShared
+	ht.AuthorUserID = projectPage.AuthorUserId
+	ht.AuthorName = projectPage.AuthorName
+	ht.IsOwner = projectPage.IsOwner
 }

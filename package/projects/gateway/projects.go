@@ -97,9 +97,11 @@ func (r *ProjectsGatewayImpl) GetProjectById(projectId, userId string) (project 
 	}
 	if project.AuthorId == userId {
 		return
-	} else {
-		return nil, auth.ErrNotAccess
 	}
+	if projectDB.IsPublic {
+		return
+	}
+	return nil, auth.ErrNotAccess
 }
 
 func (r *ProjectsGatewayImpl) GetProjectsByAuthorId(authorId string, page, pageSize int) (

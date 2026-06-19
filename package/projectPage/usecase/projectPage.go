@@ -1,11 +1,16 @@
 package usecase
 
 import (
+	"fmt"
+	"net/url"
 	"strings"
 	"unicode"
 
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/playtoken"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -91,7 +96,51 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string) (newProjectP
 		IsShared:    false,
 	}
 	newProjectPage, err = p.projectPageGateway.CreateProjectPage(projectPage)
+	if err == nil && newProjectPage != nil {
+		newProjectPage.AuthorUserId = authorId
+		newProjectPage.AuthorName = lookupAuthorName(authorId)
+		newProjectPage.IsOwner = true
+	}
 	return
+}
+
+func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId string) (
+	core *models.ProjectPageCore,
+	row *models.ScratchProjectDB,
+	acc access.ProjectAccess,
+	err error,
+) {
+	row, err = p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, nil, access.ProjectAccess{}, err
+	}
+	acc = access.Resolve(viewerId, row)
+	if !acc.CanRead {
+		return nil, nil, acc, auth.ErrNotAccess
+	}
+	core, err = p.projectPageGateway.GetProjectPageById(projectPageId)
+	if err != nil {
+		return nil, nil, acc, err
+	}
+	core.AuthorUserId = row.OwnerUserID
+	core.AuthorName = lookupAuthorName(row.OwnerUserID)
+	core.IsOwner = acc.IsOwner
+	return core, row, acc, nil
+}
+
+func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCore) {
+	for _, core := range pages {
+		if core == nil {
+			continue
+		}
+		row, err := p.projectPageGateway.GetScratchProjectById(core.ProjectPageId)
+		if err != nil {
+			continue
+		}
+		core.AuthorUserId = row.OwnerUserID
+		core.AuthorName = lookupAuthorName(row.OwnerUserID)
+		core.IsOwner = false
+	}
 }
 
 func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string) (
@@ -102,28 +151,34 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	if err != nil {
 		return nil, err
 	}
-	// Права по фактической связке страницы с проектом в БД, а не по projectId из тела запроса
-	// (иначе при рассинхроне URL/состояния UPDATE не попадает в строку, а API всё равно отвечает 200).
-	_, err = p.projectGateway.GetProjectById(existing.ProjectId, authorId)
+	row, err := p.projectPageGateway.GetScratchProjectById(existing.ProjectPageId)
 	if err != nil {
 		return nil, err
 	}
+	if !access.Resolve(authorId, row).CanWrite {
+		return nil, auth.ErrNotAccess
+	}
 	projectPage.ProjectId = existing.ProjectId
 
-	return p.projectPageGateway.UpdateProjectPage(projectPage)
+	updated, err := p.projectPageGateway.UpdateProjectPage(projectPage)
+	if err != nil {
+		return nil, err
+	}
+	updated.AuthorUserId = row.OwnerUserID
+	updated.AuthorName = lookupAuthorName(row.OwnerUserID)
+	updated.IsOwner = true
+	return updated, nil
 }
 
 func (p *ProjectPageUseCaseImpl) DeleteProjectPage(projectPageId string, authorId string) (err error) {
-	projectPage, err := p.projectPageGateway.GetProjectPageById(projectPageId)
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
 	if err != nil {
 		return err
 	}
-	_, err = p.projectGateway.GetProjectById(projectPage.ProjectId, authorId)
-	if err != nil {
-		return err
+	if !access.Resolve(authorId, row).CanWrite {
+		return auth.ErrNotAccess
 	}
-	// Метаданные страницы и scratch-проект — одна строка scratch_projects; достаточно одного soft delete.
-	return p.projectGateway.DeleteProject(projectPage.ProjectId)
+	return p.projectGateway.DeleteProject(row.ID)
 }
 
 func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId string, page, pageSize int) (
@@ -140,27 +195,33 @@ func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId string, page
 		if errGetProjectPageById != nil {
 			return []*models.ProjectPageCore{}, 0, errGetProjectPageById
 		}
+		projectPage.AuthorUserId = authorId
+		projectPage.AuthorName = lookupAuthorName(authorId)
+		projectPage.IsOwner = true
 		projectPages = append(projectPages, projectPage)
 	}
 	return
 }
 
-func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, authorId string) (
+func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewerId string) (
 	projectPage *models.ProjectPageCore,
 	err error,
 ) {
-	projectPage, err = p.projectPageGateway.GetProjectPageById(projectPageId)
-	if err != nil {
-		return nil, err
-	}
+	core, _, _, err := p.enrichAndCheckRead(projectPageId, viewerId)
+	return core, err
+}
 
-	// Проверяем, что проект страницы принадлежит пользователю.
-	_, err = p.projectGateway.GetProjectById(projectPage.ProjectId, authorId)
+func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int) (
+	projectPages []*models.ProjectPageCore,
+	countRows int64,
+	err error,
+) {
+	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-
-	return projectPage, nil
+	p.enrichPublicList(projectPages)
+	return projectPages, countRows, nil
 }
 
 func sb3DownloadFilename(title, fallbackPageID string) string {
@@ -201,8 +262,8 @@ func sb3DownloadFilename(title, fallbackPageID string) string {
 	return out + ".sb3"
 }
 
-func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, authorId string) (data []byte, filename string, err error) {
-	core, err := p.GetProjectPageById(projectPageId, authorId)
+func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
+	core, err := p.GetProjectPageById(projectPageId, viewerId)
 	if err != nil {
 		return nil, "", err
 	}
@@ -212,4 +273,100 @@ func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, author
 	}
 	filename = sb3DownloadFilename(core.Title, core.ProjectPageId)
 	return data, filename, nil
+}
+
+func (p *ProjectPageUseCaseImpl) PlayProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
+	return p.DownloadProjectSb3(projectPageId, viewerId)
+}
+
+func (p *ProjectPageUseCaseImpl) PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error) {
+	claims, err := playtoken.Parse(token)
+	if err != nil {
+		return nil, "", auth.ErrInvalidAccessToken
+	}
+	if claims.ProjectPageID != projectPageId {
+		return nil, "", auth.ErrInvalidAccessToken
+	}
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, "", err
+	}
+	if !row.IsPublic && claims.ProjectID != row.ID {
+		return nil, "", auth.ErrInvalidAccessToken
+	}
+	data, err = p.projectPageGateway.GetLatestSb3Archive(projectPageId)
+	if err != nil {
+		return nil, "", err
+	}
+	filename = sb3DownloadFilename(row.Title, projectPageId)
+	return data, filename, nil
+}
+
+func (p *ProjectPageUseCaseImpl) GetProjectJSONByToken(projectId string, token string) (string, error) {
+	claims, err := playtoken.Parse(token)
+	if err != nil {
+		return "", auth.ErrInvalidAccessToken
+	}
+	if claims.ProjectID != projectId {
+		return "", auth.ErrInvalidAccessToken
+	}
+	row, err := p.projectPageGateway.GetScratchProjectById(projectId)
+	if err != nil {
+		return "", err
+	}
+	if row.ID != projectId {
+		return "", auth.ErrInvalidAccessToken
+	}
+	vmJSON := row.ScratchVMJSON
+	if vmJSON == "" {
+		vmJSON = "{}"
+	}
+	return vmJSON, nil
+}
+
+func (p *ProjectPageUseCaseImpl) IssuePlayToken(projectPageId string, viewerId string, backendBaseURL string) (*projectPage.PlayTokenHTTP, error) {
+	core, row, acc, err := p.enrichAndCheckRead(projectPageId, viewerId)
+	if err != nil {
+		return nil, err
+	}
+	_ = acc
+	token, expiresAt, err := playtoken.Issue(core.ProjectPageId, core.ProjectId)
+	if err != nil {
+		return nil, err
+	}
+	base := strings.TrimRight(backendBaseURL, "/")
+	q := url.QueryEscape(token)
+	playURL := ""
+	if _, errSb3 := p.projectPageGateway.GetLatestSb3Archive(projectPageId); errSb3 == nil {
+		playURL = fmt.Sprintf("%s/projectPage/%s/play?token=%s", base, url.PathEscape(projectPageId), q)
+	}
+	jsonURL := fmt.Sprintf("%s/project/%s?token=%s", base, url.PathEscape(row.ID), q)
+	return &projectPage.PlayTokenHTTP{
+		PlayURL:   playURL,
+		JSONURL:   jsonURL,
+		ExpiresAt: expiresAt.UTC().Format("2006-01-02T15:04:05Z"),
+	}, nil
+}
+
+func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId string, data []byte) error {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return err
+	}
+	if !access.Resolve(ownerId, row).CanWrite {
+		return auth.ErrNotAccess
+	}
+	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
+		return err
+	}
+	if vmJSON, extractErr := extractProjectJSONFromSb3(data); extractErr == nil && strings.TrimSpace(vmJSON) != "" {
+		updateErr := p.projectGateway.UpdateProject(&models.ProjectCore{
+			ID:   row.ID,
+			Json: vmJSON,
+		})
+		if updateErr != nil {
+			return updateErr
+		}
+	}
+	return nil
 }

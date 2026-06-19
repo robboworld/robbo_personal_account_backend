@@ -39,3 +39,18 @@ func TestCorsOriginAllowed_extraOrigins(t *testing.T) {
 		t.Fatal("expected explicit origin from CORS_ALLOWED_ORIGINS")
 	}
 }
+
+func TestCorsOriginAllowed_scratchGuiOrigins(t *testing.T) {
+	t.Setenv("CORS_ALLOW_PRIVATE_NETWORK", "false")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+
+	for _, origin := range []string{
+		"https://scratch.ru",
+		"http://scratch.ru",
+		"https://scratch-gui.robbo.world",
+	} {
+		if !corsOriginAllowed(origin) {
+			t.Fatalf("expected scratch iframe origin %q to be allowed", origin)
+		}
+	}
+}
