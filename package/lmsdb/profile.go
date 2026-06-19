@@ -226,10 +226,25 @@ func (w *Writer) UpdateAccountEmail(id int64, email string) error {
 const defaultProfileCourseware = "course.xml"
 const defaultProfileLocation = ""
 
+func buildSignupMeta(marketingOptIn bool) (string, error) {
+	payload := map[string]interface{}{}
+	if marketingOptIn {
+		payload["marketing_emails_opt_in"] = true
+	}
+	if len(payload) == 0 {
+		return "{}", nil
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
 func buildCompanyMeta(company string) (string, error) {
 	company = strings.TrimSpace(company)
 	if company == "" {
-		return "", auth.ErrCompanyRequired
+		return "{}", nil
 	}
 	b, err := json.Marshal(map[string]string{"company": company})
 	if err != nil {
@@ -360,18 +375,19 @@ func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExte
 }
 
 // CreateUserWithProfile inserts auth_user and auth_userprofile in one transaction.
-func (w *Writer) CreateUserWithProfile(username, email, passwordHash, fullName, company string) (int64, error) {
+func (w *Writer) CreateUserWithProfile(username, email, passwordHash, fullName, phoneNumber string, marketingOptIn bool) (int64, error) {
 	if w == nil || w.db == nil {
 		return 0, errors.New("lms mysql writer is not configured")
 	}
 	username = strings.TrimSpace(username)
 	email = strings.TrimSpace(email)
 	fullName = strings.TrimSpace(fullName)
+	phoneNumber = strings.TrimSpace(phoneNumber)
 	if username == "" || email == "" || passwordHash == "" {
 		return 0, auth.ErrUserNotFound
 	}
 
-	meta, err := buildCompanyMeta(company)
+	meta, err := buildSignupMeta(marketingOptIn)
 	if err != nil {
 		return 0, err
 	}
@@ -419,9 +435,9 @@ func (w *Writer) CreateUserWithProfile(username, email, passwordHash, fullName, 
 	}
 
 	_, err = tx.Exec(
-		`INSERT INTO auth_userprofile (name, meta, courseware, language, location, user_id)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		fullName, meta, defaultProfileCourseware, "", defaultProfileLocation, userID,
+		`INSERT INTO auth_userprofile (name, meta, courseware, language, location, user_id, phone_number)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		fullName, meta, defaultProfileCourseware, "", defaultProfileLocation, userID, nullString(phoneNumber),
 	)
 	if err != nil {
 		return 0, err

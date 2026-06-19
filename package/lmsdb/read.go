@@ -59,11 +59,11 @@ type AuthUserLogin struct {
 	IsActive    bool
 }
 
-// LookupAuthUserForLogin loads auth_user by email for password verification.
-func (r *Reader) LookupAuthUserForLogin(email string) (*AuthUserLogin, error) {
+// LookupAuthUserForLogin loads auth_user by email or username for password verification.
+func (r *Reader) LookupAuthUserForLogin(login string) (*AuthUserLogin, error) {
 	const q = `SELECT id, username, email, password, is_staff, is_superuser, is_active
-		FROM auth_user WHERE LOWER(email) = LOWER(?) LIMIT 1`
-	row := r.db.QueryRow(q, email)
+		FROM auth_user WHERE LOWER(email) = LOWER(?) OR LOWER(username) = LOWER(?) LIMIT 1`
+	row := r.db.QueryRow(q, login, login)
 	var u AuthUserLogin
 	var isStaff, isSuper, isActive int
 	if err := row.Scan(&u.ID, &u.Username, &u.Email, &u.Password, &isStaff, &isSuper, &isActive); err != nil {
@@ -78,9 +78,9 @@ func (r *Reader) LookupAuthUserForLogin(email string) (*AuthUserLogin, error) {
 	return &u, nil
 }
 
-// Authenticate verifies email/password against openedx.auth_user (Django pbkdf2_sha256).
-func (r *Reader) Authenticate(email, password string) (*AuthUserLogin, error) {
-	u, err := r.LookupAuthUserForLogin(email)
+// Authenticate verifies email-or-username/password against openedx.auth_user (Django pbkdf2_sha256).
+func (r *Reader) Authenticate(login, password string) (*AuthUserLogin, error) {
+	u, err := r.LookupAuthUserForLogin(login)
 	if err != nil {
 		return nil, err
 	}

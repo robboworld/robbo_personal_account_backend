@@ -2,13 +2,37 @@ package usecase
 
 import (
 	"log"
+	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 )
+
+var (
+	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+	emailPattern    = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
+	ruPhonePattern = regexp.MustCompile(`^\+7\d{10}$`)
+)
+
+func isValidInternationalPhone(phone string) bool {
+	if !strings.HasPrefix(phone, "+") || strings.HasPrefix(phone, "+7") {
+		return false
+	}
+	digits := phone[1:]
+	if len(digits) < 8 || len(digits) > 15 || digits[0] == '0' {
+		return false
+	}
+	for _, r := range digits {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
 
 func resolveFullName(core *models.UserCore) string {
 	if core == nil {
@@ -27,6 +51,39 @@ func resolveFullName(core *models.UserCore) string {
 	return strings.Join(nonEmpty, " ")
 }
 
+func nameHasThreeWords(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return false
+	}
+	return len(strings.Fields(trimmed)) == 3
+}
+
+func isValidPassword(password string) bool {
+	if len(password) < 8 {
+		return false
+	}
+	hasLetter := false
+	hasDigit := false
+	for _, r := range password {
+		if unicode.IsLetter(r) {
+			hasLetter = true
+		}
+		if unicode.IsDigit(r) {
+			hasDigit = true
+		}
+	}
+	return hasLetter && hasDigit
+}
+
+func isValidPhoneNumber(phone string) bool {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return true
+	}
+	return ruPhonePattern.MatchString(phone) || isValidInternationalPhone(phone)
+}
+
 func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
 	if userCore == nil {
 		return "", "", auth.ErrUserNotFound
@@ -34,13 +91,32 @@ func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore) (accessToken, ref
 	fullName := resolveFullName(userCore)
 	username := strings.TrimSpace(userCore.Nickname)
 	email := strings.TrimSpace(userCore.Email)
-	company := strings.TrimSpace(userCore.Company)
+	phone := strings.TrimSpace(userCore.PhoneNumber)
 	password := userCore.Password
-	if username == "" || email == "" || password == "" {
-		return "", "", auth.ErrUserNotFound
+
+	if username == "" || email == "" || password == "" || fullName == "" {
+		return "", "", auth.ErrInvalidRegistration
 	}
-	if company == "" {
-		return "", "", auth.ErrCompanyRequired
+	if !userCore.HonorCode {
+		return "", "", auth.ErrHonorCodeRequired
+	}
+	if !userCore.MarketingOptIn {
+		return "", "", auth.ErrMarketingOptInRequired
+	}
+	if !nameHasThreeWords(fullName) {
+		return "", "", auth.ErrInvalidRegistration
+	}
+	if !emailPattern.MatchString(email) {
+		return "", "", auth.ErrInvalidRegistration
+	}
+	if len(username) < 2 || len(username) > 30 || !usernamePattern.MatchString(username) {
+		return "", "", auth.ErrInvalidRegistration
+	}
+	if !isValidPassword(password) {
+		return "", "", auth.ErrInvalidRegistration
+	}
+	if !isValidPhoneNumber(phone) {
+		return "", "", auth.ErrInvalidRegistration
 	}
 
 	encoded, err := lmsdb.EncodeDjangoPassword(password)
@@ -54,7 +130,7 @@ func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore) (accessToken, ref
 	}
 	defer writer.Close()
 
-	userID, err := writer.CreateUserWithProfile(username, email, encoded, fullName, company)
+	userID, err := writer.CreateUserWithProfile(username, email, encoded, fullName, phone, userCore.MarketingOptIn)
 	if err != nil {
 		return "", "", err
 	}

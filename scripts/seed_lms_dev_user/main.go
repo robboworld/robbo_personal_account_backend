@@ -68,7 +68,7 @@ func upsertDevUser(writer *lmsdb.Writer, encoded, username, email, fullName stri
 		fmt.Printf("updated user email=%s username=%s\n", email, username)
 	} else {
 		var err error
-		userID, err = writer.CreateUserWithProfile(username, email, encoded, fullName, "Dev Company")
+		userID, err = writer.CreateUserWithProfile(username, email, encoded, fullName, "", false)
 		if err != nil {
 			return 0, err
 		}
