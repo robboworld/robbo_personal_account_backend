@@ -71,7 +71,9 @@ func (h *Handler) SignIn(c *gin.Context) {
 
 type signUpBody struct {
 	models.UserHTTP
-	Company string `json:"company"`
+	PhoneNumber          string `json:"phone_number"`
+	HonorCode            bool   `json:"honor_code"`
+	MarketingEmailsOptIn bool   `json:"marketing_emails_opt_in"`
 }
 
 func (h *Handler) SignUp(c *gin.Context) {
@@ -84,9 +86,12 @@ func (h *Handler) SignUp(c *gin.Context) {
 		return
 	}
 
-	body.UserHTTP.Company = strings.TrimSpace(body.Company)
+	userCore := body.UserHTTP.ToCore()
+	userCore.PhoneNumber = strings.TrimSpace(body.PhoneNumber)
+	userCore.HonorCode = body.HonorCode
+	userCore.MarketingOptIn = body.MarketingEmailsOptIn
 
-	accessToken, refreshToken, err := h.delegate.SignUp(&body.UserHTTP)
+	accessToken, refreshToken, err := h.delegate.SignUpCore(&userCore)
 	if err != nil {
 		ErrorHandling(err, c)
 		return
