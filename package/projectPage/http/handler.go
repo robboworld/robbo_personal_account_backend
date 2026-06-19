@@ -2,6 +2,8 @@ package http
 
 import (
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -11,8 +13,37 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
-	"log"
 )
+
+func allAuthenticatedRoles() []models.Role {
+	return []models.Role{
+		models.Student,
+		models.Teacher,
+		models.Parent,
+		models.FreeListener,
+		models.UnitAdmin,
+		models.SuperAdmin,
+	}
+}
+
+func projectCreateRoles() []models.Role {
+	return []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+}
+
+func backendBaseURL(c *gin.Context) string {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	if fwd := c.GetHeader("X-Forwarded-Proto"); fwd != "" {
+		scheme = strings.TrimSpace(strings.Split(fwd, ",")[0])
+	}
+	host := c.Request.Host
+	if host == "" {
+		host = "localhost:8080"
+	}
+	return fmt.Sprintf("%s://%s", scheme, host)
+}
 
 type Handler struct {
 	authDelegate        auth.Delegate
@@ -33,14 +64,18 @@ func NewProjectPageHandler(
 }
 
 func (h *Handler) InitProjectRoutes(router *gin.Engine) {
-	projectPage := router.Group("/projectPage")
+	projectPageGroup := router.Group("/projectPage")
 	{
-		projectPage.POST("/", h.CreateProjectPage)
-		projectPage.GET("/:projectPageId/download", h.DownloadProjectSb3)
-		projectPage.GET("/:projectPageId", h.GetProjectPageById)
-		projectPage.GET("/", h.GetAllProjectPageByUserId)
-		projectPage.PUT("/", h.UpdateProjectPage)
-		projectPage.DELETE("/:projectId", h.DeleteProjectPage)
+		projectPageGroup.POST("/", h.CreateProjectPage)
+		projectPageGroup.GET("/public", h.GetPublicProjectPages)
+		projectPageGroup.GET("/:projectPageId/play-token", h.IssuePlayToken)
+		projectPageGroup.GET("/:projectPageId/play", h.PlayProjectSb3)
+		projectPageGroup.GET("/:projectPageId/download", h.DownloadProjectSb3)
+		projectPageGroup.POST("/:projectPageId/upload", h.UploadProjectSb3)
+		projectPageGroup.GET("/:projectPageId", h.GetProjectPageById)
+		projectPageGroup.GET("/", h.GetAllProjectPageByUserId)
+		projectPageGroup.PUT("/", h.UpdateProjectPage)
+		projectPageGroup.DELETE("/:projectId", h.DeleteProjectPage)
 	}
 }
 
@@ -56,7 +91,7 @@ func (h *Handler) CreateProjectPage(c *gin.Context) {
 		ErrorHandling(userIdentityErr, c)
 		return
 	}
-	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	allowedRoles := projectCreateRoles()
 	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
 	if accessErr != nil {
 		log.Println(accessErr)
@@ -78,7 +113,8 @@ func (h *Handler) CreateProjectPage(c *gin.Context) {
 }
 
 type getProjectPageResponse struct {
-	ProjectPage *models.ProjectPageHTTP `json:"projectPage"`
+	ProjectPage *models.ProjectPageHTTP    `json:"projectPage"`
+	PlayToken   *projectPage.PlayTokenHTTP `json:"playToken,omitempty"`
 }
 
 func (h *Handler) GetProjectPageById(c *gin.Context) {
@@ -89,7 +125,7 @@ func (h *Handler) GetProjectPageById(c *gin.Context) {
 		ErrorHandling(userIdentityErr, c)
 		return
 	}
-	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	allowedRoles := allAuthenticatedRoles()
 	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
 	if accessErr != nil {
 		log.Println(accessErr)
@@ -97,15 +133,21 @@ func (h *Handler) GetProjectPageById(c *gin.Context) {
 		return
 	}
 	projectPageId := c.Param("projectPageId")
-	projectPage, err := h.projectPageDelegate.GetProjectPageById(projectPageId, userId)
+	page, err := h.projectPageDelegate.GetProjectPageById(projectPageId, userId)
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
 		return
 	}
 
+	var playToken *projectPage.PlayTokenHTTP
+	if token, tokenErr := h.projectPageDelegate.IssuePlayToken(projectPageId, userId, backendBaseURL(c)); tokenErr == nil {
+		playToken = token
+	}
+
 	c.JSON(http.StatusOK, getProjectPageResponse{
-		&projectPage,
+		ProjectPage: &page,
+		PlayToken:   playToken,
 	})
 }
 
@@ -130,7 +172,7 @@ func (h *Handler) DownloadProjectSb3(c *gin.Context) {
 		ErrorHandling(userIdentityErr, c)
 		return
 	}
-	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	allowedRoles := allAuthenticatedRoles()
 	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
 	if accessErr != nil {
 		log.Println(accessErr)
@@ -155,6 +197,48 @@ func (h *Handler) DownloadProjectSb3(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", data)
 }
 
+func (h *Handler) UploadProjectSb3(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, projectCreateRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	projectPageId := c.Param("projectPageId")
+	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "invalid multipart form")
+		return
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "file is required")
+		return
+	}
+	if !strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".sb3") {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "only .sb3 files are supported")
+		return
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	if err := h.projectPageDelegate.UploadProjectSb3(projectPageId, userId, data); err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 type getAllProjectPageResponse struct {
 	ProjectPages []*models.ProjectPageHTTP `json:"projectPages"`
 }
@@ -167,7 +251,7 @@ func (h *Handler) GetAllProjectPageByUserId(c *gin.Context) {
 		ErrorHandling(userIdentityErr, c)
 		return
 	}
-	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	allowedRoles := projectCreateRoles()
 	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
 	if accessErr != nil {
 		log.Println(accessErr)
@@ -198,7 +282,7 @@ func (h *Handler) UpdateProjectPage(c *gin.Context) {
 		ErrorHandling(userIdentityErr, c)
 		return
 	}
-	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	allowedRoles := projectCreateRoles()
 	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
 	if accessErr != nil {
 		log.Println(accessErr)
@@ -231,7 +315,7 @@ func (h *Handler) DeleteProjectPage(c *gin.Context) {
 		ErrorHandling(userIdentityErr, c)
 		return
 	}
-	allowedRoles := []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	allowedRoles := projectCreateRoles()
 	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
 	if accessErr != nil {
 		log.Println(accessErr)
@@ -249,6 +333,90 @@ func (h *Handler) DeleteProjectPage(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+type playTokenResponse struct {
+	PlayToken *projectPage.PlayTokenHTTP `json:"playToken"`
+}
+
+func (h *Handler) IssuePlayToken(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, allAuthenticatedRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	projectPageId := c.Param("projectPageId")
+	token, err := h.projectPageDelegate.IssuePlayToken(projectPageId, userId, backendBaseURL(c))
+	if err != nil {
+		log.Println(err)
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, playTokenResponse{PlayToken: token})
+}
+
+func (h *Handler) PlayProjectSb3(c *gin.Context) {
+	projectPageId := c.Param("projectPageId")
+	if playToken := strings.TrimSpace(c.Query("token")); playToken != "" {
+		data, _, err := h.projectPageDelegate.PlayProjectSb3ByToken(projectPageId, playToken)
+		if err != nil {
+			ErrorHandling(err, c)
+			return
+		}
+		c.Header("Content-Disposition", "inline")
+		c.Header("Content-Type", "application/zip")
+		c.Data(http.StatusOK, "application/zip", data)
+		return
+	}
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, allAuthenticatedRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	data, _, err := h.projectPageDelegate.PlayProjectSb3(projectPageId, userId)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.Header("Content-Disposition", "inline")
+	c.Header("Content-Type", "application/zip")
+	c.Data(http.StatusOK, "application/zip", data)
+}
+
+type getPublicProjectPagesResponse struct {
+	ProjectPages []*models.ProjectPageHTTP `json:"projectPages"`
+	CountRows    int                       `json:"countRows"`
+}
+
+func (h *Handler) GetPublicProjectPages(c *gin.Context) {
+	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, allAuthenticatedRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	page := c.DefaultQuery("page", "1")
+	pageSize := c.DefaultQuery("pageSize", "10")
+	projectPages, countRows, err := h.projectPageDelegate.GetPublicProjectPages(page, pageSize)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, getPublicProjectPagesResponse{
+		ProjectPages: projectPages,
+		CountRows:    countRows,
+	})
+}
+
 func ErrorHandling(err error, c *gin.Context) {
 	switch err {
 	case projectPage.ErrBadRequest:
@@ -256,7 +424,7 @@ func ErrorHandling(err error, c *gin.Context) {
 	case projectPage.ErrInternalServerLevel:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
 	case projectPage.ErrPageNotFound:
-		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
+		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case projectPage.ErrSb3ArchiveNotFound:
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case projectPage.ErrBadRequestBody:

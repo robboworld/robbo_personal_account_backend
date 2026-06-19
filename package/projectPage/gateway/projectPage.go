@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"crypto/sha256"
 	"errors"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -211,4 +212,113 @@ func (r *ProjectPageGatewayImpl) GetLatestSb3Archive(projectPageId string) (arch
 		return nil, projectPage.ErrSb3ArchiveNotFound
 	}
 	return ver.Archive, nil
+}
+
+func (r *ProjectPageGatewayImpl) GetScratchProjectById(projectPageId string) (projectDB *models.ScratchProjectDB, err error) {
+	var row models.ScratchProjectDB
+	storageProjectID, resolveErr := r.resolveStorageProjectID(r.projectStorageDB, projectPageId)
+	if resolveErr != nil {
+		if errors.Is(resolveErr, gorm.ErrRecordNotFound) {
+			return nil, projectPage.ErrPageNotFound
+		}
+		return nil, resolveErr
+	}
+	if err := r.projectStorageDB.Where("id = ? AND deleted_at IS NULL", storageProjectID).First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, projectPage.ErrPageNotFound
+		}
+		return nil, err
+	}
+	return &row, nil
+}
+
+func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int) (
+	projectPages []*models.ProjectPageCore,
+	countRows int64,
+	err error,
+) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+	var rows []models.ScratchProjectDB
+	err = r.projectStorageDB.
+		Model(&models.ScratchProjectDB{}).
+		Where("is_public = ? AND deleted_at IS NULL", true).
+		Order("updated_at DESC").
+		Limit(pageSize).
+		Offset(offset).
+		Find(&rows).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	r.projectStorageDB.Model(&models.ScratchProjectDB{}).
+		Where("is_public = ? AND deleted_at IS NULL", true).
+		Count(&countRows)
+	for i := range rows {
+		core := toProjectPageCore(&rows[i])
+		projectPages = append(projectPages, core)
+	}
+	return projectPages, countRows, nil
+}
+
+// SaveSb3Archive stores a new .sb3 snapshot (or reuses an identical checksum).
+func (r *ProjectPageGatewayImpl) SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error {
+	if len(archive) == 0 {
+		return projectPage.ErrBadRequest
+	}
+	hash := sha256.Sum256(archive)
+	return r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
+		storageProjectID, err := r.resolveStorageProjectID(tx, projectPageId)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return projectPage.ErrPageNotFound
+			}
+			return err
+		}
+
+		var existing models.ScratchProjectVersionDB
+		dupErr := tx.Where("project_id = ? AND checksum_sha256 = ?", storageProjectID, hash[:]).
+			First(&existing).Error
+		if dupErr == nil {
+			return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", storageProjectID).
+				Update("current_version_id", existing.ID).Error
+		}
+		if dupErr != nil && !errors.Is(dupErr, gorm.ErrRecordNotFound) {
+			return dupErr
+		}
+
+		var project models.ScratchProjectDB
+		if err := tx.Where("id = ? AND deleted_at IS NULL", storageProjectID).First(&project).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return projectPage.ErrPageNotFound
+			}
+			return err
+		}
+
+		nextSeq := project.VersionCounter + 1
+		if nextSeq < 1 {
+			nextSeq = 1
+		}
+		src := saveSource
+		ver := models.ScratchProjectVersionDB{
+			ProjectID:       storageProjectID,
+			VersionSeq:      nextSeq,
+			Archive:         archive,
+			SizeBytes:       int64(len(archive)),
+			ChecksumSHA256:  hash[:],
+			CreatedByUserID: userID,
+			SaveSource:      &src,
+		}
+		if err := tx.Create(&ver).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", storageProjectID).Updates(map[string]interface{}{
+			"version_counter":    nextSeq,
+			"current_version_id": ver.ID,
+		}).Error
+	})
 }
