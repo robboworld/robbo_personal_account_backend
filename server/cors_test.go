@@ -23,6 +23,9 @@ func TestCorsOriginAllowed_privateNetwork(t *testing.T) {
 	if !corsOriginAllowed("http://192.168.88.67:3030") {
 		t.Fatal("expected LAN frontend origin to be allowed")
 	}
+	if !corsOriginAllowed("http://192.168.88.67:5001") {
+		t.Fatal("expected LAN scratch player origin to be allowed")
+	}
 	if corsOriginAllowed("http://192.168.88.67:8080") {
 		t.Fatal("backend port should not be allowed as frontend origin")
 	}
