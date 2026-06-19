@@ -40,6 +40,10 @@ func (s *AuthDelegateImpl) SignUp(userHttp *models.UserHTTP) (accessToken, refre
 	return s.UseCase.SignUp(&userCore)
 }
 
+func (s *AuthDelegateImpl) SignUpCore(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
+	return s.UseCase.SignUp(userCore)
+}
+
 func (s *AuthDelegateImpl) RefreshToken(refreshToken string) (newAccessToken string, err error) {
 	return s.UseCase.RefreshToken(refreshToken)
 }

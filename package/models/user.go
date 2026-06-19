@@ -47,6 +47,9 @@ type UserCore struct {
 	Middlename       string
 	Lastname         string
 	Company          string
+	PhoneNumber      string
+	HonorCode        bool
+	MarketingOptIn   bool
 	LevelOfEducation string
 	Country          string
 	YearOfBirth      *int
