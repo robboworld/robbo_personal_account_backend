@@ -60,7 +60,7 @@ func isPrivateNetworkFrontendOrigin(origin string) bool {
 		return false
 	}
 	switch u.Port() {
-	case "3030", "3000", "8601":
+	case "3030", "3000", "8601", "5001":
 	default:
 		return false
 	}
