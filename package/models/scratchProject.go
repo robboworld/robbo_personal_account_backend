@@ -10,6 +10,10 @@ type ScratchProjectDB struct {
 	Note             string     `gorm:"column:note"`
 	ScratchVMJSON    string     `gorm:"column:scratch_vm_json;type:text"`
 	IsPublic         bool       `gorm:"column:is_public"`
+	LandingFeatured  bool       `gorm:"column:landing_featured"`
+	PreviewImage     []byte     `gorm:"column:preview_image"`
+	PreviewMime      string     `gorm:"column:preview_mime"`
+	PreviewUpdatedAt *time.Time `gorm:"column:preview_updated_at"`
 	VersionCounter   int64      `gorm:"column:version_counter"`
 	CurrentVersionID *string    `gorm:"column:current_version_id"`
 	CreatedAt        time.Time  `gorm:"column:created_at"`

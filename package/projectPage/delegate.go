@@ -8,11 +8,13 @@ type Delegate interface {
 	DeleteProjectPage(projectId string, authorId string) (err error)
 	GetProjectPageById(projectPageId string, viewerId string) (projectPage models.ProjectPageHTTP, err error)
 	GetAllProjectPagesByUserId(authorId string, page string, pageSize string) (projectPages []*models.ProjectPageHTTP, countRows int, err error)
-	GetPublicProjectPages(page string, pageSize string) (projectPages []*models.ProjectPageHTTP, countRows int, err error)
+	GetPublicProjectPages(page string, pageSize string, landingFeaturedOnly bool) (projectPages []*models.ProjectPageHTTP, countRows int, err error)
 	DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error)
 	PlayProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error)
 	IssuePlayToken(projectPageId string, viewerId string, backendBaseURL string) (*PlayTokenHTTP, error)
 	PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error)
 	GetProjectJSONByToken(projectId string, token string) (json string, err error)
 	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
+	GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error)
+	SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error
 }
