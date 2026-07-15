@@ -3,6 +3,8 @@ package gateway
 import (
 	"crypto/sha256"
 	"errors"
+	"strings"
+	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -64,6 +66,10 @@ func (r *ProjectPageGatewayImpl) CreateProjectPage(page *models.ProjectPageCore)
 
 func toProjectPageCore(projectDB *models.ScratchProjectDB) *models.ProjectPageCore {
 	scratchLink := viper.GetString("projectPage.scratchLink") + "?#" + projectDB.ID
+	preview := ""
+	if strings.TrimSpace(projectDB.PreviewMime) != "" {
+		preview = "/projectPage/" + projectDB.ID + "/preview"
+	}
 	return &models.ProjectPageCore{
 		ProjectPageId: projectDB.ID,
 		LastModified:  projectDB.UpdatedAt.String(),
@@ -71,7 +77,7 @@ func toProjectPageCore(projectDB *models.ScratchProjectDB) *models.ProjectPageCo
 		ProjectId:     projectDB.ID,
 		Instruction:   projectDB.Instruction,
 		Notes:         projectDB.Note,
-		Preview:       "",
+		Preview:       preview,
 		LinkScratch:   scratchLink,
 		IsShared:      projectDB.IsPublic,
 	}
@@ -232,7 +238,7 @@ func (r *ProjectPageGatewayImpl) GetScratchProjectById(projectPageId string) (pr
 	return &row, nil
 }
 
-func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int) (
+func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
 	err error,
@@ -244,25 +250,86 @@ func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int) (
 		pageSize = 10
 	}
 	offset := (page - 1) * pageSize
-	var rows []models.ScratchProjectDB
-	err = r.projectStorageDB.
+	query := r.projectStorageDB.
 		Model(&models.ScratchProjectDB{}).
-		Where("is_public = ? AND deleted_at IS NULL", true).
-		Order("updated_at DESC").
-		Limit(pageSize).
-		Offset(offset).
-		Find(&rows).Error
+		Select(
+			"id, owner_user_id, title, instruction, note, scratch_vm_json, is_public, landing_featured, "+
+				"preview_mime, preview_updated_at, version_counter, current_version_id, created_at, updated_at, deleted_at",
+		).
+		Where("is_public = ? AND deleted_at IS NULL", true)
+	if landingFeaturedOnly {
+		query = query.Where("landing_featured = ?", true)
+	}
+	var rows []models.ScratchProjectDB
+	err = query.Order("updated_at DESC").Limit(pageSize).Offset(offset).Find(&rows).Error
 	if err != nil {
 		return nil, 0, err
 	}
-	r.projectStorageDB.Model(&models.ScratchProjectDB{}).
-		Where("is_public = ? AND deleted_at IS NULL", true).
-		Count(&countRows)
+	countQuery := r.projectStorageDB.Model(&models.ScratchProjectDB{}).
+		Where("is_public = ? AND deleted_at IS NULL", true)
+	if landingFeaturedOnly {
+		countQuery = countQuery.Where("landing_featured = ?", true)
+	}
+	countQuery.Count(&countRows)
 	for i := range rows {
 		core := toProjectPageCore(&rows[i])
 		projectPages = append(projectPages, core)
 	}
 	return projectPages, countRows, nil
+}
+
+func (r *ProjectPageGatewayImpl) GetPreviewImage(projectPageId string) (data []byte, mime string, err error) {
+	storageProjectID, resolveErr := r.resolveStorageProjectID(r.projectStorageDB, projectPageId)
+	if resolveErr != nil {
+		if errors.Is(resolveErr, gorm.ErrRecordNotFound) {
+			return nil, "", projectPage.ErrPageNotFound
+		}
+		return nil, "", resolveErr
+	}
+	var row models.ScratchProjectDB
+	if err := r.projectStorageDB.
+		Select("id, preview_image, preview_mime, is_public, deleted_at").
+		Where("id = ? AND deleted_at IS NULL", storageProjectID).
+		First(&row).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, "", projectPage.ErrPageNotFound
+		}
+		return nil, "", err
+	}
+	if len(row.PreviewImage) == 0 || strings.TrimSpace(row.PreviewMime) == "" {
+		return nil, "", projectPage.ErrPageNotFound
+	}
+	return row.PreviewImage, row.PreviewMime, nil
+}
+
+func (r *ProjectPageGatewayImpl) SavePreviewImage(projectPageId string, data []byte, mime string) error {
+	if len(data) == 0 || strings.TrimSpace(mime) == "" {
+		return projectPage.ErrBadRequest
+	}
+	now := time.Now().UTC()
+	return r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
+		storageProjectID, err := r.resolveStorageProjectID(tx, projectPageId)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return projectPage.ErrPageNotFound
+			}
+			return err
+		}
+		res := tx.Model(&models.ScratchProjectDB{}).
+			Where("id = ? AND deleted_at IS NULL", storageProjectID).
+			Updates(map[string]interface{}{
+				"preview_image":      data,
+				"preview_mime":       mime,
+				"preview_updated_at": now,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return projectPage.ErrPageNotFound
+		}
+		return nil
+	})
 }
 
 // SaveSb3Archive stores a new .sb3 snapshot (or reuses an identical checksum).

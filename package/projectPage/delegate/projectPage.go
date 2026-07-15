@@ -114,7 +114,7 @@ func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pag
 	return
 }
 
-func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string) (
+func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string, landingFeaturedOnly bool) (
 	projectPages []*models.ProjectPageHTTP,
 	countRows int,
 	err error,
@@ -127,7 +127,7 @@ func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string) (
 	if parseSzErr != nil || pageSizeInt32 < 1 {
 		pageSizeInt32 = 10
 	}
-	projectPagesCore, countRowsInt64, err := p.UseCase.GetPublicProjectPages(int(pageInt32), int(pageSizeInt32))
+	projectPagesCore, countRowsInt64, err := p.UseCase.GetPublicProjectPages(int(pageInt32), int(pageSizeInt32), landingFeaturedOnly)
 	if err != nil {
 		return
 	}
@@ -138,4 +138,12 @@ func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string) (
 		projectPages = append(projectPages, &projectPageHttp)
 	}
 	return
+}
+
+func (p *ProjectPageDelegateImpl) GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error) {
+	return p.UseCase.GetPreviewImage(projectPageId, viewerId)
+}
+
+func (p *ProjectPageDelegateImpl) SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error {
+	return p.UseCase.SavePreviewImage(projectPageId, ownerId, data, mime)
 }

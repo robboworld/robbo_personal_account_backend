@@ -9,7 +9,9 @@ type Gateway interface {
 	GetProjectPageById(projectPageId string) (projectPageCore *models.ProjectPageCore, err error)
 	GetProjectPageByProjectId(projectId string) (projectPageCore *models.ProjectPageCore, err error)
 	GetScratchProjectById(projectPageId string) (projectDB *models.ScratchProjectDB, err error)
-	GetPublicProjectPages(page, pageSize int) (projectPages []*models.ProjectPageCore, countRows int64, err error)
+	GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (projectPages []*models.ProjectPageCore, countRows int64, err error)
+	GetPreviewImage(projectPageId string) (data []byte, mime string, err error)
+	SavePreviewImage(projectPageId string, data []byte, mime string) error
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
 }
