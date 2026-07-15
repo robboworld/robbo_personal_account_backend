@@ -72,11 +72,32 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 		projectPageGroup.GET("/:projectPageId/play", h.PlayProjectSb3)
 		projectPageGroup.GET("/:projectPageId/download", h.DownloadProjectSb3)
 		projectPageGroup.POST("/:projectPageId/upload", h.UploadProjectSb3)
+		projectPageGroup.GET("/:projectPageId/preview", h.GetProjectPreview)
+		projectPageGroup.POST("/:projectPageId/preview", h.UploadProjectPreview)
 		projectPageGroup.GET("/:projectPageId", h.GetProjectPageById)
 		projectPageGroup.GET("/", h.GetAllProjectPageByUserId)
 		projectPageGroup.PUT("/", h.UpdateProjectPage)
 		projectPageGroup.DELETE("/:projectId", h.DeleteProjectPage)
 	}
+}
+
+// optionalViewerID returns authenticated user id when present; empty string for guests.
+func optionalViewerID(c *gin.Context, authDelegate auth.Delegate) string {
+	if id, _, err := authDelegate.UserIdentity(c); err == nil {
+		id = strings.TrimSpace(id)
+		if id != "" && id != "0" {
+			return id
+		}
+	}
+	if v, ok := c.Get("user_id"); ok {
+		if s, ok := v.(string); ok {
+			s = strings.TrimSpace(s)
+			if s != "" && s != "0" {
+				return s
+			}
+		}
+	}
+	return ""
 }
 
 type createProjectPageResponse struct {
@@ -119,19 +140,7 @@ type getProjectPageResponse struct {
 
 func (h *Handler) GetProjectPageById(c *gin.Context) {
 	log.Println("Get Project Page By ID")
-	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
-	if userIdentityErr != nil {
-		log.Println(userIdentityErr)
-		ErrorHandling(userIdentityErr, c)
-		return
-	}
-	allowedRoles := allAuthenticatedRoles()
-	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
-	if accessErr != nil {
-		log.Println(accessErr)
-		ErrorHandling(accessErr, c)
-		return
-	}
+	userId := optionalViewerID(c, h.authDelegate)
 	projectPageId := c.Param("projectPageId")
 	page, err := h.projectPageDelegate.GetProjectPageById(projectPageId, userId)
 	if err != nil {
@@ -166,21 +175,28 @@ func asciiAttachmentFilename(name string) string {
 }
 
 func (h *Handler) DownloadProjectSb3(c *gin.Context) {
-	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
-	if userIdentityErr != nil {
-		log.Println(userIdentityErr)
-		ErrorHandling(userIdentityErr, c)
-		return
-	}
-	allowedRoles := allAuthenticatedRoles()
-	accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
-	if accessErr != nil {
-		log.Println(accessErr)
-		ErrorHandling(accessErr, c)
-		return
-	}
 	projectPageId := c.Param("projectPageId")
-	data, filename, err := h.projectPageDelegate.DownloadProjectSb3(projectPageId, userId)
+	var data []byte
+	var filename string
+	var err error
+	if playToken := strings.TrimSpace(c.Query("token")); playToken != "" {
+		data, filename, err = h.projectPageDelegate.PlayProjectSb3ByToken(projectPageId, playToken)
+	} else {
+		userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+		if userIdentityErr != nil {
+			log.Println(userIdentityErr)
+			ErrorHandling(userIdentityErr, c)
+			return
+		}
+		allowedRoles := allAuthenticatedRoles()
+		accessErr := h.authDelegate.UserAccess(role, allowedRoles, c)
+		if accessErr != nil {
+			log.Println(accessErr)
+			ErrorHandling(accessErr, c)
+			return
+		}
+		data, filename, err = h.projectPageDelegate.DownloadProjectSb3(projectPageId, userId)
+	}
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -395,18 +411,11 @@ type getPublicProjectPagesResponse struct {
 }
 
 func (h *Handler) GetPublicProjectPages(c *gin.Context) {
-	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
-	if userIdentityErr != nil {
-		ErrorHandling(userIdentityErr, c)
-		return
-	}
-	if accessErr := h.authDelegate.UserAccess(role, allAuthenticatedRoles(), c); accessErr != nil {
-		ErrorHandling(accessErr, c)
-		return
-	}
 	page := c.DefaultQuery("page", "1")
 	pageSize := c.DefaultQuery("pageSize", "10")
-	projectPages, countRows, err := h.projectPageDelegate.GetPublicProjectPages(page, pageSize)
+	featured := strings.ToLower(strings.TrimSpace(c.Query("featured")))
+	landingFeaturedOnly := featured == "landing" || featured == "olympiad" || featured == "1" || featured == "true"
+	projectPages, countRows, err := h.projectPageDelegate.GetPublicProjectPages(page, pageSize, landingFeaturedOnly)
 	if err != nil {
 		ErrorHandling(err, c)
 		return
@@ -414,6 +423,88 @@ func (h *Handler) GetPublicProjectPages(c *gin.Context) {
 	c.JSON(http.StatusOK, getPublicProjectPagesResponse{
 		ProjectPages: projectPages,
 		CountRows:    countRows,
+	})
+}
+
+const maxPreviewUploadBytes = 2 * 1024 * 1024
+
+func detectPreviewMime(data []byte, filename string) (string, bool) {
+	mime := http.DetectContentType(data)
+	switch mime {
+	case "image/jpeg", "image/png", "image/webp":
+		return mime, true
+	}
+	lower := strings.ToLower(filename)
+	switch {
+	case strings.HasSuffix(lower, ".jpg"), strings.HasSuffix(lower, ".jpeg"):
+		return "image/jpeg", true
+	case strings.HasSuffix(lower, ".png"):
+		return "image/png", true
+	case strings.HasSuffix(lower, ".webp"):
+		return "image/webp", true
+	}
+	return "", false
+}
+
+func (h *Handler) GetProjectPreview(c *gin.Context) {
+	userId := optionalViewerID(c, h.authDelegate)
+	projectPageId := c.Param("projectPageId")
+	data, mime, err := h.projectPageDelegate.GetPreviewImage(projectPageId, userId)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.Header("Cache-Control", "public, max-age=300")
+	c.Data(http.StatusOK, mime, data)
+}
+
+func (h *Handler) UploadProjectPreview(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, projectCreateRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	projectPageId := c.Param("projectPageId")
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	if fileHeader.Size > maxPreviewUploadBytes {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "preview image too large (max 2MB)")
+		return
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, maxPreviewUploadBytes+1))
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	if len(data) == 0 || len(data) > maxPreviewUploadBytes {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "preview image too large (max 2MB)")
+		return
+	}
+	mime, ok := detectPreviewMime(data, fileHeader.Filename)
+	if !ok {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "only jpeg/png/webp preview images are supported")
+		return
+	}
+	if err := h.projectPageDelegate.SavePreviewImage(projectPageId, userId, data, mime); err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":      true,
+		"preview": "/projectPage/" + projectPageId + "/preview",
 	})
 }
 

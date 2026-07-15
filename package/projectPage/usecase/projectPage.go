@@ -211,17 +211,36 @@ func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewer
 	return core, err
 }
 
-func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int) (
+func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
 	err error,
 ) {
-	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize)
+	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize, landingFeaturedOnly)
 	if err != nil {
 		return nil, 0, err
 	}
 	p.enrichPublicList(projectPages)
 	return projectPages, countRows, nil
+}
+
+func (p *ProjectPageUseCaseImpl) GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error) {
+	_, _, _, err = p.enrichAndCheckRead(projectPageId, viewerId)
+	if err != nil {
+		return nil, "", err
+	}
+	return p.projectPageGateway.GetPreviewImage(projectPageId)
+}
+
+func (p *ProjectPageUseCaseImpl) SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return err
+	}
+	if !access.Resolve(ownerId, row).CanWrite {
+		return auth.ErrNotAccess
+	}
+	return p.projectPageGateway.SavePreviewImage(projectPageId, data, mime)
 }
 
 func sb3DownloadFilename(title, fallbackPageID string) string {

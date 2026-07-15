@@ -49,6 +49,11 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if path == "/projectPage/public" ||
+			(c.Request.Method == "GET" && strings.HasSuffix(path, "/preview") && strings.HasPrefix(path, "/projectPage/")) {
+			c.Next()
+			return
+		}
 		authMode := strings.ToLower(strings.TrimSpace(viper.GetString("auth.mode")))
 		lmsDbMode := authMode == "lms_db"
 		oidcBff := authMode == "oidc_bff" || viper.GetBool("oidc.enabled")
