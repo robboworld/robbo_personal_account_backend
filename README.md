@@ -1,5 +1,7 @@
 # robbo_student_personal_account
 
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
 ### dev cmd
 ### generate GraphQL files
 go run github.com/99designs/gqlgen generate --verbose
