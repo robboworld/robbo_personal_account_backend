@@ -17,6 +17,9 @@ services:
     image: ghcr.io/navikt/mock-oauth2-server:2.1.5
     ports:
       - "8081:8081"
+    volumes:
+      - ./mock-oauth2:/config:ro
     environment:
       SERVER_PORT: 8081
       LOG_LEVEL: info
+      JSON_CONFIG_PATH: /config/config.json

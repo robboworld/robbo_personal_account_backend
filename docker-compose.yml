@@ -16,6 +16,9 @@ services:
       - AUTH_LMS_PASSWORD_FALLBACK=${AUTH_LMS_PASSWORD_FALLBACK:-true}
       - LK_SSO_WITH_LMS_ENABLED=true
       - PROJECTS_POSTGRES_DSN=host=host.docker.internal port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable
+      - LICENSING_POSTGRES_DSN=host=host.docker.internal port=5434 user=robbo_licensing password=robbo_licensing_change_me dbname=robbo_licensing sslmode=disable
+      - LICENSING_PRIVATE_KEY_PATH=/app/keys/licensing/dev-private.pem
+      - LICENSING_ADDON_STATIC_DIR=/app/keys/licensing/addon
       - LMS_MYSQL_DSN=lk_readonly:lk_readonly_change_me@tcp(host.docker.internal:3307)/openedx
       - LMS_MYSQL_WRITE_DSN=root:lms_root_change_me@tcp(host.docker.internal:3307)/openedx
       # authorize/issuer — localhost (browser redirect); token/jwks — host.docker.internal (BFF inside container)

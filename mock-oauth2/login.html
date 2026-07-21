@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>Robbo LK — mock OIDC login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: system-ui, sans-serif;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #f3f5f7;
+      color: #111;
+    }
+    .card {
+      width: min(640px, calc(100vw - 32px));
+      background: #fff;
+      border: 1px solid #d9dee5;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+    }
+    p {
+      margin: 0 0 16px;
+      color: #555;
+      line-height: 1.45;
+    }
+    label {
+      display: block;
+      margin: 12px 0 6px;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    input[type="text"],
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      border: 1px solid #c7ced8;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: inherit;
+    }
+    textarea {
+      min-height: 160px;
+      resize: vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92rem;
+    }
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 8px 0 4px;
+    }
+    button,
+    input[type="submit"] {
+      border: 1px solid #c7ced8;
+      border-radius: 8px;
+      background: #fff;
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    input[type="submit"] {
+      margin-top: 16px;
+      width: 100%;
+      background: #1f6feb;
+      border-color: #1f6feb;
+      color: #fff;
+      font-weight: 600;
+    }
+    input[type="submit"]:hover {
+      background: #175ecf;
+    }
+    button:hover {
+      background: #f6f8fa;
+    }
+    .hint {
+      margin-top: 12px;
+      font-size: 0.85rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Mock OAuth2 — вход в ЛК</h1>
+    <p>Username — произвольный <code>sub</code>. В claims укажите email из LMS, например <code>{"email":"lms@lms.ru"}</code>.</p>
+
+    <form id="login-form" method="post">
+      <label for="username">Username / subject</label>
+      <input id="username" name="username" type="text" required autocomplete="username"
+             placeholder="lms@lms.ru">
+
+      <label for="claims">Claims (JSON)</label>
+      <div class="presets">
+        <button type="button" data-preset="superadmin-lms">SuperAdmin lms@lms.ru</button>
+        <button type="button" data-preset="superadmin-admin">SuperAdmin admin@mail.ru</button>
+        <button type="button" data-preset="megaassik">megaassik@mail.ru</button>
+      </div>
+      <textarea id="claims" name="claims" autocomplete="off"
+                placeholder='{"email":"lms@lms.ru"}'></textarea>
+
+      <input type="submit" value="Sign-in">
+    </form>
+
+    <p class="hint">Значения сохраняются в localStorage браузера и подставляются при следующем входе.</p>
+  </div>
+
+  <script>
+    (function () {
+      var STORAGE_USERNAME = 'robbo_mock_oidc_username';
+      var STORAGE_CLAIMS = 'robbo_mock_oidc_claims';
+      var DEFAULT_USERNAME = 'lms@lms.ru';
+      var DEFAULT_CLAIMS = '{\n  "email": "lms@lms.ru"\n}';
+
+      var PRESETS = {
+        'superadmin-lms': {
+          username: 'lms@lms.ru',
+          claims: '{\n  "email": "lms@lms.ru"\n}'
+        },
+        'superadmin-admin': {
+          username: 'admin@mail.ru',
+          claims: '{\n  "email": "admin@mail.ru"\n}'
+        },
+        megaassik: {
+          username: 'megaassik@mail.ru',
+          claims: '{\n  "email": "megaassik@mail.ru"\n}'
+        }
+      };
+
+      var usernameInput = document.getElementById('username');
+      var claimsInput = document.getElementById('claims');
+      var form = document.getElementById('login-form');
+
+      function readStorage(key, fallback) {
+        try {
+          var value = localStorage.getItem(key);
+          return value && value.trim() ? value : fallback;
+        } catch (e) {
+          return fallback;
+        }
+      }
+
+      function writeStorage(key, value) {
+        try {
+          localStorage.setItem(key, value);
+        } catch (e) {
+          // ignore quota / private mode
+        }
+      }
+
+      usernameInput.value = readStorage(STORAGE_USERNAME, DEFAULT_USERNAME);
+      claimsInput.value = readStorage(STORAGE_CLAIMS, DEFAULT_CLAIMS);
+
+      document.querySelectorAll('[data-preset]').forEach(function (button) {
+        button.addEventListener('click', function () {
+          var preset = PRESETS[button.getAttribute('data-preset')];
+          if (!preset) return;
+          usernameInput.value = preset.username;
+          claimsInput.value = preset.claims;
+          writeStorage(STORAGE_USERNAME, preset.username);
+          writeStorage(STORAGE_CLAIMS, preset.claims);
+        });
+      });
+
+      form.addEventListener('submit', function () {
+        writeStorage(STORAGE_USERNAME, usernameInput.value.trim());
+        writeStorage(STORAGE_CLAIMS, claimsInput.value);
+      });
+    })();
+  </script>
+</body>
+</html>

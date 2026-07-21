@@ -20,6 +20,18 @@ func Init() error {
 	if os.Getenv("PROJECTS_POSTGRES_DSN") != "" {
 		viper.Set("projectsPostgres.postgresDsn", os.Getenv("PROJECTS_POSTGRES_DSN"))
 	}
+	if os.Getenv("LICENSING_POSTGRES_DSN") != "" {
+		viper.Set("licensingPostgres.postgresDsn", os.Getenv("LICENSING_POSTGRES_DSN"))
+	}
+	if os.Getenv("LICENSING_PRIVATE_KEY_PATH") != "" {
+		viper.Set("licensing.privateKeyPath", os.Getenv("LICENSING_PRIVATE_KEY_PATH"))
+	}
+	if os.Getenv("LICENSING_JWT_KID") != "" {
+		viper.Set("licensing.jwtKid", os.Getenv("LICENSING_JWT_KID"))
+	}
+	if os.Getenv("LICENSING_ADDON_STATIC_DIR") != "" {
+		viper.Set("licensing.addonStaticDir", os.Getenv("LICENSING_ADDON_STATIC_DIR"))
+	}
 	if os.Getenv("LMS_MYSQL_DSN") != "" {
 		viper.Set("lmsMysql.dsn", os.Getenv("LMS_MYSQL_DSN"))
 	}
