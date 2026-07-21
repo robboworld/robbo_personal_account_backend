@@ -3,6 +3,7 @@ package http
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -40,6 +41,30 @@ func (h Handler) InitRoutes(router *gin.Engine) {
 	}
 }
 
+func browserAuthorizationEndpoint(endpoint string, c *gin.Context) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return endpoint
+	}
+	port := parsed.Port()
+	if port == "" {
+		port = "8081"
+	}
+	browserHost := parsed.Hostname()
+	if browserHost == "host.docker.internal" {
+		browserHost = "localhost"
+	}
+	if reqHost := c.Request.Host; reqHost != "" {
+		if hostname, _, splitErr := net.SplitHostPort(reqHost); splitErr == nil && hostname != "" {
+			if hostname != "localhost" && hostname != "127.0.0.1" {
+				browserHost = hostname
+			}
+		}
+	}
+	parsed.Host = net.JoinHostPort(browserHost, port)
+	return parsed.String()
+}
+
 // Start initiates the OIDC Authorization Code + PKCE flow.
 // By default uses prompt=none (silent SSO). When the IdP has no active session,
 // the callback returns login_required; the frontend or next redirect should call
@@ -55,7 +80,7 @@ func (h Handler) Start(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "pkce_init_failed"})
 		return
 	}
-	authURL, err := url.Parse(h.cfg.AuthorizationEndpoint)
+	authURL, err := url.Parse(browserAuthorizationEndpoint(h.cfg.AuthorizationEndpoint, c))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid_authorization_endpoint"})
 		return
