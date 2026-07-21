@@ -31,6 +31,8 @@ func Init() error {
 	}
 	if os.Getenv("AUTH_LMS_PASSWORD_FALLBACK") == "true" {
 		viper.Set("auth.lmsPasswordFallback", true)
+	} else if os.Getenv("AUTH_LMS_PASSWORD_FALLBACK") == "false" {
+		viper.Set("auth.lmsPasswordFallback", false)
 	}
 	if os.Getenv("LEGACY_POSTGRES_ENABLED") == "true" {
 		viper.Set("legacyPostgres.enabled", true)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -25,8 +26,7 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	if c.jwks == nil {
 		return nil, errors.New("oidc: jwks not configured")
 	}
-	parser := &jwt.Parser{}
-	unverified, _, err := parser.ParseUnverified(idToken, jwt.MapClaims{})
+	unverified, _, err := jwt.NewParser().ParseUnverified(idToken, jwt.MapClaims{})
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,9 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	if err != nil {
 		return nil, err
 	}
-	token, err := jwt.Parse(idToken, func(token *jwt.Token) (interface{}, error) {
+	// jwt-go v4 validates aud when present; iss is checked below (mock IdP may use host.docker.internal).
+	parser := jwt.NewParser(jwt.WithAudience(c.ClientID))
+	token, err := parser.Parse(idToken, func(token *jwt.Token) (interface{}, error) {
 		if token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 			return nil, fmt.Errorf("unexpected alg %s", token.Method.Alg())
 		}
@@ -60,7 +62,7 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 		Email: asString(raw["email"]),
 		Name: asString(raw["name"]),
 	}
-	if claims.Iss != c.Issuer {
+	if !issuerMatches(claims.Iss, c.Issuer) {
 		return nil, errors.New("oidc: invalid_issuer")
 	}
 	if !audienceMatches(claims.Aud, c.ClientID) {
@@ -90,6 +92,37 @@ func audienceMatches(aud interface{}, clientID string) bool {
 		}
 	}
 	return false
+}
+
+// issuerMatches accepts localhost vs host.docker.internal for local mock IdP (same path/port).
+func issuerMatches(got, want string) bool {
+	if got == want {
+		return true
+	}
+	g, err := url.Parse(got)
+	if err != nil {
+		return false
+	}
+	w, err := url.Parse(want)
+	if err != nil {
+		return false
+	}
+	if strings.TrimRight(g.Path, "/") != strings.TrimRight(w.Path, "/") {
+		return false
+	}
+	if g.Scheme != w.Scheme || g.Port() != w.Port() {
+		return false
+	}
+	return localOIDCHost(g.Hostname()) && localOIDCHost(w.Hostname())
+}
+
+func localOIDCHost(host string) bool {
+	switch strings.ToLower(host) {
+	case "localhost", "host.docker.internal", "127.0.0.1":
+		return true
+	default:
+		return false
+	}
 }
 
 func asString(v interface{}) string {
