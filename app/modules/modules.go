@@ -37,6 +37,11 @@ import (
 	prjgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/projects/gateway"
 	prjhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/projects/http"
 	prjusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/projects/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
+	licdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/delegate"
+	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
+	lichttp "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/http"
+	licusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/resolvers"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	robboGroupdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/delegate"
@@ -62,6 +67,7 @@ type GatewayModule struct {
 	CoursesGateway      courses.Gateway
 	ProjectPageGateway  projectPage.Gateway
 	ProjectsGateway     projects.Gateway
+	LicensingGateway    licensing.Gateway
 	RobboGroupGateway   robboGroup.Gateway
 	RobboUnitsGateway   robboUnits.Gateway
 	UsersGateway        users.Gateway
@@ -75,6 +81,7 @@ func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
 		CoursesGateway:      crsgateway.SetupCoursesGateway(postgresClient),
 		ProjectPageGateway:  ppagegateway.SetupProjectPageGateway(postgresClient),
 		ProjectsGateway:     prjgateway.SetupProjectsGateway(postgresClient),
+		LicensingGateway:    licgateway.SetupLicensingGateway(postgresClient),
 		RobboGroupGateway:   robboGroupgateway.SetupRobboGroupGateway(postgresClient),
 		RobboUnitsGateway:   robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
 		UsersGateway:        usersgateway.SetupUsersGateway(postgresClient),
@@ -89,6 +96,7 @@ type UseCaseModule struct {
 	EdxUseCase          edx.UseCase
 	ProjectPageUseCase  projectPage.UseCase
 	ProjectsUseCase     projects.UseCase
+	LicensingUseCase    licensing.UseCase
 	RobboGroupUseCase   robboGroup.UseCase
 	RobboUnitsUseCase   robboUnits.UseCase
 	UsersUseCase        users.UseCase
@@ -108,6 +116,7 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) Us
 		EdxUseCase:         edxusecase.SetupEdxApiUseCase(),
 		ProjectPageUseCase: ppageusecase.SetupProjectPageUseCase(gateway.ProjectPageGateway, gateway.ProjectsGateway),
 		ProjectsUseCase:    prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
+		LicensingUseCase:   licusecase.SetupLicensingUseCase(gateway.LicensingGateway),
 		RobboGroupUseCase:  robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
 		RobboUnitsUseCase:  robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
 		UsersUseCase:       usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
@@ -121,6 +130,7 @@ type DelegateModule struct {
 	CoursesDelegate      courses.Delegate
 	ProjectPageDelegate  projectPage.Delegate
 	ProjectsDelegate     projects.Delegate
+	LicensingDelegate    licensing.Delegate
 	RobboGroupDelegate   robboGroup.Delegate
 	RobboUnitsDelegate   robboUnits.Delegate
 	UsersDelegate        users.Delegate
@@ -134,6 +144,7 @@ func SetupDelegate(usecase UseCaseModule) DelegateModule {
 		CoursesDelegate:      crsdelegate.SetupCourseDelegate(usecase.CoursesUseCase, usecase.EdxUseCase),
 		ProjectPageDelegate:  ppagedelegate.SetupProjectPageDelegate(usecase.ProjectPageUseCase),
 		ProjectsDelegate:     prjdelegate.SetupProjectDelegate(usecase.ProjectsUseCase),
+		LicensingDelegate:    licdelegate.SetupLicensingDelegate(usecase.LicensingUseCase),
 		RobboGroupDelegate:   robboGroupdelegate.SetupRobboGroupDelegate(usecase.RobboGroupUseCase),
 		RobboUnitsDelegate:   robboUnitsdelegate.SetupRobboUnitsDelegate(usecase.RobboUnitsUseCase),
 		UsersDelegate:        usersdelegate.SetupUsersDelegate(usecase.UsersUseCase),
@@ -141,17 +152,18 @@ func SetupDelegate(usecase UseCaseModule) DelegateModule {
 }
 
 type HandlerModule struct {
-	ProjectsHandler              prjhttp.Handler
-	ProjectPageHandler           ppagehttp.Handler
-	AuthHandler                  authhttp.Handler
-	CoursesHandler               crshttp.Handler
-	CohortsHandler               chrthttp.Handler
-	UsersHandler                 usershtpp.Handler
-	RobboUnitsHandler            robboUnitshttp.Handler
-	RobboGroupHandler            robboGrouphttp.Handler
-	CoursePacketHandler          coursePackethttp.Handler
-	PortalNotificationsHandler   portalhttp.NotificationsHandler
-	OIDCHandler                  *oidchttp.Handler
+	ProjectsHandler            prjhttp.Handler
+	ProjectPageHandler         ppagehttp.Handler
+	AuthHandler                authhttp.Handler
+	CoursesHandler             crshttp.Handler
+	CohortsHandler             chrthttp.Handler
+	UsersHandler               usershtpp.Handler
+	RobboUnitsHandler          robboUnitshttp.Handler
+	RobboGroupHandler          robboGrouphttp.Handler
+	CoursePacketHandler        coursePackethttp.Handler
+	LicensingHandler           lichttp.Handler
+	PortalNotificationsHandler portalhttp.NotificationsHandler
+	OIDCHandler                *oidchttp.Handler
 }
 
 func SetupHandler(
@@ -166,13 +178,14 @@ func SetupHandler(
 			delegate.ProjectsDelegate,
 			delegate.ProjectPageDelegate,
 		),
-		AuthHandler:         authhttp.NewAuthHandler(delegate.AuthDelegate),
-		CoursesHandler:      crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
-		CohortsHandler:      chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
-		UsersHandler:        usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
-		RobboUnitsHandler:   robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
-		RobboGroupHandler:   robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
+		AuthHandler:                authhttp.NewAuthHandler(delegate.AuthDelegate),
+		CoursesHandler:             crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
+		CohortsHandler:             chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
+		UsersHandler:               usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
+		RobboUnitsHandler:          robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
+		RobboGroupHandler:          robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
 		CoursePacketHandler:        coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
+		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate),
 		PortalNotificationsHandler: portalNotifications,
 		OIDCHandler:                oidcHandler,
 	}

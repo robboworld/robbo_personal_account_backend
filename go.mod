@@ -10,12 +10,14 @@ require (
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/hasura/go-graphql-client v0.8.1
 	github.com/jackc/pgconn v1.12.0
+	github.com/lib/pq v1.10.2
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/rs/cors v1.8.2
 	github.com/spf13/viper v1.11.0
 	github.com/stretchr/testify v1.7.1
 	github.com/vektah/gqlparser/v2 v2.5.0
 	go.uber.org/fx v1.17.1
+	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	gorm.io/driver/postgres v1.3.5
 	gorm.io/gorm v1.23.5
 )
@@ -90,7 +92,6 @@ require (
 	go.uber.org/dig v1.14.0 // indirect
 	go.uber.org/multierr v1.5.0 // indirect
 	go.uber.org/zap v1.16.0 // indirect
-	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect
 	golang.org/x/net v0.5.0 // indirect
 	golang.org/x/sys v0.4.0 // indirect

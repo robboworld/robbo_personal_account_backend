@@ -21,7 +21,6 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 		fx.Hook{
 			OnStart: func(ctx context.Context) (err error) {
 				router := SetupGinRouter(handlers)
-				router.Use(TokenAuthMiddleware())
 				router.GET("/", playgroundHandler())
 				router.POST("/query", graphqlHandler(graphQLModule))
 				router.Static("/frontend", "./frontend")
@@ -72,6 +71,7 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 		gin.Recovery(),
 		gin.Logger(),
 		GinContextToContextMiddleware(),
+		TokenAuthMiddleware(),
 	)
 	handlers.AuthHandler.InitAuthRoutes(router)
 	if handlers.OIDCHandler != nil {
@@ -81,6 +81,7 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 	handlers.ProjectsHandler.InitProjectRoutes(router)
 	handlers.ProjectPageHandler.InitProjectRoutes(router)
 	handlers.CoursesHandler.InitCourseRoutes(router)
+	handlers.LicensingHandler.InitLicensingRoutes(router)
 	//handlers.CohortsHandler.InitCohortRoutes(router)
 	//handlers.UsersHandler.InitUsersRoutes(router)
 	//handlers.RobboUnitsHandler.InitRobboUnitsRoutes(router)
