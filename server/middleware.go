@@ -54,6 +54,17 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// Public RS3 activation / device-link / addon delivery (no BFF session).
+		if path == "/v1/activate" ||
+			path == "/v1/seats/deactivate" ||
+			path == "/v1/device/link/start" ||
+			path == "/v1/device/link/poll" ||
+			path == "/addon/manifest.json" ||
+			path == "/addon/paid-addon.js.enc" ||
+			path == "/health/licensing" {
+			c.Next()
+			return
+		}
 		authMode := strings.ToLower(strings.TrimSpace(viper.GetString("auth.mode")))
 		lmsDbMode := authMode == "lms_db"
 		oidcBff := authMode == "oidc_bff" || viper.GetBool("oidc.enabled")
@@ -84,10 +95,6 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 			c.Set("refresh_token", "")
 		}
 		if header == "" {
-			//c.JSON(http.StatusUnauthorized, gin.H{
-			//	"error": "token not found",
-			//})
-			//c.Abort()
 			c.Set("user_id", "0")
 			c.Set("user_role", models.Anonymous)
 			c.Next()
@@ -95,9 +102,6 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 		}
 		headerParts := strings.Split(header, " ")
 		if len(headerParts) != 2 {
-			//c.JSON(http.StatusUnauthorized, gin.H{
-			//	"error": "invalid authorization header format",
-			//})
 			graphql.AddError(c, &gqlerror.Error{
 				Path:    graphql.GetPath(c),
 				Message: "invalid authorization header format",
@@ -120,9 +124,6 @@ func TokenAuthMiddleware() gin.HandlerFunc {
 
 		claims, ok := data.Claims.(*models.UserClaims)
 		if !ok {
-			//c.JSON(http.StatusUnauthorized, gin.H{
-			//	"error": "token claims are not of type *StandardClaims",
-			//})
 			graphql.AddError(c, &gqlerror.Error{
 				Path:    graphql.GetPath(c),
 				Message: "token claims are not of type *StandardClaims",

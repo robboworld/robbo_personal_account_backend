@@ -13,7 +13,7 @@ auth:
   hash_salt: ""
   access_signing_key: ""
   refresh_signing_key: ""
-  access_token_ttl: 300 # 5 min 60*5
+  access_token_ttl: 86400 # 5 min 60*5
   refresh_token_ttl: 604800 # 7 day
   refresh_cookie_secure: false
 
@@ -55,6 +55,22 @@ postgres:
 
 projectsPostgres:
   postgresDsn: "host=localhost port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable"
+
+licensingPostgres:
+  postgresDsn: "host=localhost port=5434 user=robbo_licensing password=robbo_licensing_change_me dbname=robbo_licensing sslmode=disable"
+
+licensing:
+  # RSA private key for RS256 activation JWTs and addon manifest signatures.
+  # Generate: go run ./scripts/generate_licensing_keys/main.go
+  privateKeyPath: "./keys/licensing/dev-private.pem"
+  jwtKid: "demo-rs3-1"
+  jwtIssuer: "rs3-licensing"
+  defaultSeatLimit: 2
+  defaultExpiresDays: 365
+  seatReactivationCooldownSec: 60
+  deviceLinkTTLMinutes: 10
+  addonStaticDir: "./keys/licensing/addon"
+  addonVersion: "0.2.0"
 
 api_urls:
   refreshToken: "https://edx-test.ru/oauth2/access_token"
