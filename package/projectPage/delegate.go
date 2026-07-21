@@ -15,4 +15,8 @@ type Delegate interface {
 	PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error)
 	GetProjectJSONByToken(projectId string, token string) (json string, err error)
 	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
+	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)
+	GetProjectReactions(projectPageId, viewerId string) (*models.ProjectReactionsHTTP, error)
+	PutProjectReaction(projectPageId, userId, reactionCode string) (*models.ProjectReactionsHTTP, error)
+	DeleteProjectReaction(projectPageId, userId string) (*models.ProjectReactionsHTTP, error)
 }

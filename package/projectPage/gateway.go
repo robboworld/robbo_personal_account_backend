@@ -12,4 +12,8 @@ type Gateway interface {
 	GetPublicProjectPages(page, pageSize int) (projectPages []*models.ProjectPageCore, countRows int64, err error)
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
+	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)
+	GetProjectReactionSummary(projectId, viewerUserId string) (*models.ProjectReactionsHTTP, error)
+	UpsertProjectReaction(projectId, userId, reactionCode string) error
+	DeleteProjectReaction(projectId, userId string) error
 }

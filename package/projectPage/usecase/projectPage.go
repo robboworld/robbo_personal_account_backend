@@ -8,6 +8,7 @@ import (
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/playtoken"
@@ -17,8 +18,9 @@ import (
 )
 
 type ProjectPageUseCaseImpl struct {
-	projectPageGateway projectPage.Gateway
-	projectGateway     projects.Gateway
+	projectPageGateway  projectPage.Gateway
+	projectGateway      projects.Gateway
+	notificationGateway notifications.Gateway
 }
 
 type ProjectPageUseCaseModule struct {
@@ -26,11 +28,16 @@ type ProjectPageUseCaseModule struct {
 	projectPage.UseCase
 }
 
-func SetupProjectPageUseCase(projectPageGateway projectPage.Gateway, projectGateway projects.Gateway) ProjectPageUseCaseModule {
+func SetupProjectPageUseCase(
+	projectPageGateway projectPage.Gateway,
+	projectGateway projects.Gateway,
+	notificationGateway notifications.Gateway,
+) ProjectPageUseCaseModule {
 	return ProjectPageUseCaseModule{
 		UseCase: &ProjectPageUseCaseImpl{
-			projectPageGateway: projectPageGateway,
-			projectGateway:     projectGateway,
+			projectPageGateway:  projectPageGateway,
+			projectGateway:      projectGateway,
+			notificationGateway: notificationGateway,
 		},
 	}
 }
@@ -300,6 +307,103 @@ func (p *ProjectPageUseCaseImpl) PlayProjectSb3ByToken(projectPageId string, tok
 	}
 	filename = sb3DownloadFilename(row.Title, projectPageId)
 	return data, filename, nil
+}
+
+func (p *ProjectPageUseCaseImpl) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {
+	return p.projectPageGateway.ListEnabledReactionTypes()
+}
+
+func (p *ProjectPageUseCaseImpl) GetProjectReactions(
+	projectPageId string,
+	viewerId string,
+) (*models.ProjectReactionsHTTP, error) {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
+	if !row.IsPublic {
+		return nil, auth.ErrNotAccess
+	}
+	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, strings.TrimSpace(viewerId))
+}
+
+func (p *ProjectPageUseCaseImpl) PutProjectReaction(
+	projectPageId string,
+	userId string,
+	reactionCode string,
+) (*models.ProjectReactionsHTTP, error) {
+	userId = strings.TrimSpace(userId)
+	reactionCode = strings.TrimSpace(reactionCode)
+	if userId == "" || reactionCode == "" {
+		return nil, projectPage.ErrBadRequest
+	}
+
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
+	if !row.IsPublic {
+		return nil, auth.ErrNotAccess
+	}
+
+	types, err := p.projectPageGateway.ListEnabledReactionTypes()
+	if err != nil {
+		return nil, err
+	}
+	var emoji string
+	for _, reactionType := range types {
+		if reactionType.Code == reactionCode {
+			emoji = reactionType.Emoji
+			break
+		}
+	}
+	if emoji == "" {
+		return nil, projectPage.ErrBadRequest
+	}
+
+	if err := p.projectPageGateway.UpsertProjectReaction(projectPageId, userId, reactionCode); err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(row.OwnerUserID) != userId {
+		actionURL := "/projects/" + projectPageId
+		dedupeKey := "project_reaction:" + projectPageId + ":" + userId
+		if err := p.notificationGateway.CreateOrUpdateByDedupe(&models.UserNotificationDB{
+			RecipientUserID: strings.TrimSpace(row.OwnerUserID),
+			Title:           "Новая реакция на проект",
+			Body:            fmt.Sprintf("На ваш проект «%s» поставили %s", row.Title, emoji),
+			Kind:            "project_reaction",
+			Severity:        "INFO",
+			Source:          "system",
+			ActionURL:       &actionURL,
+			DedupeKey:       &dedupeKey,
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, userId)
+}
+
+func (p *ProjectPageUseCaseImpl) DeleteProjectReaction(
+	projectPageId string,
+	userId string,
+) (*models.ProjectReactionsHTTP, error) {
+	userId = strings.TrimSpace(userId)
+	if userId == "" {
+		return nil, projectPage.ErrBadRequest
+	}
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
+	if !row.IsPublic {
+		return nil, auth.ErrNotAccess
+	}
+	if err := p.projectPageGateway.DeleteProjectReaction(projectPageId, userId); err != nil {
+		return nil, err
+	}
+	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, userId)
 }
 
 func (p *ProjectPageUseCaseImpl) GetProjectJSONByToken(projectId string, token string) (string, error) {

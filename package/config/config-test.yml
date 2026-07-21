@@ -24,7 +24,8 @@ auth:
   hash_salt: "test_hash_salt"
   access_signing_key: "test_access_signing_key"
   refresh_signing_key: "test_refresh_signing_key"
-  access_token_ttl: 300 # 5 min
+  access_token_ttl: 900 # 15 min
+  bff_session_ttl: 28800 # 8 hours
   refresh_token_ttl: 604800 # 7 day
   refresh_cookie_secure: false
   token_super_admin: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjAiLCJyb2xlIjo1fQ.Ha3K9LpCV4AP_AJiY-Gt6WcyKn2pRGxXM0kA4eLR-nU"
