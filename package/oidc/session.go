@@ -11,6 +11,16 @@ import (
 
 const SessionCookieName = "lk_bff_session"
 
+const defaultSessionTTLSeconds = 28800
+
+func SessionTTLSeconds() int {
+	ttl := viper.GetInt("auth.bff_session_ttl")
+	if ttl <= 0 {
+		return defaultSessionTTLSeconds
+	}
+	return ttl
+}
+
 func IssueSessionToken(sub, edxUserID, email string, role uint) (string, error) {
 	claims := models.OidcSessionClaims{
 		Sub:       sub,
@@ -18,10 +28,7 @@ func IssueSessionToken(sub, edxUserID, email string, role uint) (string, error) 
 		Email:     email,
 		Role:      role,
 	}
-	ttl := viper.GetInt("auth.access_token_ttl")
-	if ttl <= 0 {
-		ttl = 300
-	}
+	ttl := SessionTTLSeconds()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":         claims.Sub,
 		"edx_user_id": claims.EdxUserID,

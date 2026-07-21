@@ -84,6 +84,32 @@ func (p *ProjectPageDelegateImpl) UploadProjectSb3(projectPageId string, ownerId
 	return p.UseCase.UploadProjectSb3(projectPageId, ownerId, data)
 }
 
+func (p *ProjectPageDelegateImpl) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {
+	return p.UseCase.ListEnabledReactionTypes()
+}
+
+func (p *ProjectPageDelegateImpl) GetProjectReactions(
+	projectPageId string,
+	viewerId string,
+) (*models.ProjectReactionsHTTP, error) {
+	return p.UseCase.GetProjectReactions(projectPageId, viewerId)
+}
+
+func (p *ProjectPageDelegateImpl) PutProjectReaction(
+	projectPageId string,
+	userId string,
+	reactionCode string,
+) (*models.ProjectReactionsHTTP, error) {
+	return p.UseCase.PutProjectReaction(projectPageId, userId, reactionCode)
+}
+
+func (p *ProjectPageDelegateImpl) DeleteProjectReaction(
+	projectPageId string,
+	userId string,
+) (*models.ProjectReactionsHTTP, error) {
+	return p.UseCase.DeleteProjectReaction(projectPageId, userId)
+}
+
 func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pageSize string) (
 	projectPages []*models.ProjectPageHTTP,
 	countRows int,
