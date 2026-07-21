@@ -13,13 +13,14 @@ services:
       - DEBUG=false
       - LEGACY_POSTGRES_ENABLED=false
       - AUTH_MODE=oidc_bff
-      - AUTH_LMS_PASSWORD_FALLBACK=true
+      - AUTH_LMS_PASSWORD_FALLBACK=${AUTH_LMS_PASSWORD_FALLBACK:-true}
       - LK_SSO_WITH_LMS_ENABLED=true
       - PROJECTS_POSTGRES_DSN=host=host.docker.internal port=5433 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable
       - LMS_MYSQL_DSN=lk_readonly:lk_readonly_change_me@tcp(host.docker.internal:3307)/openedx
       - LMS_MYSQL_WRITE_DSN=root:lms_root_change_me@tcp(host.docker.internal:3307)/openedx
-      - OIDC_ISSUER=http://host.docker.internal:8081/default
-      - OIDC_AUTHORIZATION_ENDPOINT=http://host.docker.internal:8081/default/authorize
+      # authorize/issuer — localhost (browser redirect); token/jwks — host.docker.internal (BFF inside container)
+      - OIDC_ISSUER=http://localhost:8081/default
+      - OIDC_AUTHORIZATION_ENDPOINT=http://localhost:8081/default/authorize
       - OIDC_TOKEN_ENDPOINT=http://host.docker.internal:8081/default/token
       - OIDC_JWKS_URI=http://host.docker.internal:8081/default/jwks
       - OIDC_CLIENT_ID=lk-web
