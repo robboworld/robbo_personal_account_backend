@@ -2,6 +2,8 @@ package delegate
 
 import (
 	"context"
+	"strings"
+
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
@@ -9,7 +11,6 @@ import (
 	"github.com/spf13/viper"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"go.uber.org/fx"
-	"strings"
 )
 
 const (
@@ -49,6 +50,21 @@ func (s *AuthDelegateImpl) RefreshToken(refreshToken string) (newAccessToken str
 }
 
 func (s *AuthDelegateImpl) UserIdentity(c *gin.Context) (id string, role models.Role, err error) {
+	// Prefer OIDC/BFF identity already placed into gin context by TokenAuthMiddleware.
+	if rawID, ok := c.Get("user_id"); ok {
+		if uid, _ := rawID.(string); strings.TrimSpace(uid) != "" && uid != "0" {
+			role = models.Anonymous
+			if rawRole, ok := c.Get("user_role"); ok {
+				if r, ok := rawRole.(models.Role); ok {
+					role = r
+				}
+			}
+			if role != models.Anonymous && role != models.WithExpiredToken {
+				return uid, role, nil
+			}
+		}
+	}
+
 	header := c.GetHeader(authorizationHeader)
 	if header == "" {
 		return "", models.Anonymous, &gqlerror.Error{

@@ -50,6 +50,7 @@ type UserCore struct {
 	PhoneNumber      string
 	HonorCode        bool
 	MarketingOptIn   bool
+	Bio              string
 	LevelOfEducation string
 	Country          string
 	YearOfBirth      *int
@@ -70,6 +71,7 @@ func (em *UserHTTP) ToCore() UserCore {
 		Lastname:         em.Lastname,
 		Middlename:       em.Middlename,
 		Company:          em.Company,
+		Bio:              StrPtrVal(em.Bio),
 		LevelOfEducation: StrPtrVal(em.LevelOfEducation),
 		Country:          StrPtrVal(em.Country),
 		YearOfBirth:      em.YearOfBirth,
@@ -90,6 +92,7 @@ func (em *UserHTTP) FromCore(user *UserCore) {
 	em.Lastname = user.Lastname
 	em.Middlename = user.Middlename
 	em.Company = user.Company
+	em.Bio = StrPtr(user.Bio)
 	em.LevelOfEducation = StrPtr(user.LevelOfEducation)
 	em.Country = StrPtr(user.Country)
 	em.YearOfBirth = user.YearOfBirth
