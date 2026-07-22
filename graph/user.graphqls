@@ -8,6 +8,7 @@ type UserHttp {
     firstname: String!
     lastname: String!
     middlename: String!
+    bio: String
     levelOfEducation: String
     country: String
     yearOfBirth: Int
@@ -24,6 +25,7 @@ input UpdateProfileInput {
     firstname: String!
     lastname: String!
     middlename: String!
+    bio: String
     levelOfEducation: String
     country: String
     yearOfBirth: Int

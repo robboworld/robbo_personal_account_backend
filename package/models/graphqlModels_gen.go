@@ -530,6 +530,7 @@ type UpdateProfileInput struct {
 	Firstname        string  `json:"firstname"`
 	Lastname         string  `json:"lastname"`
 	Middlename       string  `json:"middlename"`
+	Bio              *string `json:"bio,omitempty"`
 	LevelOfEducation *string `json:"levelOfEducation,omitempty"`
 	Country          *string `json:"country,omitempty"`
 	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
@@ -569,6 +570,7 @@ type UserHTTP struct {
 	Lastname         string  `json:"lastname"`
 	Middlename       string  `json:"middlename"`
 	Company          string  `json:"company,omitempty"`
+	Bio              *string `json:"bio,omitempty"`
 	LevelOfEducation *string `json:"levelOfEducation,omitempty"`
 	Country          *string `json:"country,omitempty"`
 	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
