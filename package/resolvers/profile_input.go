@@ -11,6 +11,7 @@ func userHTTPFromProfileInput(input models.UpdateProfileInput) *models.UserHTTP 
 		Firstname:        input.Firstname,
 		Lastname:         input.Lastname,
 		Middlename:       input.Middlename,
+		Bio:              input.Bio,
 		LevelOfEducation: input.LevelOfEducation,
 		Country:          input.Country,
 		YearOfBirth:      input.YearOfBirth,

@@ -2945,6 +2945,7 @@ extend type Mutation {
     firstname: String!
     lastname: String!
     middlename: String!
+    bio: String
     levelOfEducation: String
     country: String
     yearOfBirth: Int
@@ -2961,6 +2962,7 @@ input UpdateProfileInput {
     firstname: String!
     lastname: String!
     middlename: String!
+    bio: String
     levelOfEducation: String
     country: String
     yearOfBirth: Int
@@ -7335,6 +7337,8 @@ func (ec *executionContext) fieldContext_FreeListenerHttp_userHttp(ctx context.C
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
 			case "fullName":
 				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "bio":
+				return ec.fieldContext_UserHttp_bio(ctx, field)
 			case "levelOfEducation":
 				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
 			case "country":
@@ -10065,6 +10069,8 @@ func (ec *executionContext) fieldContext_ParentHttp_userHttp(ctx context.Context
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
 			case "fullName":
 				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "bio":
+				return ec.fieldContext_UserHttp_bio(ctx, field)
 			case "levelOfEducation":
 				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
 			case "country":
@@ -14192,6 +14198,8 @@ func (ec *executionContext) fieldContext_StudentHttp_userHttp(ctx context.Contex
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
 			case "fullName":
 				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "bio":
+				return ec.fieldContext_UserHttp_bio(ctx, field)
 			case "levelOfEducation":
 				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
 			case "country":
@@ -14604,6 +14612,8 @@ func (ec *executionContext) fieldContext_SuperAdminHttp_userHttp(ctx context.Con
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
 			case "fullName":
 				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "bio":
+				return ec.fieldContext_UserHttp_bio(ctx, field)
 			case "levelOfEducation":
 				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
 			case "country":
@@ -14680,6 +14690,8 @@ func (ec *executionContext) fieldContext_TeacherHttp_userHttp(ctx context.Contex
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
 			case "fullName":
 				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "bio":
+				return ec.fieldContext_UserHttp_bio(ctx, field)
 			case "levelOfEducation":
 				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
 			case "country":
@@ -14848,6 +14860,8 @@ func (ec *executionContext) fieldContext_UnitAdminHttp_userHttp(ctx context.Cont
 				return ec.fieldContext_UserHttp_nickname(ctx, field)
 			case "fullName":
 				return ec.fieldContext_UserHttp_fullName(ctx, field)
+			case "bio":
+				return ec.fieldContext_UserHttp_bio(ctx, field)
 			case "levelOfEducation":
 				return ec.fieldContext_UserHttp_levelOfEducation(ctx, field)
 			case "country":
@@ -15217,6 +15231,47 @@ func (ec *executionContext) _UserHttp_fullName(ctx context.Context, field graphq
 }
 
 func (ec *executionContext) fieldContext_UserHttp_fullName(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "UserHttp",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _UserHttp_bio(ctx context.Context, field graphql.CollectedField, obj *models.UserHTTP) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_UserHttp_bio(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx
+		return obj.Bio, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_UserHttp_bio(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "UserHttp",
 		Field:      field,
@@ -18054,7 +18109,7 @@ func (ec *executionContext) unmarshalInputUpdateProfileInput(ctx context.Context
 		asMap[k] = v
 	}
 
-	fieldsInOrder := [...]string{"id", "email", "nickname", "fullName", "firstname", "lastname", "middlename", "levelOfEducation", "country", "yearOfBirth", "gender", "language"}
+	fieldsInOrder := [...]string{"id", "email", "nickname", "fullName", "firstname", "lastname", "middlename", "bio", "levelOfEducation", "country", "yearOfBirth", "gender", "language"}
 	for _, k := range fieldsInOrder {
 		v, ok := asMap[k]
 		if !ok {
@@ -18114,6 +18169,14 @@ func (ec *executionContext) unmarshalInputUpdateProfileInput(ctx context.Context
 
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("middlename"))
 			it.Middlename, err = ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+		case "bio":
+			var err error
+
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("bio"))
+			it.Bio, err = ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -22054,6 +22117,9 @@ func (ec *executionContext) _UserHttp(ctx context.Context, sel ast.SelectionSet,
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
+		case "bio":
+
+			out.Values[i] = ec._UserHttp_bio(ctx, field, obj)
 		case "levelOfEducation":
 
 			out.Values[i] = ec._UserHttp_levelOfEducation(ctx, field, obj)
