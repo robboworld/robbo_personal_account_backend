@@ -18,3 +18,4 @@
 postgres_data/
 server.log
 *.pem
+keys/licensing/addon/paid-addon.local.js
