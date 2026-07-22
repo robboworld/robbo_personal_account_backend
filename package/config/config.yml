@@ -41,6 +41,14 @@ lmsMysql:
   # Or env LMS_MYSQL_WRITE_DSN — profile updates (dev: root)
   writeDsn: "root:lms_root_change_me@tcp(localhost:3307)/openedx"
 
+elasticsearch:
+  # Or env ELASTICSEARCH_URL. Empty / disabled → MySQL-only username search.
+  enabled: true
+  url: "http://127.0.0.1:9200"
+  index: "lk_lms_users"
+  # Periodic reindex interval in minutes (0 disables ticker; startup reindex still runs).
+  reindexIntervalMinutes: 5
+
 lmsNotifications:
   enabled: false
   ingestBearerToken: ""

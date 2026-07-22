@@ -199,7 +199,8 @@ func (h *Handler) CreateProjectPage(c *gin.Context) {
 		return
 	}
 
-	projectPage, err := h.projectPageDelegate.CreateProjectPage(userId)
+	locale := projectPage.LocaleFromAcceptLanguage(c.GetHeader("Accept-Language"))
+	created, err := h.projectPageDelegate.CreateProjectPage(userId, locale)
 
 	if err != nil {
 		log.Println(err)
@@ -208,7 +209,7 @@ func (h *Handler) CreateProjectPage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, createProjectPageResponse{
-		&projectPage,
+		&created,
 	})
 }
 
