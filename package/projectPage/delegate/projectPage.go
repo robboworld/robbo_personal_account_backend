@@ -26,8 +26,8 @@ func SetupProjectPageDelegate(usecase projectPage.UseCase) ProjectPageDelegateMo
 	}
 }
 
-func (p *ProjectPageDelegateImpl) CreateProjectPage(authorId string) (newProjectPage models.ProjectPageHTTP, err error) {
-	newProjectPageCore, err := p.UseCase.CreateProjectPage(authorId)
+func (p *ProjectPageDelegateImpl) CreateProjectPage(authorId string, locale string) (newProjectPage models.ProjectPageHTTP, err error) {
+	newProjectPageCore, err := p.UseCase.CreateProjectPage(authorId, locale)
 	if err != nil {
 		log.Println(err)
 		return

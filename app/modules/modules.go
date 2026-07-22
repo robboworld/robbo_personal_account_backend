@@ -1,6 +1,8 @@
 package modules
 
 import (
+	"context"
+
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	authdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/auth/delegate"
 	authgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/auth/gateway"
@@ -62,6 +64,9 @@ import (
 	usersgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/users/gateway"
 	usershtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/users/http"
 	usersusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/users/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch"
+	usersearchhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch/http"
+	"go.uber.org/fx"
 )
 
 type GatewayModule struct {
@@ -176,7 +181,23 @@ type HandlerModule struct {
 	LicensingHandler           lichttp.Handler
 	PortalNotificationsHandler portalhttp.NotificationsHandler
 	NotificationsHandler       notificationhttp.Handler
+	UserSearchHandler          usersearchhttp.Handler
 	OIDCHandler                *oidchttp.Handler
+}
+
+func SetupUserSearchService() *usersearch.Service {
+	return usersearch.NewFromConfig()
+}
+
+func StartUserSearchSync(service *usersearch.Service, lc fx.Lifecycle) {
+	lc.Append(fx.Hook{
+		OnStop: func(ctx context.Context) error {
+			if service != nil {
+				service.Stop()
+			}
+			return nil
+		},
+	})
 }
 
 func SetupHandler(
@@ -184,6 +205,7 @@ func SetupHandler(
 	usecase UseCaseModule,
 	portalNotifications portalhttp.NotificationsHandler,
 	oidcHandler *oidchttp.Handler,
+	userSearch *usersearch.Service,
 ) HandlerModule {
 	return HandlerModule{
 		ProjectsHandler: prjhttp.NewProjectsHandler(delegate.AuthDelegate, delegate.ProjectsDelegate, delegate.ProjectPageDelegate),
@@ -202,6 +224,7 @@ func SetupHandler(
 		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate),
 		PortalNotificationsHandler: portalNotifications,
 		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
+		UserSearchHandler:          usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
 		OIDCHandler:                oidcHandler,
 	}
 }
