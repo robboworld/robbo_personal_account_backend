@@ -7,8 +7,8 @@ COPY go.sum ./
 RUN go mod download
 
 COPY . .
-# Tracked template only; local secrets live in package/config/config.yml (gitignored) or env.
-RUN if [ ! -f package/config/config.yml ]; then cp package/config/config.yml.example package/config/config.yml; fi
+# Image always gets the template; shop secrets come from env (PAYMENTS_YOOKASSA_*).
+RUN cp package/config/config.yml.example package/config/config.yml
 RUN go build -o robbo_server
 
 EXPOSE 8080
