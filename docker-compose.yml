@@ -40,8 +40,14 @@ services:
       - API_TOKEN=GiafmKI2tyt9pyXDpEVYto0Ar2qmOS
       - API_CLIENT_ID=uYSlyzAlmR2dEuukRWkqjcYjK6BplIYyXo8SawJl
       - API_CLIENT_SECRET=vWXLUQf9KsOFtl5RhxkNozjIVV3gWZDcUERpLXd8ypAtrHmiCo1tLG0N9TV4ryIgnOcZZt3Cnc4oUXLUpfacXB3ocSBJCIJAK5cax6xm9ElhBjHlc6dKPE8rd72lZWQM
+      # YooKassa (optional; from backend/.env — never commit secrets)
+      - PAYMENTS_YOOKASSA_SHOP_ID=${PAYMENTS_YOOKASSA_SHOP_ID:-}
+      - PAYMENTS_YOOKASSA_SECRET_KEY=${PAYMENTS_YOOKASSA_SECRET_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      # Local RSA keys + addon (placeholder or paid-addon.local.js from sync_paid_addon.sh)
+      - ./keys/licensing:/app/keys/licensing:ro
     ports:
       - 8080:8080
     networks:
