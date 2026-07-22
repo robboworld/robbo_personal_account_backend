@@ -120,6 +120,8 @@ type IssueLicenseInput struct {
 	ExpiresAt    time.Time
 	Note         string
 	IssuedBy     string
+	ProductID    string
+	Source       string
 }
 
 type ActivateResult struct {

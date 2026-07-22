@@ -18,3 +18,9 @@
 postgres_data/
 server.log
 *.pem
+keys/licensing/addon/paid-addon.local.js
+.env
+!.env.example
+
+# Local overrides (copy from config.yml.example). Secrets: PAYMENTS_YOOKASSA_* via env/.env
+package/config/config.yml

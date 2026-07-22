@@ -70,16 +70,21 @@ func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*mo
 	if err != nil {
 		return nil, err
 	}
+	source := input.Source
+	if source == "" {
+		source = models.LicenseSourceAdmin
+	}
 	license := &models.LicenseCore{
 		LmsUserID:    input.LmsUserID,
 		LicenseKey:   key,
 		Status:       models.LicenseStatusActive,
-		Source:       models.LicenseSourceAdmin,
+		Source:       source,
 		SeatLimit:    seatLimit,
 		Capabilities: caps,
 		ExpiresAt:    expiresAt.UTC(),
 		IssuedBy:     input.IssuedBy,
 		Note:         input.Note,
+		ProductID:    input.ProductID,
 	}
 	return u.gateway.CreateLicense(license)
 }
@@ -417,12 +422,23 @@ func readAddonPlaintext() ([]byte, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("manifest_build_failed")
 	}
-	path := filepath.Join(dir, "paid-addon.js")
-	data, err := os.ReadFile(path)
-	if err != nil {
+	// Prefer local override from private rs3-paid-addon (gitignored); else placeholder.
+	candidates := []string{
+		filepath.Join(dir, "paid-addon.local.js"),
+		filepath.Join(dir, "paid-addon.js"),
+	}
+	var lastErr error
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
 		return nil, fmt.Errorf("manifest_build_failed")
 	}
-	return data, nil
+	return nil, fmt.Errorf("manifest_build_failed")
 }
 
 func randomHex(nBytes int) (string, error) {

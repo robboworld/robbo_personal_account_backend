@@ -49,9 +49,30 @@ func main() {
 	}
 
 	if _, err := os.Stat(addonPath); err != nil {
-		placeholder := "// rs3 paid-addon placeholder for local licensing tests\n" +
-			"globalThis.__RS3_PAID_ADDON_FACTORY__ = function () {\n" +
-			"  return { id: 'rs3-paid-addon', capabilities: ['premium.auto_update'] };\n" +
+		placeholder := "// rs3 paid-addon placeholder for local licensing tests.\n" +
+			"// Must match core contract: factory(registryHooks, licenseContext) registers premium auto-update.\n" +
+			"globalThis.__RS3_PAID_ADDON_FACTORY__ = function (registry, licenseContext) {\n" +
+			"  if (!registry || typeof registry.registerPaidAutoUpdate !== 'function') {\n" +
+			"    throw new Error('addon_registry_missing');\n" +
+			"  }\n" +
+			"  var ctx = licenseContext || {};\n" +
+			"  registry.registerPaidAutoUpdate({\n" +
+			"    checkForUpdates: function () {\n" +
+			"      return Promise.resolve({\n" +
+			"        updatesAvailable: false,\n" +
+			"        currentVersion: ctx.currentAppVersion || '',\n" +
+			"        latestVersion: '',\n" +
+			"        downloadUrl: '',\n" +
+			"        placeholder: true\n" +
+			"      });\n" +
+			"    },\n" +
+			"    downloadAndInstall: function () {\n" +
+			"      return Promise.resolve({\n" +
+			"        error: 'DESKTOP_ONLY',\n" +
+			"        message: 'Placeholder paid-addon: sync real rs3-paid-addon for install.'\n" +
+			"      });\n" +
+			"    }\n" +
+			"  });\n" +
 			"};\n"
 		if err := os.WriteFile(addonPath, []byte(placeholder), 0o644); err != nil {
 			panic(err)

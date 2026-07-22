@@ -1,0 +1,4 @@
+# Local secrets and env — never bake into the image
+.env
+package/config/config.yml
+keys/licensing/addon/paid-addon.local.js
