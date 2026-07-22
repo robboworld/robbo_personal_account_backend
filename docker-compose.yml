@@ -21,6 +21,8 @@ services:
       - LICENSING_ADDON_STATIC_DIR=/app/keys/licensing/addon
       - LMS_MYSQL_DSN=lk_readonly:lk_readonly_change_me@tcp(host.docker.internal:3307)/openedx
       - LMS_MYSQL_WRITE_DSN=root:lms_root_change_me@tcp(host.docker.internal:3307)/openedx
+      - ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-http://host.docker.internal:9200}
+      - ELASTICSEARCH_ENABLED=${ELASTICSEARCH_ENABLED:-true}
       # authorize/issuer — localhost (browser redirect); token/jwks — host.docker.internal (BFF inside container)
       - OIDC_ISSUER=http://localhost:8081/default
       - OIDC_AUTHORIZATION_ENDPOINT=http://localhost:8081/default/authorize
