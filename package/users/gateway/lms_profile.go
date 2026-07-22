@@ -67,6 +67,7 @@ func userCoreFromLMSProfile(u *lmsdb.AuthUserProfile) models.UserCore {
 		YearOfBirth:      nullIntToPtr(u.YearOfBirth),
 		Gender:           nullStringToValue(u.Gender),
 		Language:         nullStringToValue(u.Language),
+		Bio:              nullStringToValue(u.Bio),
 		Role:             lmsRoleFromProfile(u),
 		CreatedAt:        u.DateJoined.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -79,6 +80,7 @@ func profileExtendedFromCore(core models.UserCore) lmsdb.ProfileExtendedUpdate {
 		YearOfBirth:      core.YearOfBirth,
 		Gender:           core.Gender,
 		Language:         core.Language,
+		Bio:              core.Bio,
 	}
 }
 

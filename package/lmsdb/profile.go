@@ -26,6 +26,7 @@ type AuthUserProfile struct {
 	YearOfBirth      sql.NullInt64
 	Gender           sql.NullString
 	Language         sql.NullString
+	Bio              sql.NullString
 	Meta             string
 	IsStaff          bool
 	IsSuperuser      bool
@@ -40,13 +41,14 @@ type ProfileExtendedUpdate struct {
 	YearOfBirth      *int
 	Gender           string
 	Language         string
+	Bio              string
 }
 
 const authUserProfileJoinSelect = `SELECT u.id, u.username, u.email, u.first_name, u.last_name,
 	u.is_staff, u.is_superuser, u.is_active, u.date_joined,
 	COALESCE(p.name, '') AS profile_name,
 	p.level_of_education, p.country, p.year_of_birth, p.gender, p.language,
-	COALESCE(p.meta, '') AS meta
+	p.bio, COALESCE(p.meta, '') AS meta
 FROM auth_user u
 LEFT JOIN auth_userprofile p ON p.user_id = u.id`
 
@@ -57,7 +59,7 @@ func scanAuthUserProfile(row *sql.Row) (*AuthUserProfile, error) {
 	if err := row.Scan(
 		&u.ID, &u.Username, &u.Email, &u.FirstName, &u.LastName,
 		&isStaff, &isSuper, &isActive, &dateJoined, &u.ProfileName,
-		&u.LevelOfEducation, &u.Country, &u.YearOfBirth, &u.Gender, &u.Language, &u.Meta,
+		&u.LevelOfEducation, &u.Country, &u.YearOfBirth, &u.Gender, &u.Language, &u.Bio, &u.Meta,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -78,7 +80,7 @@ func scanAuthUserProfileRows(rows *sql.Rows) (AuthUserProfile, error) {
 	if err := rows.Scan(
 		&u.ID, &u.Username, &u.Email, &u.FirstName, &u.LastName,
 		&isStaff, &isSuper, &isActive, &dateJoined, &u.ProfileName,
-		&u.LevelOfEducation, &u.Country, &u.YearOfBirth, &u.Gender, &u.Language, &u.Meta,
+		&u.LevelOfEducation, &u.Country, &u.YearOfBirth, &u.Gender, &u.Language, &u.Bio, &u.Meta,
 	); err != nil {
 		return AuthUserProfile{}, err
 	}
@@ -331,7 +333,7 @@ func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExte
 
 	res, err = tx.Exec(
 		`UPDATE auth_userprofile SET name = ?, level_of_education = ?, country = ?,
-		 year_of_birth = ?, gender = ?, language = ?
+		 year_of_birth = ?, gender = ?, language = ?, bio = ?
 		 WHERE user_id = ?`,
 		fullName,
 		nullString(ext.LevelOfEducation),
@@ -339,6 +341,7 @@ func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExte
 		nullInt(ext.YearOfBirth),
 		nullString(ext.Gender),
 		profileLanguage(ext.Language),
+		nullString(ext.Bio),
 		id,
 	)
 	if err != nil {
@@ -354,13 +357,14 @@ func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExte
 		if errors.Is(err, sql.ErrNoRows) {
 			_, err = tx.Exec(
 				`INSERT INTO auth_userprofile (name, meta, courseware, language, location,
-				 level_of_education, country, year_of_birth, gender, user_id)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 level_of_education, country, year_of_birth, gender, bio, user_id)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				fullName, "", defaultProfileCourseware, profileLanguage(ext.Language), defaultProfileLocation,
 				nullString(ext.LevelOfEducation),
 				nullString(ext.Country),
 				nullInt(ext.YearOfBirth),
 				nullString(ext.Gender),
+				nullString(ext.Bio),
 				id,
 			)
 			if err != nil {
