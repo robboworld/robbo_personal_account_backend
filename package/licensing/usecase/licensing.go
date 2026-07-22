@@ -417,12 +417,23 @@ func readAddonPlaintext() ([]byte, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("manifest_build_failed")
 	}
-	path := filepath.Join(dir, "paid-addon.js")
-	data, err := os.ReadFile(path)
-	if err != nil {
+	// Prefer local override from private rs3-paid-addon (gitignored); else placeholder.
+	candidates := []string{
+		filepath.Join(dir, "paid-addon.local.js"),
+		filepath.Join(dir, "paid-addon.js"),
+	}
+	var lastErr error
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
 		return nil, fmt.Errorf("manifest_build_failed")
 	}
-	return data, nil
+	return nil, fmt.Errorf("manifest_build_failed")
 }
 
 func randomHex(nBytes int) (string, error) {
