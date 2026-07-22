@@ -17,4 +17,8 @@ type Delegate interface {
 	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
 	GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error)
 	SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error
+	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)
+	GetProjectReactions(projectPageId, viewerId string) (*models.ProjectReactionsHTTP, error)
+	PutProjectReaction(projectPageId, userId, reactionCode string) (*models.ProjectReactionsHTTP, error)
+	DeleteProjectReaction(projectPageId, userId string) (*models.ProjectReactionsHTTP, error)
 }
