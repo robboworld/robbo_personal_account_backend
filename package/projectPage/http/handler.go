@@ -68,6 +68,10 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 	{
 		projectPageGroup.POST("/", h.CreateProjectPage)
 		projectPageGroup.GET("/public", h.GetPublicProjectPages)
+		projectPageGroup.GET("/reaction-types", h.ListReactionTypes)
+		projectPageGroup.GET("/:projectPageId/reactions", h.GetProjectReactions)
+		projectPageGroup.PUT("/:projectPageId/reactions", h.PutProjectReaction)
+		projectPageGroup.DELETE("/:projectPageId/reactions", h.DeleteProjectReaction)
 		projectPageGroup.GET("/:projectPageId/play-token", h.IssuePlayToken)
 		projectPageGroup.GET("/:projectPageId/play", h.PlayProjectSb3)
 		projectPageGroup.GET("/:projectPageId/download", h.DownloadProjectSb3)
@@ -77,7 +81,7 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 		projectPageGroup.GET("/:projectPageId", h.GetProjectPageById)
 		projectPageGroup.GET("/", h.GetAllProjectPageByUserId)
 		projectPageGroup.PUT("/", h.UpdateProjectPage)
-		projectPageGroup.DELETE("/:projectId", h.DeleteProjectPage)
+		projectPageGroup.DELETE("/:projectPageId", h.DeleteProjectPage)
 	}
 }
 
@@ -98,6 +102,81 @@ func optionalViewerID(c *gin.Context, authDelegate auth.Delegate) string {
 		}
 	}
 	return ""
+}
+
+func (h *Handler) ListReactionTypes(c *gin.Context) {
+	types, err := h.projectPageDelegate.ListEnabledReactionTypes()
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	if types == nil {
+		types = []models.ReactionTypeHTTP{}
+	}
+	c.JSON(http.StatusOK, gin.H{"types": types})
+}
+
+func (h *Handler) GetProjectReactions(c *gin.Context) {
+	viewerID := ""
+	if id, _, err := h.authDelegate.UserIdentity(c); err == nil {
+		viewerID = id
+	}
+	summary, err := h.projectPageDelegate.GetProjectReactions(c.Param("projectPageId"), viewerID)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *Handler) reactionIdentity(c *gin.Context) (string, bool) {
+	userID, role, err := h.authDelegate.UserIdentity(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return "", false
+	}
+	if err := h.authDelegate.UserAccess(role, allAuthenticatedRoles(), c); err != nil {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		return "", false
+	}
+	return userID, true
+}
+
+func (h *Handler) PutProjectReaction(c *gin.Context) {
+	userID, ok := h.reactionIdentity(c)
+	if !ok {
+		return
+	}
+	var request struct {
+		Code string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	summary, err := h.projectPageDelegate.PutProjectReaction(
+		c.Param("projectPageId"),
+		userID,
+		request.Code,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *Handler) DeleteProjectReaction(c *gin.Context) {
+	userID, ok := h.reactionIdentity(c)
+	if !ok {
+		return
+	}
+	summary, err := h.projectPageDelegate.DeleteProjectReaction(c.Param("projectPageId"), userID)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
 }
 
 type createProjectPageResponse struct {
@@ -338,7 +417,7 @@ func (h *Handler) DeleteProjectPage(c *gin.Context) {
 		ErrorHandling(accessErr, c)
 		return
 	}
-	projectId := c.Param("projectId")
+	projectId := c.Param("projectPageId")
 
 	err := h.projectPageDelegate.DeleteProjectPage(projectId, userId)
 	if err != nil {
@@ -411,6 +490,7 @@ type getPublicProjectPagesResponse struct {
 }
 
 func (h *Handler) GetPublicProjectPages(c *gin.Context) {
+	// Public catalog is guest-readable; do not require Authorization.
 	page := c.DefaultQuery("page", "1")
 	pageSize := c.DefaultQuery("pageSize", "10")
 	featured := strings.ToLower(strings.TrimSpace(c.Query("featured")))

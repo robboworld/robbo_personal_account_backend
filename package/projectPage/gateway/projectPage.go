@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ProjectPageGatewayImpl struct {
@@ -388,4 +389,82 @@ func (r *ProjectPageGatewayImpl) SaveSb3Archive(projectPageId, userID string, ar
 			"current_version_id": ver.ID,
 		}).Error
 	})
+}
+
+func (r *ProjectPageGatewayImpl) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {
+	var rows []models.ScratchReactionTypeDB
+	err := r.projectStorageDB.
+		Where("is_enabled = ?", true).
+		Order("sort_order ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make([]models.ReactionTypeHTTP, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, models.ReactionTypeHTTP{
+			Code:  row.Code,
+			Emoji: row.Emoji,
+		})
+	}
+	return out, nil
+}
+
+func (r *ProjectPageGatewayImpl) GetProjectReactionSummary(projectId, viewerUserId string) (*models.ProjectReactionsHTTP, error) {
+	counts := make([]models.ReactionCountHTTP, 0)
+	err := r.projectStorageDB.Raw(`
+		SELECT t.code, t.emoji, COUNT(reaction.user_id) AS count
+		FROM scratch_reaction_types t
+		LEFT JOIN scratch_project_reactions reaction
+		  ON reaction.reaction_code = t.code AND reaction.project_id = ?
+		WHERE t.is_enabled = TRUE
+		GROUP BY t.code, t.emoji, t.sort_order
+		ORDER BY t.sort_order ASC
+	`, projectId).Scan(&counts).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var myReaction *string
+	if viewerUserId != "" {
+		var row models.ScratchProjectReactionDB
+		err = r.projectStorageDB.
+			Where("project_id = ? AND user_id = ?", projectId, viewerUserId).
+			First(&row).Error
+		switch {
+		case err == nil:
+			code := row.ReactionCode
+			myReaction = &code
+		case errors.Is(err, gorm.ErrRecordNotFound):
+			myReaction = nil
+		default:
+			return nil, err
+		}
+	}
+
+	return &models.ProjectReactionsHTTP{
+		Counts:     counts,
+		MyReaction: myReaction,
+	}, nil
+}
+
+func (r *ProjectPageGatewayImpl) UpsertProjectReaction(projectId, userId, reactionCode string) error {
+	reaction := models.ScratchProjectReactionDB{
+		ProjectID:    projectId,
+		UserID:       userId,
+		ReactionCode: reactionCode,
+	}
+	return r.projectStorageDB.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "project_id"}, {Name: "user_id"}},
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"reaction_code": reactionCode,
+			"updated_at":    gorm.Expr("now()"),
+		}),
+	}).Create(&reaction).Error
+}
+
+func (r *ProjectPageGatewayImpl) DeleteProjectReaction(projectId, userId string) error {
+	return r.projectStorageDB.
+		Where("project_id = ? AND user_id = ?", projectId, userId).
+		Delete(&models.ScratchProjectReactionDB{}).Error
 }

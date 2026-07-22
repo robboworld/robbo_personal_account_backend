@@ -218,7 +218,7 @@ func (h Handler) Callback(c *gin.Context) {
 		return
 	}
 	secure := viper.GetBool("auth.refresh_cookie_secure")
-	c.SetCookie(oidc.SessionCookieName, session, viper.GetInt("auth.access_token_ttl"), "/", "", secure, true)
+	c.SetCookie(oidc.SessionCookieName, session, oidc.SessionTTLSeconds(), "/", "", secure, true)
 	target := entry.ReturnTo
 	if target == "" {
 		target = "/home"

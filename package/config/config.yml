@@ -14,6 +14,7 @@ auth:
   access_signing_key: ""
   refresh_signing_key: ""
   access_token_ttl: 86400 # 5 min 60*5
+  bff_session_ttl: 28800 # 8 hours
   refresh_token_ttl: 604800 # 7 day
   refresh_cookie_secure: false
 
