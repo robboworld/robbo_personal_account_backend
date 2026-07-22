@@ -70,16 +70,21 @@ func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*mo
 	if err != nil {
 		return nil, err
 	}
+	source := input.Source
+	if source == "" {
+		source = models.LicenseSourceAdmin
+	}
 	license := &models.LicenseCore{
 		LmsUserID:    input.LmsUserID,
 		LicenseKey:   key,
 		Status:       models.LicenseStatusActive,
-		Source:       models.LicenseSourceAdmin,
+		Source:       source,
 		SeatLimit:    seatLimit,
 		Capabilities: caps,
 		ExpiresAt:    expiresAt.UTC(),
 		IssuedBy:     input.IssuedBy,
 		Note:         input.Note,
+		ProductID:    input.ProductID,
 	}
 	return u.gateway.CreateLicense(license)
 }

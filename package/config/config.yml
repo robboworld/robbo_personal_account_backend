@@ -73,6 +73,18 @@ licensing:
   addonStaticDir: "./keys/licensing/addon"
   addonVersion: "0.2.0"
 
+# YooKassa checkout for RS3 licenses (Phase 2). Secrets via env:
+# PAYMENTS_YOOKASSA_SHOP_ID, PAYMENTS_YOOKASSA_SECRET_KEY
+payments:
+  yookassaShopId: ""
+  yookassaSecretKey: ""
+  webhookSkipIpCheck: true
+  receiptVatCode: 1
+  receiptPaymentSubject: "service"
+  receiptPaymentMode: "full_payment"
+  sendReceipt: true
+  returnUrlBase: "http://localhost:3030/licenses/receipt"
+
 api_urls:
   refreshToken: "https://edx-test.ru/oauth2/access_token"
   getUser: "https://edx-test.ru/api/user/v1/me"

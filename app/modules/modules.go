@@ -46,6 +46,11 @@ import (
 	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
 	lichttp "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/http"
 	licusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/payments"
+	paydelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/delegate"
+	paygateway "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/gateway"
+	payhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/http"
+	payusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/resolvers"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	robboGroupdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/delegate"
@@ -73,6 +78,7 @@ type GatewayModule struct {
 	NotificationsGateway notifications.Gateway
 	ProjectsGateway      projects.Gateway
 	LicensingGateway     licensing.Gateway
+	PaymentsGateway      payments.Gateway
 	RobboGroupGateway    robboGroup.Gateway
 	RobboUnitsGateway    robboUnits.Gateway
 	UsersGateway         users.Gateway
@@ -88,6 +94,7 @@ func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
 		NotificationsGateway: notificationgateway.SetupNotificationGateway(postgresClient),
 		ProjectsGateway:      prjgateway.SetupProjectsGateway(postgresClient),
 		LicensingGateway:     licgateway.SetupLicensingGateway(postgresClient),
+		PaymentsGateway:      paygateway.SetupPaymentsGateway(postgresClient),
 		RobboGroupGateway:    robboGroupgateway.SetupRobboGroupGateway(postgresClient),
 		RobboUnitsGateway:    robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
 		UsersGateway:         usersgateway.SetupUsersGateway(postgresClient),
@@ -104,12 +111,14 @@ type UseCaseModule struct {
 	NotificationsUseCase notifications.UseCase
 	ProjectsUseCase      projects.UseCase
 	LicensingUseCase     licensing.UseCase
+	PaymentsUseCase      payments.UseCase
 	RobboGroupUseCase    robboGroup.UseCase
 	RobboUnitsUseCase    robboUnits.UseCase
 	UsersUseCase         users.UseCase
 }
 
 func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) UseCaseModule {
+	licensingUC := licusecase.SetupLicensingUseCase(gateway.LicensingGateway)
 	return UseCaseModule{
 		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway, portalGateway),
 		CohortsUseCase:      chrtusecase.SetupCohortUseCase(gateway.CohortsGateway),
@@ -127,8 +136,9 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) Us
 			gateway.ProjectsGateway,
 			gateway.NotificationsGateway,
 		),
-		ProjectsUseCase:   prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
-		LicensingUseCase:  licusecase.SetupLicensingUseCase(gateway.LicensingGateway),
+		ProjectsUseCase:  prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
+		LicensingUseCase: licensingUC.UseCase,
+		PaymentsUseCase:  payusecase.SetupPaymentsUseCase(gateway.PaymentsGateway, licensingUC.UseCase).UseCase,
 		RobboGroupUseCase: robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
 		RobboUnitsUseCase: robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
 		UsersUseCase:      usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
@@ -143,6 +153,7 @@ type DelegateModule struct {
 	ProjectPageDelegate  projectPage.Delegate
 	ProjectsDelegate     projects.Delegate
 	LicensingDelegate    licensing.Delegate
+	PaymentsDelegate     payments.Delegate
 	RobboGroupDelegate   robboGroup.Delegate
 	RobboUnitsDelegate   robboUnits.Delegate
 	UsersDelegate        users.Delegate
@@ -157,6 +168,7 @@ func SetupDelegate(usecase UseCaseModule) DelegateModule {
 		ProjectPageDelegate:  ppagedelegate.SetupProjectPageDelegate(usecase.ProjectPageUseCase),
 		ProjectsDelegate:     prjdelegate.SetupProjectDelegate(usecase.ProjectsUseCase),
 		LicensingDelegate:    licdelegate.SetupLicensingDelegate(usecase.LicensingUseCase),
+		PaymentsDelegate:     paydelegate.SetupPaymentsDelegate(usecase.PaymentsUseCase),
 		RobboGroupDelegate:   robboGroupdelegate.SetupRobboGroupDelegate(usecase.RobboGroupUseCase),
 		RobboUnitsDelegate:   robboUnitsdelegate.SetupRobboUnitsDelegate(usecase.RobboUnitsUseCase),
 		UsersDelegate:        usersdelegate.SetupUsersDelegate(usecase.UsersUseCase),
@@ -174,6 +186,7 @@ type HandlerModule struct {
 	RobboGroupHandler          robboGrouphttp.Handler
 	CoursePacketHandler        coursePackethttp.Handler
 	LicensingHandler           lichttp.Handler
+	PaymentsHandler            payhttp.Handler
 	PortalNotificationsHandler portalhttp.NotificationsHandler
 	NotificationsHandler       notificationhttp.Handler
 	OIDCHandler                *oidchttp.Handler
@@ -200,6 +213,7 @@ func SetupHandler(
 		RobboGroupHandler:          robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
 		CoursePacketHandler:        coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
 		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate),
+		PaymentsHandler:            payhttp.NewPaymentsHandler(delegate.AuthDelegate, delegate.PaymentsDelegate),
 		PortalNotificationsHandler: portalNotifications,
 		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
 		OIDCHandler:                oidcHandler,
