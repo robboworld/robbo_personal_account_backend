@@ -24,8 +24,12 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	edxusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/edx/usecase"
-	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
+	notificationgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/notifications/gateway"
+	notificationhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/notifications/http"
+	notificationusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/notifications/usecase"
 	oidchttp "github.com/skinnykaen/robbo_student_personal_account.git/package/oidc/http"
+	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
 	portalhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/http"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	ppagedelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/delegate"
@@ -61,45 +65,48 @@ import (
 )
 
 type GatewayModule struct {
-	AuthGateway         auth.Gateway
-	CohortsGateway      cohorts.Gateway
-	CoursePacketGateway coursePacket.Gateway
-	CoursesGateway      courses.Gateway
-	ProjectPageGateway  projectPage.Gateway
-	ProjectsGateway     projects.Gateway
-	LicensingGateway    licensing.Gateway
-	RobboGroupGateway   robboGroup.Gateway
-	RobboUnitsGateway   robboUnits.Gateway
-	UsersGateway        users.Gateway
+	AuthGateway          auth.Gateway
+	CohortsGateway       cohorts.Gateway
+	CoursePacketGateway  coursePacket.Gateway
+	CoursesGateway       courses.Gateway
+	ProjectPageGateway   projectPage.Gateway
+	NotificationsGateway notifications.Gateway
+	ProjectsGateway      projects.Gateway
+	LicensingGateway     licensing.Gateway
+	RobboGroupGateway    robboGroup.Gateway
+	RobboUnitsGateway    robboUnits.Gateway
+	UsersGateway         users.Gateway
 }
 
 func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
 	return GatewayModule{
-		AuthGateway:         authgateway.SetupAuthGateway(postgresClient),
-		CohortsGateway:      chrtgateway.SetupCohortsGateway(postgresClient),
-		CoursePacketGateway: coursePacketgateway.SetupCoursePacketGateway(postgresClient),
-		CoursesGateway:      crsgateway.SetupCoursesGateway(postgresClient),
-		ProjectPageGateway:  ppagegateway.SetupProjectPageGateway(postgresClient),
-		ProjectsGateway:     prjgateway.SetupProjectsGateway(postgresClient),
-		LicensingGateway:    licgateway.SetupLicensingGateway(postgresClient),
-		RobboGroupGateway:   robboGroupgateway.SetupRobboGroupGateway(postgresClient),
-		RobboUnitsGateway:   robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
-		UsersGateway:        usersgateway.SetupUsersGateway(postgresClient),
+		AuthGateway:          authgateway.SetupAuthGateway(postgresClient),
+		CohortsGateway:       chrtgateway.SetupCohortsGateway(postgresClient),
+		CoursePacketGateway:  coursePacketgateway.SetupCoursePacketGateway(postgresClient),
+		CoursesGateway:       crsgateway.SetupCoursesGateway(postgresClient),
+		ProjectPageGateway:   ppagegateway.SetupProjectPageGateway(postgresClient),
+		NotificationsGateway: notificationgateway.SetupNotificationGateway(postgresClient),
+		ProjectsGateway:      prjgateway.SetupProjectsGateway(postgresClient),
+		LicensingGateway:     licgateway.SetupLicensingGateway(postgresClient),
+		RobboGroupGateway:    robboGroupgateway.SetupRobboGroupGateway(postgresClient),
+		RobboUnitsGateway:    robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
+		UsersGateway:         usersgateway.SetupUsersGateway(postgresClient),
 	}
 }
 
 type UseCaseModule struct {
-	AuthUseCase         auth.UseCase
-	CohortsUseCase      cohorts.UseCase
-	CoursePacketUseCase coursePacket.UseCase
-	CoursesUseCase      courses.UseCase
-	EdxUseCase          edx.UseCase
-	ProjectPageUseCase  projectPage.UseCase
-	ProjectsUseCase     projects.UseCase
-	LicensingUseCase    licensing.UseCase
-	RobboGroupUseCase   robboGroup.UseCase
-	RobboUnitsUseCase   robboUnits.UseCase
-	UsersUseCase        users.UseCase
+	AuthUseCase          auth.UseCase
+	CohortsUseCase       cohorts.UseCase
+	CoursePacketUseCase  coursePacket.UseCase
+	CoursesUseCase       courses.UseCase
+	EdxUseCase           edx.UseCase
+	ProjectPageUseCase   projectPage.UseCase
+	NotificationsUseCase notifications.UseCase
+	ProjectsUseCase      projects.UseCase
+	LicensingUseCase     licensing.UseCase
+	RobboGroupUseCase    robboGroup.UseCase
+	RobboUnitsUseCase    robboUnits.UseCase
+	UsersUseCase         users.UseCase
 }
 
 func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) UseCaseModule {
@@ -113,13 +120,18 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) Us
 			gateway.RobboUnitsGateway,
 			gateway.RobboGroupGateway,
 		),
-		EdxUseCase:         edxusecase.SetupEdxApiUseCase(),
-		ProjectPageUseCase: ppageusecase.SetupProjectPageUseCase(gateway.ProjectPageGateway, gateway.ProjectsGateway),
-		ProjectsUseCase:    prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
-		LicensingUseCase:   licusecase.SetupLicensingUseCase(gateway.LicensingGateway),
-		RobboGroupUseCase:  robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
-		RobboUnitsUseCase:  robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
-		UsersUseCase:       usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
+		EdxUseCase:           edxusecase.SetupEdxApiUseCase(),
+		NotificationsUseCase: notificationusecase.SetupNotificationUseCase(gateway.NotificationsGateway),
+		ProjectPageUseCase: ppageusecase.SetupProjectPageUseCase(
+			gateway.ProjectPageGateway,
+			gateway.ProjectsGateway,
+			gateway.NotificationsGateway,
+		),
+		ProjectsUseCase:   prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
+		LicensingUseCase:  licusecase.SetupLicensingUseCase(gateway.LicensingGateway),
+		RobboGroupUseCase: robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
+		RobboUnitsUseCase: robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
+		UsersUseCase:      usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
 	}
 }
 
@@ -163,11 +175,13 @@ type HandlerModule struct {
 	CoursePacketHandler        coursePackethttp.Handler
 	LicensingHandler           lichttp.Handler
 	PortalNotificationsHandler portalhttp.NotificationsHandler
+	NotificationsHandler       notificationhttp.Handler
 	OIDCHandler                *oidchttp.Handler
 }
 
 func SetupHandler(
 	delegate DelegateModule,
+	usecase UseCaseModule,
 	portalNotifications portalhttp.NotificationsHandler,
 	oidcHandler *oidchttp.Handler,
 ) HandlerModule {
@@ -187,6 +201,7 @@ func SetupHandler(
 		CoursePacketHandler:        coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
 		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate),
 		PortalNotificationsHandler: portalNotifications,
+		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
 		OIDCHandler:                oidcHandler,
 	}
 }

@@ -78,6 +78,7 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 		handlers.OIDCHandler.InitRoutes(router)
 	}
 	handlers.PortalNotificationsHandler.InitRoutes(router)
+	handlers.NotificationsHandler.InitRoutes(router)
 	handlers.ProjectsHandler.InitProjectRoutes(router)
 	handlers.ProjectPageHandler.InitProjectRoutes(router)
 	handlers.CoursesHandler.InitCourseRoutes(router)
