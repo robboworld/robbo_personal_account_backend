@@ -202,7 +202,8 @@ func (h Handler) Callback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing_code_or_state"})
 		return
 	}
-	entry, ok := oidc.ConsumePKCE(state)
+	// Peek first so a failed token/issuer validation does not burn state into invalid_state on retry.
+	entry, ok := oidc.PeekPKCE(state)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_state"})
 		return
@@ -215,6 +216,11 @@ func (h Handler) Callback(c *gin.Context) {
 	claims, err := h.cfg.ValidateIDToken(tr.IDToken, entry.Nonce)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	if _, ok := oidc.ConsumePKCE(state); !ok {
+		// Race: another concurrent callback already consumed — treat as success path only if we still have claims.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_state"})
 		return
 	}
 	edxUserID := ""

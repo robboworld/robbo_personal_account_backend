@@ -388,18 +388,20 @@ type ParentHTTPList struct {
 func (ParentHTTPList) IsParentsResult() {}
 
 type ProjectPageHTTP struct {
-	ProjectPageID string `json:"projectPageId"`
-	LastModified  string `json:"lastModified"`
-	ProjectID     string `json:"projectId"`
-	Instruction   string `json:"instruction"`
-	Notes         string `json:"notes"`
-	Preview       string `json:"preview"`
-	LinkScratch   string `json:"linkScratch"`
-	Title         string `json:"title"`
-	IsShared      bool   `json:"isShared"`
-	AuthorUserID  string `json:"authorUserId"`
-	AuthorName    string `json:"authorName"`
-	IsOwner       bool   `json:"isOwner"`
+	ProjectPageID    string `json:"projectPageId"`
+	LastModified     string `json:"lastModified"`
+	ProjectID        string `json:"projectId"`
+	Instruction      string `json:"instruction"`
+	Notes            string `json:"notes"`
+	Preview          string `json:"preview"`
+	LinkScratch      string `json:"linkScratch"`
+	Title            string `json:"title"`
+	IsShared         bool   `json:"isShared"`
+	LandingFeatured  bool   `json:"landingFeatured"`
+	LandingSortOrder int    `json:"landingSortOrder"`
+	AuthorUserID     string `json:"authorUserId"`
+	AuthorName       string `json:"authorName"`
+	IsOwner          bool   `json:"isOwner"`
 }
 
 func (ProjectPageHTTP) IsProjectPageResult() {}
