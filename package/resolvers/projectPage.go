@@ -9,6 +9,7 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -53,7 +54,10 @@ func (r *mutationResolver) CreateProjectPage(ctx context.Context) (models.Projec
 		return nil, accessErr
 	}
 
-	newProjectPage, createProjectPageErr := r.projectPageDelegate.CreateProjectPage(userId)
+	newProjectPage, createProjectPageErr := r.projectPageDelegate.CreateProjectPage(
+		userId,
+		projectPage.LocaleFromAcceptLanguage(ginContext.GetHeader("Accept-Language")),
+	)
 	if createProjectPageErr != nil {
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),

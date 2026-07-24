@@ -30,6 +30,10 @@ func projectCreateRoles() []models.Role {
 	return []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
 }
 
+func superAdminOnly() []models.Role {
+	return []models.Role{models.SuperAdmin}
+}
+
 func backendBaseURL(c *gin.Context) string {
 	scheme := "http"
 	if c.Request.TLS != nil {
@@ -68,6 +72,7 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 	{
 		projectPageGroup.POST("/", h.CreateProjectPage)
 		projectPageGroup.GET("/public", h.GetPublicProjectPages)
+		projectPageGroup.PUT("/landing-featured/reorder", h.ReorderLandingFeatured)
 		projectPageGroup.GET("/reaction-types", h.ListReactionTypes)
 		projectPageGroup.GET("/:projectPageId/reactions", h.GetProjectReactions)
 		projectPageGroup.PUT("/:projectPageId/reactions", h.PutProjectReaction)
@@ -78,6 +83,8 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 		projectPageGroup.POST("/:projectPageId/upload", h.UploadProjectSb3)
 		projectPageGroup.GET("/:projectPageId/preview", h.GetProjectPreview)
 		projectPageGroup.POST("/:projectPageId/preview", h.UploadProjectPreview)
+		projectPageGroup.PUT("/:projectPageId/landing-featured", h.SetLandingFeatured)
+		projectPageGroup.DELETE("/:projectPageId/moderate", h.ModerateDeleteProjectPage)
 		projectPageGroup.GET("/:projectPageId", h.GetProjectPageById)
 		projectPageGroup.GET("/", h.GetAllProjectPageByUserId)
 		projectPageGroup.PUT("/", h.UpdateProjectPage)
@@ -199,7 +206,8 @@ func (h *Handler) CreateProjectPage(c *gin.Context) {
 		return
 	}
 
-	projectPage, err := h.projectPageDelegate.CreateProjectPage(userId)
+	locale := projectPage.LocaleFromAcceptLanguage(c.GetHeader("Accept-Language"))
+	created, err := h.projectPageDelegate.CreateProjectPage(userId, locale)
 
 	if err != nil {
 		log.Println(err)
@@ -208,7 +216,7 @@ func (h *Handler) CreateProjectPage(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, createProjectPageResponse{
-		&projectPage,
+		&created,
 	})
 }
 
@@ -422,6 +430,99 @@ func (h *Handler) DeleteProjectPage(c *gin.Context) {
 	err := h.projectPageDelegate.DeleteProjectPage(projectId, userId)
 	if err != nil {
 		log.Println(err)
+		ErrorHandling(err, c)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+func (h *Handler) ModerateDeleteProjectPage(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, superAdminOnly(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	var request struct {
+		Reason string `json:"reason"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	err := h.projectPageDelegate.ModerateDeleteProjectPage(
+		c.Param("projectPageId"),
+		userId,
+		request.Reason,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.Status(http.StatusOK)
+}
+
+func (h *Handler) SetLandingFeatured(c *gin.Context) {
+	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, superAdminOnly(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	var request struct {
+		Featured  bool `json:"featured"`
+		SortOrder int  `json:"sortOrder"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	page, err := h.projectPageDelegate.SetLandingFeatured(
+		c.Param("projectPageId"),
+		request.Featured,
+		request.SortOrder,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"projectPage": page})
+}
+
+func (h *Handler) ReorderLandingFeatured(c *gin.Context) {
+	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, superAdminOnly(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	var request struct {
+		Items []struct {
+			ProjectPageID string `json:"projectPageId"`
+			SortOrder     int    `json:"sortOrder"`
+		} `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	items := make([]projectPage.LandingFeaturedOrderItem, 0, len(request.Items))
+	for _, item := range request.Items {
+		items = append(items, projectPage.LandingFeaturedOrderItem{
+			ProjectPageID: item.ProjectPageID,
+			SortOrder:     item.SortOrder,
+		})
+	}
+	if err := h.projectPageDelegate.ReorderLandingFeatured(items); err != nil {
 		ErrorHandling(err, c)
 		return
 	}
