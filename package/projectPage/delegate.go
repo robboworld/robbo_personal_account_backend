@@ -21,4 +21,7 @@ type Delegate interface {
 	GetProjectReactions(projectPageId, viewerId string) (*models.ProjectReactionsHTTP, error)
 	PutProjectReaction(projectPageId, userId, reactionCode string) (*models.ProjectReactionsHTTP, error)
 	DeleteProjectReaction(projectPageId, userId string) (*models.ProjectReactionsHTTP, error)
+	ModerateDeleteProjectPage(projectPageId, moderatorId, reason string) error
+	SetLandingFeatured(projectPageId string, featured bool, sortOrder int) (models.ProjectPageHTTP, error)
+	ReorderLandingFeatured(items []LandingFeaturedOrderItem) error
 }

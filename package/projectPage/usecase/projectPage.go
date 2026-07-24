@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -148,6 +149,8 @@ func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCor
 		core.AuthorUserId = row.OwnerUserID
 		core.AuthorName = lookupAuthorName(row.OwnerUserID)
 		core.IsOwner = false
+		core.LandingFeatured = row.LandingFeatured
+		core.LandingSortOrder = row.LandingSortOrder
 	}
 }
 
@@ -424,6 +427,81 @@ func (p *ProjectPageUseCaseImpl) DeleteProjectReaction(
 		return nil, err
 	}
 	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, userId)
+}
+
+func (p *ProjectPageUseCaseImpl) ModerateDeleteProjectPage(
+	projectPageId string,
+	_ string,
+	reason string,
+) error {
+	reason = strings.TrimSpace(reason)
+	if utf8.RuneCountInString(reason) < 3 {
+		return projectPage.ErrBadRequest
+	}
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return err
+	}
+	ownerID := strings.TrimSpace(row.OwnerUserID)
+	title := strings.TrimSpace(row.Title)
+	if title == "" {
+		title = "Untitled"
+	}
+	if err := p.projectGateway.DeleteProject(row.ID); err != nil {
+		return err
+	}
+	if ownerID == "" || p.notificationGateway == nil {
+		return nil
+	}
+	actionURL := "/projects/my"
+	dedupeKey := "project_deleted:" + row.ID
+	body := fmt.Sprintf("Ваш проект «%s» удалён модератором.\nПричина: %s", title, reason)
+	_ = p.notificationGateway.CreateOrUpdateByDedupe(&models.UserNotificationDB{
+		RecipientUserID: ownerID,
+		Title:           "Проект удалён модератором",
+		Body:            body,
+		Kind:            "project_deleted",
+		Severity:        "WARNING",
+		Source:          "system",
+		ActionURL:       &actionURL,
+		DedupeKey:       &dedupeKey,
+	})
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) SetLandingFeatured(
+	projectPageId string,
+	featured bool,
+	sortOrder int,
+) (*models.ProjectPageCore, error) {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
+	if featured {
+		if !row.IsPublic {
+			return nil, projectPage.ErrBadRequest
+		}
+		if sortOrder < 0 {
+			sortOrder = 0
+		}
+	} else {
+		sortOrder = 0
+	}
+	core, err := p.projectPageGateway.SetLandingFeatured(projectPageId, featured, sortOrder)
+	if err != nil {
+		return nil, err
+	}
+	core.AuthorUserId = row.OwnerUserID
+	core.AuthorName = lookupAuthorName(row.OwnerUserID)
+	return core, nil
+}
+
+func (p *ProjectPageUseCaseImpl) ReorderLandingFeatured(items []projectPage.LandingFeaturedOrderItem) error {
+	if len(items) == 0 {
+		return projectPage.ErrBadRequest
+	}
+	return p.projectPageGateway.ReorderLandingFeatured(items)
 }
 
 func (p *ProjectPageUseCaseImpl) GetProjectJSONByToken(projectId string, token string) (string, error) {
