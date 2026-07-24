@@ -95,6 +95,18 @@ func Init() error {
 	if os.Getenv("LMS_NOTIFICATIONS_INGEST_TOKEN") != "" {
 		viper.Set("lmsNotifications.ingestBearerToken", os.Getenv("LMS_NOTIFICATIONS_INGEST_TOKEN"))
 	}
+	if os.Getenv("ELASTICSEARCH_URL") != "" {
+		viper.Set("elasticsearch.url", os.Getenv("ELASTICSEARCH_URL"))
+		viper.Set("elasticsearch.enabled", true)
+	}
+	if os.Getenv("ELASTICSEARCH_ENABLED") == "true" {
+		viper.Set("elasticsearch.enabled", true)
+	} else if os.Getenv("ELASTICSEARCH_ENABLED") == "false" {
+		viper.Set("elasticsearch.enabled", false)
+	}
+	if os.Getenv("ELASTICSEARCH_INDEX") != "" {
+		viper.Set("elasticsearch.index", os.Getenv("ELASTICSEARCH_INDEX"))
+	}
 
 	err := viper.ReadInConfig()
 	return err

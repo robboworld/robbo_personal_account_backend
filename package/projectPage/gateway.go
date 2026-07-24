@@ -18,4 +18,12 @@ type Gateway interface {
 	GetProjectReactionSummary(projectId, viewerUserId string) (*models.ProjectReactionsHTTP, error)
 	UpsertProjectReaction(projectId, userId, reactionCode string) error
 	DeleteProjectReaction(projectId, userId string) error
+	SetLandingFeatured(projectPageId string, featured bool, sortOrder int) (*models.ProjectPageCore, error)
+	ReorderLandingFeatured(items []LandingFeaturedOrderItem) error
+}
+
+// LandingFeaturedOrderItem is one row for batch showcase reorder.
+type LandingFeaturedOrderItem struct {
+	ProjectPageID string
+	SortOrder     int
 }

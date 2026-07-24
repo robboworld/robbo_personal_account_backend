@@ -5,7 +5,7 @@ import (
 )
 
 type UseCase interface {
-	CreateProjectPage(authorId string) (newProjectPage *models.ProjectPageCore, err error)
+	CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error)
 	UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string) (projectPageUpdated *models.ProjectPageCore, err error)
 	DeleteProjectPage(projectId string, authorId string) (err error)
 	GetAllProjectPageByUserId(authorId string, page int, pageSize int) (projectPages []*models.ProjectPageCore, countRows int64, err error)
@@ -23,4 +23,7 @@ type UseCase interface {
 	GetProjectReactions(projectPageId, viewerId string) (*models.ProjectReactionsHTTP, error)
 	PutProjectReaction(projectPageId, userId, reactionCode string) (*models.ProjectReactionsHTTP, error)
 	DeleteProjectReaction(projectPageId, userId string) (*models.ProjectReactionsHTTP, error)
+	ModerateDeleteProjectPage(projectPageId, moderatorId, reason string) error
+	SetLandingFeatured(projectPageId string, featured bool, sortOrder int) (*models.ProjectPageCore, error)
+	ReorderLandingFeatured(items []LandingFeaturedOrderItem) error
 }

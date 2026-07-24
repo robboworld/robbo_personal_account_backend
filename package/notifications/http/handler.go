@@ -63,6 +63,9 @@ func writeError(c *gin.Context, err error) {
 	if errors.Is(err, notificationusecase.ErrInvalidInput) {
 		status = http.StatusBadRequest
 	}
+	if errors.Is(err, notificationusecase.ErrUserNotFound) {
+		status = http.StatusBadRequest
+	}
 	c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
 }
 
@@ -147,12 +150,13 @@ func (h *Handler) MarkAllRead(c *gin.Context) {
 }
 
 type personalRequest struct {
-	RecipientUserID string  `json:"recipientUserId"`
-	Title           string  `json:"title"`
-	Body            string  `json:"body"`
-	Kind            string  `json:"kind"`
-	Severity        string  `json:"severity"`
-	ActionURL       *string `json:"actionUrl"`
+	RecipientUserID   string  `json:"recipientUserId"`
+	RecipientUsername string  `json:"recipientUsername"`
+	Title             string  `json:"title"`
+	Body              string  `json:"body"`
+	Kind              string  `json:"kind"`
+	Severity          string  `json:"severity"`
+	ActionURL         *string `json:"actionUrl"`
 }
 
 func (h *Handler) AdminPersonal(c *gin.Context) {
@@ -166,12 +170,13 @@ func (h *Handler) AdminPersonal(c *gin.Context) {
 		return
 	}
 	if err := h.useCase.SendPersonal(notifications.PersonalInput{
-		RecipientUserID: request.RecipientUserID,
-		Title:           request.Title,
-		Body:            request.Body,
-		Kind:            request.Kind,
-		Severity:        request.Severity,
-		ActionURL:       request.ActionURL,
+		RecipientUserID:   request.RecipientUserID,
+		RecipientUsername: request.RecipientUsername,
+		Title:             request.Title,
+		Body:              request.Body,
+		Kind:              request.Kind,
+		Severity:          request.Severity,
+		ActionURL:         request.ActionURL,
 	}); err != nil {
 		writeError(c, err)
 		return

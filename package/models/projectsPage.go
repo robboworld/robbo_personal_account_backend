@@ -6,18 +6,20 @@ import (
 )
 
 type ProjectPageCore struct {
-	ProjectPageId string
-	LastModified  string
-	Title         string
-	ProjectId     string
-	Instruction   string
-	Notes         string
-	Preview       string
-	LinkScratch   string
-	IsShared      bool
-	AuthorUserId  string
-	AuthorName    string
-	IsOwner       bool
+	ProjectPageId    string
+	LastModified     string
+	Title            string
+	ProjectId        string
+	Instruction      string
+	Notes            string
+	Preview          string
+	LinkScratch      string
+	IsShared         bool
+	LandingFeatured  bool
+	LandingSortOrder int
+	AuthorUserId     string
+	AuthorName       string
+	IsOwner          bool
 }
 
 type ProjectPageDB struct {
@@ -61,18 +63,20 @@ func (em *ProjectPageDB) FromCore(projectPage *ProjectPageCore) {
 
 func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 	return &ProjectPageCore{
-		ProjectPageId: ht.ProjectPageID,
-		LastModified:  ht.LastModified,
-		Title:         ht.Title,
-		ProjectId:     ht.ProjectID,
-		Instruction:   ht.Instruction,
-		Notes:         ht.Notes,
-		Preview:       ht.Preview,
-		LinkScratch:   ht.LinkScratch,
-		IsShared:      ht.IsShared,
-		AuthorUserId:  ht.AuthorUserID,
-		AuthorName:    ht.AuthorName,
-		IsOwner:       ht.IsOwner,
+		ProjectPageId:    ht.ProjectPageID,
+		LastModified:     ht.LastModified,
+		Title:            ht.Title,
+		ProjectId:        ht.ProjectID,
+		Instruction:      ht.Instruction,
+		Notes:            ht.Notes,
+		Preview:          ht.Preview,
+		LinkScratch:      ht.LinkScratch,
+		IsShared:         ht.IsShared,
+		LandingFeatured:  ht.LandingFeatured,
+		LandingSortOrder: ht.LandingSortOrder,
+		AuthorUserId:     ht.AuthorUserID,
+		AuthorName:       ht.AuthorName,
+		IsOwner:          ht.IsOwner,
 	}
 }
 
@@ -86,6 +90,8 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.LinkScratch = projectPage.LinkScratch
 	ht.Title = projectPage.Title
 	ht.IsShared = projectPage.IsShared
+	ht.LandingFeatured = projectPage.LandingFeatured
+	ht.LandingSortOrder = projectPage.LandingSortOrder
 	ht.AuthorUserID = projectPage.AuthorUserId
 	ht.AuthorName = projectPage.AuthorName
 	ht.IsOwner = projectPage.IsOwner

@@ -72,15 +72,17 @@ func toProjectPageCore(projectDB *models.ScratchProjectDB) *models.ProjectPageCo
 		preview = "/projectPage/" + projectDB.ID + "/preview"
 	}
 	return &models.ProjectPageCore{
-		ProjectPageId: projectDB.ID,
-		LastModified:  projectDB.UpdatedAt.String(),
-		Title:         projectDB.Title,
-		ProjectId:     projectDB.ID,
-		Instruction:   projectDB.Instruction,
-		Notes:         projectDB.Note,
-		Preview:       preview,
-		LinkScratch:   scratchLink,
-		IsShared:      projectDB.IsPublic,
+		ProjectPageId:    projectDB.ID,
+		LastModified:     projectDB.UpdatedAt.String(),
+		Title:            projectDB.Title,
+		ProjectId:        projectDB.ID,
+		Instruction:      projectDB.Instruction,
+		Notes:            projectDB.Note,
+		Preview:          preview,
+		LinkScratch:      scratchLink,
+		IsShared:         projectDB.IsPublic,
+		LandingFeatured:  projectDB.LandingFeatured,
+		LandingSortOrder: projectDB.LandingSortOrder,
 	}
 }
 
@@ -255,14 +257,19 @@ func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, landi
 		Model(&models.ScratchProjectDB{}).
 		Select(
 			"id, owner_user_id, title, instruction, note, scratch_vm_json, is_public, landing_featured, "+
-				"preview_mime, preview_updated_at, version_counter, current_version_id, created_at, updated_at, deleted_at",
+				"landing_sort_order, preview_mime, preview_updated_at, version_counter, current_version_id, "+
+				"created_at, updated_at, deleted_at",
 		).
 		Where("is_public = ? AND deleted_at IS NULL", true)
 	if landingFeaturedOnly {
 		query = query.Where("landing_featured = ?", true)
 	}
 	var rows []models.ScratchProjectDB
-	err = query.Order("updated_at DESC").Limit(pageSize).Offset(offset).Find(&rows).Error
+	orderClause := "updated_at DESC"
+	if landingFeaturedOnly {
+		orderClause = "landing_sort_order ASC, updated_at DESC"
+	}
+	err = query.Order(orderClause).Limit(pageSize).Offset(offset).Find(&rows).Error
 	if err != nil {
 		return nil, 0, err
 	}
@@ -468,3 +475,63 @@ func (r *ProjectPageGatewayImpl) DeleteProjectReaction(projectId, userId string)
 		Where("project_id = ? AND user_id = ?", projectId, userId).
 		Delete(&models.ScratchProjectReactionDB{}).Error
 }
+
+func (r *ProjectPageGatewayImpl) SetLandingFeatured(
+	projectPageId string,
+	featured bool,
+	sortOrder int,
+) (*models.ProjectPageCore, error) {
+	storageProjectID, resolveErr := r.resolveStorageProjectID(r.projectStorageDB, projectPageId)
+	if resolveErr != nil {
+		if errors.Is(resolveErr, gorm.ErrRecordNotFound) {
+			return nil, projectPage.ErrPageNotFound
+		}
+		return nil, resolveErr
+	}
+	updates := map[string]interface{}{
+		"landing_featured":   featured,
+		"landing_sort_order": sortOrder,
+		"updated_at":         time.Now().UTC(),
+	}
+	if !featured {
+		updates["landing_sort_order"] = 0
+	}
+	res := r.projectStorageDB.Model(&models.ScratchProjectDB{}).
+		Where("id = ? AND deleted_at IS NULL", storageProjectID).
+		Updates(updates)
+	if res.Error != nil {
+		return nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, projectPage.ErrPageNotFound
+	}
+	return r.GetProjectPageById(storageProjectID)
+}
+
+func (r *ProjectPageGatewayImpl) ReorderLandingFeatured(items []projectPage.LandingFeaturedOrderItem) error {
+	if len(items) == 0 {
+		return nil
+	}
+	return r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
+		for _, item := range items {
+			id := strings.TrimSpace(item.ProjectPageID)
+			if id == "" {
+				return projectPage.ErrBadRequest
+			}
+			res := tx.Model(&models.ScratchProjectDB{}).
+				Where("id = ? AND deleted_at IS NULL AND landing_featured = ?", id, true).
+				Updates(map[string]interface{}{
+					"landing_sort_order": item.SortOrder,
+					"updated_at":         time.Now().UTC(),
+				})
+			if res.Error != nil {
+				return res.Error
+			}
+			if res.RowsAffected == 0 {
+				return projectPage.ErrPageNotFound
+			}
+		}
+		return nil
+	})
+}
+

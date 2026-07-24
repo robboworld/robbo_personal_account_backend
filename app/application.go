@@ -22,9 +22,11 @@ func InvokeWith(options ...fx.Option) *fx.App {
 		fx.Provide(modules.SetupPortalModule),
 		fx.Provide(modules.SetupUseCase),
 		fx.Provide(modules.SetupDelegate),
+		fx.Provide(modules.SetupUserSearchService),
 		fx.Provide(modules.SetupHandler),
 		fx.Provide(modules.SetupGraphQLModule),
 		fx.Invoke(modules.StartPortalOutboxWorker),
+		fx.Invoke(modules.StartUserSearchSync),
 	}
 	for _, option := range options {
 		di = append(di, option)
@@ -48,6 +50,7 @@ func TestInvokeWith(options ...fx.Option) (*fx.App, func()) {
 		fx.Provide(logger.NewLogger),
 		fx.Provide(db_client.NewTestPostgresClient),
 		fx.Provide(modules.SetupGateway),
+		fx.Provide(modules.SetupUserSearchService),
 		fx.Provide(modules.SetupUseCase),
 		fx.Provide(modules.SetupDelegate),
 		fx.Provide(modules.SetupHandler),

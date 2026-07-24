@@ -7,10 +7,12 @@ import (
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch"
 	"go.uber.org/fx"
 )
 
 var ErrInvalidInput = errors.New("invalid notification input")
+var ErrUserNotFound = errors.New("user not found")
 
 type NotificationUseCase struct {
 	gateway notifications.Gateway
@@ -59,10 +61,24 @@ func (u *NotificationUseCase) MarkAllRead(userID string) error {
 
 func (u *NotificationUseCase) SendPersonal(input notifications.PersonalInput) error {
 	input.RecipientUserID = strings.TrimSpace(input.RecipientUserID)
+	input.RecipientUsername = strings.TrimSpace(input.RecipientUsername)
 	input.Title = strings.TrimSpace(input.Title)
 	input.Body = strings.TrimSpace(input.Body)
-	if input.RecipientUserID == "" || input.Title == "" || input.Body == "" {
+	if input.Title == "" || input.Body == "" {
 		return ErrInvalidInput
+	}
+	if input.RecipientUserID == "" {
+		if input.RecipientUsername == "" {
+			return ErrInvalidInput
+		}
+		id, err := usersearch.ResolveUsernameToID(input.RecipientUsername)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				return ErrUserNotFound
+			}
+			return err
+		}
+		input.RecipientUserID = id
 	}
 	if input.Kind == "" {
 		input.Kind = "admin_message"
