@@ -173,3 +173,25 @@ func (p *ProjectPageDelegateImpl) GetPreviewImage(projectPageId string, viewerId
 func (p *ProjectPageDelegateImpl) SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error {
 	return p.UseCase.SavePreviewImage(projectPageId, ownerId, data, mime)
 }
+
+func (p *ProjectPageDelegateImpl) ModerateDeleteProjectPage(projectPageId, moderatorId, reason string) error {
+	return p.UseCase.ModerateDeleteProjectPage(projectPageId, moderatorId, reason)
+}
+
+func (p *ProjectPageDelegateImpl) SetLandingFeatured(
+	projectPageId string,
+	featured bool,
+	sortOrder int,
+) (models.ProjectPageHTTP, error) {
+	var out models.ProjectPageHTTP
+	core, err := p.UseCase.SetLandingFeatured(projectPageId, featured, sortOrder)
+	if err != nil {
+		return out, err
+	}
+	out.FromCore(core)
+	return out, nil
+}
+
+func (p *ProjectPageDelegateImpl) ReorderLandingFeatured(items []projectPage.LandingFeaturedOrderItem) error {
+	return p.UseCase.ReorderLandingFeatured(items)
+}
