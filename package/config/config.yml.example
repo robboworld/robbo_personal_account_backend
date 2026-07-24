@@ -32,7 +32,7 @@ oidc:
   redirectUri: "http://localhost:8080/auth/oidc/callback"
   scopes: "openid profile email"
   frontendBaseUrl: "http://localhost:3030"
-  logoutEndpoint: ""
+  logoutEndpoint: "http://localhost:8081/default/endsession"
   postLogoutRedirectUri: "http://localhost:3030/login"
 
 lmsMysql:

@@ -125,6 +125,21 @@ func authStatusPayload(authenticated bool, sub, email, edxUserID string, role ui
 	}
 }
 
+// resolveLogoutTarget builds a post-logout redirect when IdP end_session is not used.
+func resolveLogoutTarget(frontend, returnTo string) string {
+	frontend = strings.TrimRight(frontend, "/")
+	if returnTo == "" {
+		return frontend + "/login"
+	}
+	if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
+		return returnTo
+	}
+	if strings.HasPrefix(returnTo, "/") {
+		return frontend + returnTo
+	}
+	return frontend + "/" + returnTo
+}
+
 // Logout clears the BFF session cookie and redirects to the IdP end_session endpoint.
 func (h Handler) Logout(c *gin.Context) {
 	returnTo := c.DefaultQuery("return_to", "")
@@ -132,17 +147,13 @@ func (h Handler) Logout(c *gin.Context) {
 	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", false, true)
 
 	logoutEndpoint := viper.GetString("oidc.logoutEndpoint")
+	frontend := viper.GetString("oidc.frontendBaseUrl")
+	if frontend == "" {
+		frontend = "http://localhost:3030"
+	}
+
 	if logoutEndpoint == "" {
-		// no IdP logout configured — just redirect to frontend
-		frontend := viper.GetString("oidc.frontendBaseUrl")
-		if frontend == "" {
-			frontend = "http://localhost:3030"
-		}
-		target := frontend + "/login"
-		if returnTo != "" {
-			target = frontend + returnTo
-		}
-		c.Redirect(http.StatusFound, target)
+		c.Redirect(http.StatusFound, resolveLogoutTarget(frontend, returnTo))
 		return
 	}
 	logoutURL, err := url.Parse(logoutEndpoint)
@@ -153,6 +164,9 @@ func (h Handler) Logout(c *gin.Context) {
 	postLogout := viper.GetString("oidc.postLogoutRedirectUri")
 	if returnTo != "" && strings.HasPrefix(returnTo, "http") {
 		postLogout = returnTo
+	}
+	if postLogout == "" {
+		postLogout = resolveLogoutTarget(frontend, returnTo)
 	}
 	if postLogout != "" {
 		q := logoutURL.Query()
