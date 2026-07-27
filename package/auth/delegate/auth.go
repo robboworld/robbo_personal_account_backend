@@ -32,21 +32,33 @@ func SetupAuthDelegate(usecase auth.UseCase) AuthDelegateModule {
 	}
 }
 
-func (s *AuthDelegateImpl) SignIn(email, password string, role uint) (accessToken, refreshToken string, err error) {
-	return s.UseCase.SignIn(email, password, role)
+func (s *AuthDelegateImpl) SignIn(email, password string, role uint, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
+	return s.UseCase.SignIn(email, password, role, client)
 }
 
-func (s *AuthDelegateImpl) SignUp(userHttp *models.UserHTTP) (accessToken, refreshToken string, err error) {
+func (s *AuthDelegateImpl) SignUp(userHttp *models.UserHTTP, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	userCore := userHttp.ToCore()
-	return s.UseCase.SignUp(&userCore)
+	return s.UseCase.SignUp(&userCore, client)
 }
 
-func (s *AuthDelegateImpl) SignUpCore(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
-	return s.UseCase.SignUp(userCore)
+func (s *AuthDelegateImpl) SignUpCore(userCore *models.UserCore, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
+	return s.UseCase.SignUp(userCore, client)
 }
 
 func (s *AuthDelegateImpl) RefreshToken(refreshToken string) (newAccessToken string, err error) {
 	return s.UseCase.RefreshToken(refreshToken)
+}
+
+func (s *AuthDelegateImpl) SignOut(refreshToken string) error {
+	return s.UseCase.SignOut(refreshToken)
+}
+
+func (s *AuthDelegateImpl) ListSessions(lmsUserID string) ([]*models.UserSessionCore, error) {
+	return s.UseCase.ListSessions(lmsUserID)
+}
+
+func (s *AuthDelegateImpl) RevokeSessionByID(lmsUserID, sessionID string) error {
+	return s.UseCase.RevokeSessionByID(lmsUserID, sessionID)
 }
 
 func (s *AuthDelegateImpl) UserIdentity(c *gin.Context) (id string, role models.Role, err error) {

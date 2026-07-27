@@ -4,6 +4,7 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 )
@@ -18,7 +19,7 @@ func roleFromLMSUser(u *lmsdb.AuthUserLogin) models.Role {
 	return models.Student
 }
 
-func (a *AuthUseCaseImpl) signInLMS(email, password string) (accessToken, refreshToken string, err error) {
+func (a *AuthUseCaseImpl) signInLMS(email, password string, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
 		return "", "", err
@@ -40,12 +41,7 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string) (accessToken, refres
 		Role:  roleFromLMSUser(u),
 	}
 
-	accessToken, err = a.GenerateToken(user, a.accessExpireDuration, a.accessSigningKey)
-	if err != nil {
-		return "", "", err
-	}
-	refreshToken, err = a.GenerateToken(user, a.refreshExpireDuration, a.refreshSigningKey)
-	return accessToken, refreshToken, err
+	return a.issueTokensWithSession(user, "lms_db", client)
 }
 
 func touchLastLogin(userID int64) {

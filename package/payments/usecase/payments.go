@@ -60,6 +60,10 @@ func (u *PaymentsUseCaseImpl) CreateProduct(input models.CreateProductInput) (*m
 	if len(caps) == 0 {
 		caps = []string{models.CapabilityPremiumAuto}
 	}
+	cloudQuotaMB := input.CloudQuotaMB
+	if cloudQuotaMB <= 0 {
+		cloudQuotaMB = 10
+	}
 	return u.gateway.CreateProduct(&models.ProductCore{
 		SKU:          strings.TrimSpace(input.SKU),
 		Title:        strings.TrimSpace(input.Title),
@@ -68,6 +72,8 @@ func (u *PaymentsUseCaseImpl) CreateProduct(input models.CreateProductInput) (*m
 		Currency:     currency,
 		SeatLimit:    seatLimit,
 		Capabilities: caps,
+		CloudQuotaMB: cloudQuotaMB,
+		SessionLimit: input.SessionLimit,
 		DurationDays: duration,
 		IsActive:     input.IsActive,
 	})
@@ -313,6 +319,8 @@ func (u *PaymentsUseCaseImpl) fulfillOrder(orderID string) error {
 			LmsUserID:    order.LmsUserID,
 			SeatLimit:    product.SeatLimit,
 			Capabilities: product.Capabilities,
+			CloudQuotaMB: product.CloudQuotaMB,
+			SessionLimit: product.SessionLimit,
 			ExpiresAt:    expiresAt,
 			Note:         fmt.Sprintf("order %s", order.OrderNumber),
 			ProductID:    product.ID,

@@ -29,6 +29,8 @@ type LicenseDB struct {
 	Source           string         `gorm:"column:source;not null;default:admin_grant"`
 	SeatLimit        int            `gorm:"column:seat_limit;not null;default:1"`
 	Capabilities     pq.StringArray `gorm:"column:capabilities;type:text[];not null"`
+	CloudQuotaMB     int            `gorm:"column:cloud_quota_mb;not null;default:10"`
+	SessionLimit     int            `gorm:"column:session_limit;not null;default:0"`
 	ExpiresAt        time.Time      `gorm:"column:expires_at;not null"`
 	ProductID        *string        `gorm:"column:product_id;type:uuid"`
 	IssuedBy         *string        `gorm:"column:issued_by"`
@@ -79,6 +81,8 @@ type LicenseCore struct {
 	Source           string
 	SeatLimit        int
 	Capabilities     []string
+	CloudQuotaMB     int
+	SessionLimit     int
 	ExpiresAt        time.Time
 	ProductID        string
 	IssuedBy         string
@@ -117,6 +121,8 @@ type IssueLicenseInput struct {
 	LmsUserID    string
 	SeatLimit    int
 	Capabilities []string
+	CloudQuotaMB int
+	SessionLimit int
 	ExpiresAt    time.Time
 	Note         string
 	IssuedBy     string
@@ -145,6 +151,8 @@ func (db *LicenseDB) ToCore() *LicenseCore {
 		Source:           db.Source,
 		SeatLimit:        db.SeatLimit,
 		Capabilities:     caps,
+		CloudQuotaMB:     db.CloudQuotaMB,
+		SessionLimit:     db.SessionLimit,
 		ExpiresAt:        db.ExpiresAt,
 		Note:             db.Note,
 		LastSeatChangeAt: db.LastSeatChangeAt,

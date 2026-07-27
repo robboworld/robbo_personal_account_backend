@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
@@ -26,13 +28,15 @@ func NewAuthHandler(
 }
 
 func (h *Handler) InitAuthRoutes(router *gin.Engine) {
-	auth := router.Group("/auth")
+	authGroup := router.Group("/auth")
 	{
-		auth.POST("/sign-up", h.SignUp)
-		auth.POST("/sign-in", h.SignIn)
-		auth.GET("/refresh", h.Refresh)
-		auth.POST("/sign-out", h.SignOut)
-		auth.GET("/check-auth", h.CheckAuth)
+		authGroup.POST("/sign-up", h.SignUp)
+		authGroup.POST("/sign-in", h.SignIn)
+		authGroup.GET("/refresh", h.Refresh)
+		authGroup.POST("/sign-out", h.SignOut)
+		authGroup.GET("/check-auth", h.CheckAuth)
+		authGroup.GET("/sessions", h.ListSessions)
+		authGroup.DELETE("/sessions/:id", h.RevokeSession)
 	}
 }
 
@@ -46,6 +50,30 @@ type signInResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
+func clientInfoFromRequest(c *gin.Context) auth.ClientInfo {
+	return auth.ClientInfo{
+		UserAgent: c.Request.UserAgent(),
+		IPAddress: clientIP(c),
+	}
+}
+
+func clientIP(c *gin.Context) string {
+	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if xri := c.GetHeader("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return c.Request.RemoteAddr
+}
+
 func (h *Handler) SignIn(c *gin.Context) {
 	fmt.Println("SignIn")
 
@@ -55,7 +83,9 @@ func (h *Handler) SignIn(c *gin.Context) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.delegate.SignIn(signInInput.Email, signInInput.Password, signInInput.Role)
+	accessToken, refreshToken, err := h.delegate.SignIn(
+		signInInput.Email, signInInput.Password, signInInput.Role, clientInfoFromRequest(c),
+	)
 	if err != nil {
 		fmt.Println(err)
 		ErrorHandling(err, c)
@@ -91,7 +121,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 	userCore.HonorCode = body.HonorCode
 	userCore.MarketingOptIn = body.MarketingEmailsOptIn
 
-	accessToken, refreshToken, err := h.delegate.SignUpCore(&userCore)
+	accessToken, refreshToken, err := h.delegate.SignUpCore(&userCore, clientInfoFromRequest(c))
 	if err != nil {
 		ErrorHandling(err, c)
 		return
@@ -127,6 +157,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 
 func (h *Handler) SignOut(c *gin.Context) {
 	fmt.Println("SignOut")
+	if refreshToken, err := getRefreshToken(c); err == nil {
+		_ = h.delegate.SignOut(refreshToken)
+	}
 	setRefreshToken("", c)
 	c.Status(http.StatusOK)
 }
@@ -149,6 +182,55 @@ func (h *Handler) CheckAuth(c *gin.Context) {
 	})
 }
 
+func (h *Handler) ListSessions(c *gin.Context) {
+	userID, _, err := h.delegate.UserIdentity(c)
+	if err != nil || userID == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	sessions, err := h.delegate.ListSessions(userID)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	out := make([]gin.H, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, sessionToJSON(s))
+	}
+	c.JSON(http.StatusOK, gin.H{"sessions": out})
+}
+
+func (h *Handler) RevokeSession(c *gin.Context) {
+	userID, _, err := h.delegate.UserIdentity(c)
+	if err != nil || userID == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
+		return
+	}
+	if err := h.delegate.RevokeSessionByID(userID, sessionID); err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func sessionToJSON(s *models.UserSessionCore) gin.H {
+	out := gin.H{
+		"id":         s.ID,
+		"authMode":   s.AuthMode,
+		"userAgent":  s.UserAgent,
+		"ipAddress":  s.IPAddress,
+		"createdAt":  s.CreatedAt.UTC().Format(time.RFC3339),
+		"lastSeenAt": s.LastSeenAt.UTC().Format(time.RFC3339),
+		"expiresAt":  s.ExpiresAt.UTC().Format(time.RFC3339),
+	}
+	return out
+}
+
 func ErrorHandling(err error, c *gin.Context) {
 	switch {
 	case errors.Is(err, auth.ErrEmailAlreadyExist):
@@ -161,6 +243,13 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrInvalidAccessToken), errors.Is(err, auth.ErrInvalidTypeClaims), errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrSessionNotFound):
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error(), "code": "SESSION_NOT_FOUND"})
+	case errors.Is(err, auth.ErrSessionLimitReached):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "SESSION_LIMIT_REACHED",
+		})
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):
 		c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrUserNotFound):

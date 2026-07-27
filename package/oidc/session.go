@@ -21,12 +21,13 @@ func SessionTTLSeconds() int {
 	return ttl
 }
 
-func IssueSessionToken(sub, edxUserID, email string, role uint) (string, error) {
+func IssueSessionToken(sub, edxUserID, email string, role uint, sid string) (string, error) {
 	claims := models.OidcSessionClaims{
 		Sub:       sub,
 		EdxUserID: edxUserID,
 		Email:     email,
 		Role:      role,
+		Sid:       sid,
 	}
 	ttl := SessionTTLSeconds()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -34,6 +35,7 @@ func IssueSessionToken(sub, edxUserID, email string, role uint) (string, error) 
 		"edx_user_id": claims.EdxUserID,
 		"email":       claims.Email,
 		"role":        claims.Role,
+		"sid":         claims.Sid,
 		"exp":         time.Now().Add(time.Duration(ttl) * time.Second).Unix(),
 		"typ":         "lk_bff",
 	})
@@ -56,5 +58,6 @@ func ParseSessionToken(token string) (*models.OidcSessionClaims, error) {
 		EdxUserID: asString(raw["edx_user_id"]),
 		Email:     asString(raw["email"]),
 		Role:      uint(asInt64(raw["role"])),
+		Sid:       asString(raw["sid"]),
 	}, nil
 }

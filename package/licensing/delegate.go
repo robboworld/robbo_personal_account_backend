@@ -18,4 +18,6 @@ type Delegate interface {
 
 	BuildAddonManifest(token, fingerprint string) (map[string]interface{}, error)
 	EncryptAddonBundle(token, fingerprint string) (string, error)
+
+	ResolveEntitlements(lmsUserID string) (Entitlements, error)
 }

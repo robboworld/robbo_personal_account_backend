@@ -701,6 +701,11 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case projectPage.ErrBadRequestBody:
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
+	case projectPage.ErrCloudQuotaExceeded:
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "CLOUD_QUOTA_EXCEEDED",
+		})
 	case projects.ErrProjectNotFound:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
 	case auth.ErrInvalidAccessToken:

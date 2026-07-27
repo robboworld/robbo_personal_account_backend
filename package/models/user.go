@@ -23,6 +23,10 @@ type UserClaims struct {
 	jwt.StandardClaims
 	Id   string
 	Role Role
+	// Sid is the concurrent-session tracking key (lk_user_sessions.session_key).
+	// Empty for tokens issued before session tracking existed, or where no
+	// session row was created (e.g. sign-up auto-login before any check).
+	Sid string `json:"sid,omitempty"`
 }
 
 type UserDB struct {

@@ -30,6 +30,8 @@ type ProductDB struct {
 	Currency     string         `gorm:"column:currency;not null;default:RUB"`
 	SeatLimit    int            `gorm:"column:seat_limit;not null;default:1"`
 	Capabilities pq.StringArray `gorm:"column:capabilities;type:text[];not null"`
+	CloudQuotaMB int            `gorm:"column:cloud_quota_mb;not null;default:10"`
+	SessionLimit int            `gorm:"column:session_limit;not null;default:0"`
 	DurationDays int            `gorm:"column:duration_days;not null;default:365"`
 	IsActive     bool           `gorm:"column:is_active;not null;default:true"`
 	CreatedAt    time.Time      `gorm:"column:created_at;autoCreateTime"`
@@ -80,6 +82,8 @@ type ProductCore struct {
 	Currency     string
 	SeatLimit    int
 	Capabilities []string
+	CloudQuotaMB int
+	SessionLimit int
 	DurationDays int
 	IsActive     bool
 	CreatedAt    time.Time
@@ -123,6 +127,8 @@ type CreateProductInput struct {
 	Currency     string
 	SeatLimit    int
 	Capabilities []string
+	CloudQuotaMB int
+	SessionLimit int
 	DurationDays int
 	IsActive     bool
 }
@@ -139,6 +145,8 @@ func (db *ProductDB) ToCore() *ProductCore {
 		Currency:     db.Currency,
 		SeatLimit:    db.SeatLimit,
 		Capabilities: caps,
+		CloudQuotaMB: db.CloudQuotaMB,
+		SessionLimit: db.SessionLimit,
 		DurationDays: db.DurationDays,
 		IsActive:     db.IsActive,
 		CreatedAt:    db.CreatedAt,

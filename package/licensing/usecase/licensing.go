@@ -58,6 +58,11 @@ func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*mo
 	if len(caps) == 0 {
 		caps = []string{models.CapabilityPremiumAuto}
 	}
+	cloudQuotaMB := input.CloudQuotaMB
+	if cloudQuotaMB <= 0 {
+		cloudQuotaMB = licensing.FreeCloudQuotaMB
+	}
+	sessionLimit := input.SessionLimit
 	expiresAt := input.ExpiresAt
 	if expiresAt.IsZero() {
 		days := viper.GetInt("licensing.defaultExpiresDays")
@@ -81,6 +86,8 @@ func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*mo
 		Source:       source,
 		SeatLimit:    seatLimit,
 		Capabilities: caps,
+		CloudQuotaMB: cloudQuotaMB,
+		SessionLimit: sessionLimit,
 		ExpiresAt:    expiresAt.UTC(),
 		IssuedBy:     input.IssuedBy,
 		Note:         input.Note,

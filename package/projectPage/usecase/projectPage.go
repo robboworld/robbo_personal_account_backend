@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
@@ -22,6 +23,7 @@ type ProjectPageUseCaseImpl struct {
 	projectPageGateway  projectPage.Gateway
 	projectGateway      projects.Gateway
 	notificationGateway notifications.Gateway
+	licensingGateway    licensing.Gateway
 }
 
 type ProjectPageUseCaseModule struct {
@@ -33,12 +35,14 @@ func SetupProjectPageUseCase(
 	projectPageGateway projectPage.Gateway,
 	projectGateway projects.Gateway,
 	notificationGateway notifications.Gateway,
+	licensingGateway licensing.Gateway,
 ) ProjectPageUseCaseModule {
 	return ProjectPageUseCaseModule{
 		UseCase: &ProjectPageUseCaseImpl{
 			projectPageGateway:  projectPageGateway,
 			projectGateway:      projectGateway,
 			notificationGateway: notificationGateway,
+			licensingGateway:    licensingGateway,
 		},
 	}
 }
@@ -558,6 +562,9 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if !access.Resolve(ownerId, row).CanWrite {
 		return auth.ErrNotAccess
 	}
+	if err := p.enforceCloudQuota(ownerId, projectPageId, int64(len(data))); err != nil {
+		return err
+	}
 	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
 		return err
 	}
@@ -569,6 +576,33 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 		if updateErr != nil {
 			return updateErr
 		}
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforceCloudQuota(ownerId, projectPageId string, newSize int64) error {
+	if p.licensingGateway == nil || newSize <= 0 {
+		return nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, ownerId)
+	if err != nil {
+		return err
+	}
+	if ent.CloudQuotaMB <= 0 {
+		return nil
+	}
+	quotaBytes := int64(ent.CloudQuotaMB) * 1024 * 1024
+	used, err := p.projectPageGateway.GetTotalStorageBytesForOwner(ownerId)
+	if err != nil {
+		return err
+	}
+	oldSize, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
+	if err != nil {
+		return err
+	}
+	projected := used - oldSize + newSize
+	if projected > quotaBytes {
+		return projectPage.ErrCloudQuotaExceeded
 	}
 	return nil
 }
