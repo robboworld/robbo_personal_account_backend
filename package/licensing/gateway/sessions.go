@@ -3,6 +3,7 @@ package gateway
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"strings"
 	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -46,12 +47,21 @@ func (g *LicensingGatewayImpl) CreateSession(session *models.UserSessionCore) (*
 	return row.ToCore(), nil
 }
 
-// CountActiveSessions counts non-revoked, non-expired sessions for the account.
+// CountActiveSessions counts distinct client IPs among active sessions.
+// Empty IP is counted per-row (each blank IP is its own slot).
 func (g *LicensingGatewayImpl) CountActiveSessions(lmsUserID string) (int64, error) {
 	var count int64
-	err := g.db.Model(&models.UserSessionDB{}).
-		Where("lms_user_id = ? AND revoked_at IS NULL AND expires_at > ?", lmsUserID, time.Now().UTC()).
-		Count(&count).Error
+	err := g.db.Raw(`
+		SELECT COUNT(*) FROM (
+			SELECT DISTINCT CASE
+				WHEN COALESCE(TRIM(ip_address), '') = '' THEN id::text
+				ELSE TRIM(ip_address)
+			END AS slot
+			FROM lk_user_sessions
+			WHERE lms_user_id = ? AND revoked_at IS NULL AND expires_at > ?
+		) slots`,
+		lmsUserID, time.Now().UTC(),
+	).Scan(&count).Error
 	return count, err
 }
 
@@ -69,6 +79,38 @@ func (g *LicensingGatewayImpl) GetActiveSession(sessionKey string) (*models.User
 		return nil, err
 	}
 	return row.ToCore(), nil
+}
+
+// FindActiveSessionByIP returns the most recently seen active session for this IP.
+func (g *LicensingGatewayImpl) FindActiveSessionByIP(lmsUserID, ipAddress string) (*models.UserSessionCore, error) {
+	ipAddress = strings.TrimSpace(ipAddress)
+	if lmsUserID == "" || ipAddress == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var row models.UserSessionDB
+	err := g.db.Where(
+		"lms_user_id = ? AND ip_address = ? AND revoked_at IS NULL AND expires_at > ?",
+		lmsUserID, ipAddress, time.Now().UTC(),
+	).Order("last_seen_at DESC").First(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return row.ToCore(), nil
+}
+
+// ReuseSession refreshes metadata on an existing active session (same IP login).
+func (g *LicensingGatewayImpl) ReuseSession(sessionKey, authMode, userAgent string, expiresAt, lastSeenAt time.Time) error {
+	if sessionKey == "" {
+		return nil
+	}
+	return g.db.Model(&models.UserSessionDB{}).
+		Where("session_key = ? AND revoked_at IS NULL AND expires_at > ?", sessionKey, time.Now().UTC()).
+		Updates(map[string]interface{}{
+			"auth_mode":    authMode,
+			"user_agent":   userAgent,
+			"last_seen_at": lastSeenAt,
+			"expires_at":   expiresAt,
+		}).Error
 }
 
 // TouchSession bumps last_seen_at, e.g. on access-token refresh. No-op (not

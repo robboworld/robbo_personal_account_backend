@@ -107,6 +107,14 @@ func (h Handler) Start(c *gin.Context) {
 func (h Handler) Status(c *gin.Context) {
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
 		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sub != "" {
+			if claims.Sid != "" && h.sessions != nil {
+				if sess, sErr := h.sessions.GetActiveSession(claims.Sid); sErr != nil || sess == nil {
+					secure := viper.GetBool("auth.refresh_cookie_secure")
+					c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+					c.JSON(http.StatusOK, authStatusPayload(false, "", "", "", 0))
+					return
+				}
+			}
 			c.JSON(http.StatusOK, authStatusPayload(true, claims.Sub, claims.Email, claims.EdxUserID, claims.Role))
 			return
 		}
@@ -250,8 +258,13 @@ func (h Handler) Callback(c *gin.Context) {
 
 	sid := ""
 	if edxUserID != "" && h.sessions != nil {
-		if err := licensing.CheckSessionLimit(h.sessions, edxUserID); err != nil {
-			if errors.Is(err, licensing.ErrSessionLimitReached) {
+		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
+		ip := oidcClientIP(c)
+		sess, createErr := licensing.AcquireLoginSession(
+			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl,
+		)
+		if createErr != nil {
+			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
 				frontend := viper.GetString("oidc.frontendBaseUrl")
 				if frontend == "" {
 					frontend = "http://localhost:3030"
@@ -272,20 +285,6 @@ func (h Handler) Callback(c *gin.Context) {
 				c.Redirect(http.StatusFound, redirectURL)
 				return
 			}
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "session_limit_check_failed"})
-			return
-		}
-		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
-		now := time.Now().UTC()
-		sess, createErr := h.sessions.CreateSession(&models.UserSessionCore{
-			LmsUserID:  edxUserID,
-			AuthMode:   "oidc_bff",
-			UserAgent:  c.Request.UserAgent(),
-			IPAddress:  oidcClientIP(c),
-			LastSeenAt: now,
-			ExpiresAt:  now.Add(ttl),
-		})
-		if createErr != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "session_create_failed"})
 			return
 		}

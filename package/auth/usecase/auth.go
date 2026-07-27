@@ -290,26 +290,17 @@ func (a *AuthUseCaseImpl) issueTokensWithSession(
 ) (accessToken, refreshToken string, err error) {
 	sid := ""
 	if a.sessions != nil && user.Id != "" {
-		if err := licensing.CheckSessionLimit(a.sessions, user.Id); err != nil {
-			if errors.Is(err, licensing.ErrSessionLimitReached) {
-				return "", "", auth.ErrSessionLimitReached
-			}
-			return "", "", err
-		}
 		ttl := time.Duration(a.refreshExpireDuration) * time.Second
 		if ttl <= 0 {
 			ttl = 7 * 24 * time.Hour
 		}
-		now := time.Now().UTC()
-		sess, createErr := a.sessions.CreateSession(&models.UserSessionCore{
-			LmsUserID:  user.Id,
-			AuthMode:   authMode,
-			UserAgent:  client.UserAgent,
-			IPAddress:  client.IPAddress,
-			LastSeenAt: now,
-			ExpiresAt:  now.Add(ttl),
-		})
+		sess, createErr := licensing.AcquireLoginSession(
+			a.sessions, user.Id, authMode, client.UserAgent, client.IPAddress, ttl,
+		)
 		if createErr != nil {
+			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
+				return "", "", auth.ErrSessionLimitReached
+			}
 			return "", "", createErr
 		}
 		sid = sess.SessionKey

@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/spf13/viper"
 )
 
@@ -193,9 +195,14 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		ErrorHandling(err, c)
 		return
 	}
+	currentSid := currentSessionKey(c)
 	out := make([]gin.H, 0, len(sessions))
 	for _, s := range sessions {
-		out = append(out, sessionToJSON(s))
+		row := sessionToJSON(s)
+		if currentSid != "" && s.SessionKey == currentSid {
+			row["isCurrent"] = true
+		}
+		out = append(out, row)
 	}
 	c.JSON(http.StatusOK, gin.H{"sessions": out})
 }
@@ -211,11 +218,30 @@ func (h *Handler) RevokeSession(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
 		return
 	}
+	currentSid := currentSessionKey(c)
+	isCurrent := false
+	if currentSid != "" {
+		if sessions, listErr := h.delegate.ListSessions(userID); listErr == nil {
+			for _, s := range sessions {
+				if s.ID == sessionID && s.SessionKey == currentSid {
+					isCurrent = true
+					break
+				}
+			}
+		}
+	}
 	if err := h.delegate.RevokeSessionByID(userID, sessionID); err != nil {
 		ErrorHandling(err, c)
 		return
 	}
-	c.Status(http.StatusNoContent)
+	if isCurrent {
+		secure := viper.GetBool("auth.refresh_cookie_secure")
+		c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+		c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
+		c.JSON(http.StatusOK, gin.H{"revoked": true, "wasCurrent": true})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": true, "wasCurrent": false})
 }
 
 func sessionToJSON(s *models.UserSessionCore) gin.H {
@@ -290,4 +316,60 @@ func setRefreshToken(value string, c *gin.Context) {
 		viper.GetBool("auth.refresh_cookie_secure"),
 		true,
 	)
+}
+
+func currentSessionKey(c *gin.Context) string {
+	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
+		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sid != "" {
+			return claims.Sid
+		}
+	}
+	header := c.GetHeader("Authorization")
+	parts := strings.Split(header, " ")
+	if len(parts) == 2 {
+		if claims, err := oidc.ParseSessionToken(parts[1]); err == nil && claims.Sid != "" {
+			return claims.Sid
+		}
+		if claims, err := hParseAccessTokenSid(parts[1]); err == nil {
+			return claims
+		}
+	}
+	if refresh, err := c.Cookie("refresh_token"); err == nil && refresh != "" {
+		if claims, err := hParseRefreshTokenSid(refresh); err == nil {
+			return claims
+		}
+	}
+	return ""
+}
+
+// Lightweight sid extractors avoid circular deps on auth usecase from this file.
+func hParseAccessTokenSid(token string) (string, error) {
+	claims, err := parseUserClaims(token, []byte(viper.GetString("auth.access_signing_key")))
+	if err != nil {
+		return "", err
+	}
+	return claims.Sid, nil
+}
+
+func hParseRefreshTokenSid(token string) (string, error) {
+	claims, err := parseUserClaims(token, []byte(viper.GetString("auth.refresh_signing_key")))
+	if err != nil {
+		return "", err
+	}
+	return claims.Sid, nil
+}
+
+func parseUserClaims(token string, key []byte) (*models.UserClaims, error) {
+	data, err := jwt.ParseWithClaims(token, &models.UserClaims{},
+		func(t *jwt.Token) (interface{}, error) {
+			return key, nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := data.Claims.(*models.UserClaims)
+	if !ok {
+		return nil, auth.ErrInvalidTypeClaims
+	}
+	return claims, nil
 }
