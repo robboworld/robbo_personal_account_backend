@@ -33,7 +33,7 @@ oidc:
   scopes: "openid profile email"
   frontendBaseUrl: "http://localhost:3030"
   logoutEndpoint: "http://localhost:8081/default/endsession"
-  postLogoutRedirectUri: "http://localhost:3030/login"
+  postLogoutRedirectUri: "http://localhost:3030/"
 
 lmsMysql:
   # Or env LMS_MYSQL_DSN — read-only user for workers/scripts

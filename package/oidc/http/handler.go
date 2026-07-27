@@ -129,7 +129,7 @@ func authStatusPayload(authenticated bool, sub, email, edxUserID string, role ui
 func resolveLogoutTarget(frontend, returnTo string) string {
 	frontend = strings.TrimRight(frontend, "/")
 	if returnTo == "" {
-		return frontend + "/login"
+		return frontend + "/"
 	}
 	if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
 		return returnTo
@@ -143,8 +143,10 @@ func resolveLogoutTarget(frontend, returnTo string) string {
 // Logout clears the BFF session cookie and redirects to the IdP end_session endpoint.
 func (h Handler) Logout(c *gin.Context) {
 	returnTo := c.DefaultQuery("return_to", "")
-	// clear BFF cookie
-	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", false, true)
+	secure := viper.GetBool("auth.refresh_cookie_secure")
+	// clear BFF + password-fallback refresh cookies so PublicAuthGate cannot revive the session
+	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
 
 	logoutEndpoint := viper.GetString("oidc.logoutEndpoint")
 	frontend := viper.GetString("oidc.frontendBaseUrl")
@@ -162,8 +164,12 @@ func (h Handler) Logout(c *gin.Context) {
 		return
 	}
 	postLogout := viper.GetString("oidc.postLogoutRedirectUri")
-	if returnTo != "" && strings.HasPrefix(returnTo, "http") {
-		postLogout = returnTo
+	if returnTo != "" {
+		if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
+			postLogout = returnTo
+		} else {
+			postLogout = resolveLogoutTarget(frontend, returnTo)
+		}
 	}
 	if postLogout == "" {
 		postLogout = resolveLogoutTarget(frontend, returnTo)
