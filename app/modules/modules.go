@@ -197,6 +197,7 @@ type HandlerModule struct {
 	NotificationsHandler       notificationhttp.Handler
 	UserSearchHandler          usersearchhttp.Handler
 	OIDCHandler                *oidchttp.Handler
+	LicensingGateway           licensing.Gateway
 }
 
 func SetupUserSearchService() *usersearch.Service {
@@ -242,6 +243,7 @@ func SetupHandler(
 		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
 		UserSearchHandler:          usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
 		OIDCHandler:                oidcHandler,
+		LicensingGateway:           gateway.LicensingGateway,
 	}
 }
 
