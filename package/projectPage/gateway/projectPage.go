@@ -398,6 +398,40 @@ func (r *ProjectPageGatewayImpl) SaveSb3Archive(projectPageId, userID string, ar
 	})
 }
 
+// GetTotalStorageBytesForOwner sums size_bytes of each project's current version.
+func (r *ProjectPageGatewayImpl) GetTotalStorageBytesForOwner(ownerUserID string) (int64, error) {
+	if strings.TrimSpace(ownerUserID) == "" {
+		return 0, nil
+	}
+	var total int64
+	err := r.projectStorageDB.Raw(`
+		SELECT COALESCE(SUM(v.size_bytes), 0)
+		FROM scratch_projects p
+		JOIN scratch_project_versions v ON v.id = p.current_version_id
+		WHERE p.owner_user_id = ? AND p.deleted_at IS NULL
+	`, ownerUserID).Scan(&total).Error
+	return total, err
+}
+
+// GetCurrentVersionSizeBytes returns the current .sb3 size for a project, or 0.
+func (r *ProjectPageGatewayImpl) GetCurrentVersionSizeBytes(projectPageId string) (int64, error) {
+	storageProjectID, err := r.resolveStorageProjectID(r.projectStorageDB, projectPageId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var size int64
+	err = r.projectStorageDB.Raw(`
+		SELECT COALESCE(v.size_bytes, 0)
+		FROM scratch_projects p
+		LEFT JOIN scratch_project_versions v ON v.id = p.current_version_id
+		WHERE p.id = ? AND p.deleted_at IS NULL
+	`, storageProjectID).Scan(&size).Error
+	return size, err
+}
+
 func (r *ProjectPageGatewayImpl) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {
 	var rows []models.ScratchReactionTypeDB
 	err := r.projectStorageDB.

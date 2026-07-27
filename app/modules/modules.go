@@ -125,7 +125,7 @@ type UseCaseModule struct {
 func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) UseCaseModule {
 	licensingUC := licusecase.SetupLicensingUseCase(gateway.LicensingGateway)
 	return UseCaseModule{
-		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway, portalGateway),
+		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway, portalGateway, gateway.LicensingGateway),
 		CohortsUseCase:      chrtusecase.SetupCohortUseCase(gateway.CohortsGateway),
 		CoursePacketUseCase: coursePacketusecase.SetupCoursePacketUseCase(gateway.CoursePacketGateway),
 		CoursesUseCase: crsusecase.SetupCourseUseCase(
@@ -140,6 +140,7 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) Us
 			gateway.ProjectPageGateway,
 			gateway.ProjectsGateway,
 			gateway.NotificationsGateway,
+			gateway.LicensingGateway,
 		),
 		ProjectsUseCase:  prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
 		LicensingUseCase: licensingUC.UseCase,
@@ -216,6 +217,7 @@ func StartUserSearchSync(service *usersearch.Service, lc fx.Lifecycle) {
 func SetupHandler(
 	delegate DelegateModule,
 	usecase UseCaseModule,
+	gateway GatewayModule,
 	portalNotifications portalhttp.NotificationsHandler,
 	oidcHandler *oidchttp.Handler,
 	userSearch *usersearch.Service,
@@ -234,7 +236,7 @@ func SetupHandler(
 		RobboUnitsHandler:          robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
 		RobboGroupHandler:          robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
 		CoursePacketHandler:        coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
-		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate),
+		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate, gateway.ProjectPageGateway),
 		PaymentsHandler:            payhttp.NewPaymentsHandler(delegate.AuthDelegate, delegate.PaymentsDelegate),
 		PortalNotificationsHandler: portalNotifications,
 		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),

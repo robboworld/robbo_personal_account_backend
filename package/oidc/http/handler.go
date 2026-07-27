@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -8,9 +9,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
@@ -19,16 +22,17 @@ import (
 )
 
 type Handler struct {
-	cfg    *oidc.Config
-	portal portalgateway.Gateway
+	cfg      *oidc.Config
+	portal   portalgateway.Gateway
+	sessions licensing.Gateway
 }
 
-func NewHandler(portal portalgateway.Gateway) (Handler, error) {
+func NewHandler(portal portalgateway.Gateway, sessions licensing.Gateway) (Handler, error) {
 	cfg, err := oidc.LoadConfig()
 	if err != nil {
 		return Handler{}, err
 	}
-	return Handler{cfg: cfg, portal: portal}, nil
+	return Handler{cfg: cfg, portal: portal, sessions: sessions}, nil
 }
 
 func (h Handler) InitRoutes(router *gin.Engine) {
@@ -144,6 +148,11 @@ func resolveLogoutTarget(frontend, returnTo string) string {
 func (h Handler) Logout(c *gin.Context) {
 	returnTo := c.DefaultQuery("return_to", "")
 	secure := viper.GetBool("auth.refresh_cookie_secure")
+	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" && h.sessions != nil {
+		if claims, parseErr := oidc.ParseSessionToken(cookie); parseErr == nil && claims.Sid != "" {
+			_ = h.sessions.RevokeSession(claims.Sid)
+		}
+	}
 	// clear BFF + password-fallback refresh cookies so PublicAuthGate cannot revive the session
 	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
 	c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
@@ -238,7 +247,52 @@ func (h Handler) Callback(c *gin.Context) {
 	} else {
 		role = roleCodeToModel(inferRoleCodeFromIDToken(tr.IDToken))
 	}
-	session, err := oidc.IssueSessionToken(claims.Sub, edxUserID, claims.Email, uint(role))
+
+	sid := ""
+	if edxUserID != "" && h.sessions != nil {
+		if err := licensing.CheckSessionLimit(h.sessions, edxUserID); err != nil {
+			if errors.Is(err, licensing.ErrSessionLimitReached) {
+				frontend := viper.GetString("oidc.frontendBaseUrl")
+				if frontend == "" {
+					frontend = "http://localhost:3030"
+				}
+				target := entry.ReturnTo
+				if target == "" {
+					target = "/home"
+				}
+				sep := "?"
+				if strings.Contains(target, "?") {
+					sep = "&"
+				}
+				redirectURL := fmt.Sprintf("%s%s%serr=session_limit_reached",
+					strings.TrimRight(frontend, "/"), target, sep)
+				if strings.HasPrefix(target, "http") {
+					redirectURL = fmt.Sprintf("%s%serr=session_limit_reached", target, sep)
+				}
+				c.Redirect(http.StatusFound, redirectURL)
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "session_limit_check_failed"})
+			return
+		}
+		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
+		now := time.Now().UTC()
+		sess, createErr := h.sessions.CreateSession(&models.UserSessionCore{
+			LmsUserID:  edxUserID,
+			AuthMode:   "oidc_bff",
+			UserAgent:  c.Request.UserAgent(),
+			IPAddress:  oidcClientIP(c),
+			LastSeenAt: now,
+			ExpiresAt:  now.Add(ttl),
+		})
+		if createErr != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "session_create_failed"})
+			return
+		}
+		sid = sess.SessionKey
+	}
+
+	session, err := oidc.IssueSessionToken(claims.Sub, edxUserID, claims.Email, uint(role), sid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session_issue_failed"})
 		return
@@ -258,6 +312,23 @@ func (h Handler) Callback(c *gin.Context) {
 		frontend = "http://localhost:3030"
 	}
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s%s", strings.TrimRight(frontend, "/"), target))
+}
+
+func oidcClientIP(c *gin.Context) string {
+	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if xri := c.GetHeader("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return c.Request.RemoteAddr
 }
 
 func inferRoleCodeFromIDToken(idToken string) string {

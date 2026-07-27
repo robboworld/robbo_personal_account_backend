@@ -64,3 +64,7 @@ func (d *LicensingDelegateImpl) BuildAddonManifest(token, fingerprint string) (m
 func (d *LicensingDelegateImpl) EncryptAddonBundle(token, fingerprint string) (string, error) {
 	return d.usecase.EncryptAddonBundle(token, fingerprint)
 }
+
+func (d *LicensingDelegateImpl) ResolveEntitlements(lmsUserID string) (licensing.Entitlements, error) {
+	return d.usecase.ResolveEntitlements(lmsUserID)
+}
