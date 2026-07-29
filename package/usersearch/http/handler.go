@@ -42,18 +42,25 @@ func (h *Handler) requireAdmin(c *gin.Context, roles []models.Role) bool {
 	return true
 }
 
-// Search godoc: GET /api/users/search?q=&limit=20
+// Search godoc: GET /api/users/search?q=&limit=20&includeInactive=true
 func (h *Handler) Search(c *gin.Context) {
 	if !h.requireAdmin(c, []models.Role{models.UnitAdmin, models.SuperAdmin}) {
 		return
 	}
 	q := strings.TrimSpace(c.Query("q"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+	includeInactive := false
+	if strings.EqualFold(c.Query("includeInactive"), "true") || c.Query("includeInactive") == "1" {
+		_, role, err := h.authDelegate.UserIdentity(c)
+		if err == nil && role == models.SuperAdmin {
+			includeInactive = true
+		}
+	}
 	if h.service == nil {
 		c.JSON(http.StatusOK, gin.H{"items": []usersearch.Hit{}})
 		return
 	}
-	items, err := h.service.Search(c.Request.Context(), q, limit)
+	items, err := h.service.Search(c.Request.Context(), q, limit, includeInactive)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

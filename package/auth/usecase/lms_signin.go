@@ -7,6 +7,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 )
 
 func roleFromLMSUser(u *lmsdb.AuthUserLogin) models.Role {
@@ -26,9 +27,22 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string, client auth.ClientIn
 	}
 	defer reader.Close()
 
-	u, err := reader.Authenticate(email, password)
+	u, err := reader.LookupAuthUserForLogin(email)
 	if err != nil {
 		return "", "", err
+	}
+	if u == nil {
+		return "", "", auth.ErrUserNotFound
+	}
+	if !u.IsActive {
+		edxID := strconv.FormatInt(u.ID, 10)
+		if ban := moderation.LookupPublicBanInfo(edxID); ban != nil {
+			return "", "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
+		}
+		return "", "", auth.NewAccountInactiveError("", nil, false)
+	}
+	if !lmsdb.VerifyDjangoPassword(password, u.Password) {
+		return "", "", auth.ErrInvalidCredentials
 	}
 
 	touchLastLogin(u.ID)

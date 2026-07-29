@@ -1,13 +1,16 @@
 package server
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/spf13/viper"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -25,6 +28,25 @@ func sessionStillActive(sessions licensing.Gateway, sid string) bool {
 	}
 	sess, err := sessions.GetActiveSession(sid)
 	return err == nil && sess != nil
+}
+
+func abortIfUserInactive(c *gin.Context, userID string) bool {
+	if userID == "" || userID == "0" {
+		return false
+	}
+	if lmsdb.IsUserActiveCached(userID) {
+		return false
+	}
+	clearBFFSessionCookie(c)
+	body := gin.H{
+		"error": "user account is disabled",
+		"code":  "USER_INACTIVE",
+	}
+	if ban := moderation.LookupPublicBanInfo(userID); ban != nil {
+		body["ban"] = moderation.PublicBanJSON(ban)
+	}
+	c.AbortWithStatusJSON(http.StatusForbidden, body)
+	return true
 }
 
 func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
@@ -67,6 +89,15 @@ func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 	return false
 }
 
+func proceedIfActive(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	id, _ := userID.(string)
+	if abortIfUserInactive(c, id) {
+		return
+	}
+	c.Next()
+}
+
 func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
@@ -97,13 +128,13 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 
 		if lmsDbMode || (oidcBff && lmsFallback) {
 			if applyOidcSession(c, sessions) {
-				c.Next()
+				proceedIfActive(c)
 				return
 			}
 			// Fall through to JWT (LMS email/password login).
 		} else if oidcBff {
 			if applyOidcSession(c, sessions) {
-				c.Next()
+				proceedIfActive(c)
 				return
 			}
 			c.Set("user_id", "0")
@@ -166,6 +197,6 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 		c.Set("user_id", claims.Id)
 		c.Set("user_role", claims.Role)
 		c.Set("session_sid", claims.Sid)
-		c.Next()
+		proceedIfActive(c)
 	}
 }

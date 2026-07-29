@@ -15,6 +15,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/spf13/viper"
 )
 
@@ -26,6 +27,8 @@ type Hit struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	FullName string `json:"fullName"`
+	IsActive bool   `json:"isActive"`
+	Role     int    `json:"role"`
 }
 
 // Service searches LMS users via Elasticsearch with MySQL fallback.
@@ -199,7 +202,9 @@ const indexMapping = `{
         "type": "text",
         "analyzer": "standard"
       },
-      "isActive": { "type": "boolean" }
+      "isActive": { "type": "boolean" },
+      "isStaff": { "type": "boolean" },
+      "isSuperuser": { "type": "boolean" }
     }
   }
 }`
@@ -234,11 +239,13 @@ func (s *Service) EnsureIndex(ctx context.Context) error {
 }
 
 type esDoc struct {
-	ID       string `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	FullName string `json:"fullName"`
-	IsActive bool   `json:"isActive"`
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	FullName    string `json:"fullName"`
+	IsActive    bool   `json:"isActive"`
+	IsStaff     bool   `json:"isStaff"`
+	IsSuperuser bool   `json:"isSuperuser"`
 }
 
 // ReindexAll bulk-loads auth_user into Elasticsearch.
@@ -275,7 +282,33 @@ func (s *Service) ReindexAll(ctx context.Context) (int, error) {
 	return total, nil
 }
 
+// IndexUserByID refreshes one LMS user document in Elasticsearch after ban/unban.
+// No-op when ES is unavailable. Best-effort: errors are logged by the caller.
+func (s *Service) IndexUserByID(ctx context.Context, lmsUserID string) error {
+	if s == nil || !s.ready() {
+		return nil
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(lmsUserID), 10, 64)
+	if err != nil || id <= 0 {
+		return nil
+	}
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	hit, err := reader.GetAuthUserForIndex(id)
+	if err != nil {
+		return err
+	}
+	return s.bulkIndexRefresh(ctx, []lmsdb.AuthUserSearchHit{*hit}, true)
+}
+
 func (s *Service) bulkIndex(ctx context.Context, hits []lmsdb.AuthUserSearchHit) error {
+	return s.bulkIndexRefresh(ctx, hits, false)
+}
+
+func (s *Service) bulkIndexRefresh(ctx context.Context, hits []lmsdb.AuthUserSearchHit, refresh bool) error {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	for _, h := range hits {
@@ -286,19 +319,25 @@ func (s *Service) bulkIndex(ctx context.Context, hits []lmsdb.AuthUserSearchHit)
 			return err
 		}
 		doc := esDoc{
-			ID:       strconv.FormatInt(h.ID, 10),
-			Username: h.Username,
-			Email:    h.Email,
-			FullName: strings.TrimSpace(h.FullName),
-			IsActive: h.IsActive,
+			ID:          strconv.FormatInt(h.ID, 10),
+			Username:    h.Username,
+			Email:       h.Email,
+			FullName:    strings.TrimSpace(h.FullName),
+			IsActive:    h.IsActive,
+			IsStaff:     h.IsStaff,
+			IsSuperuser: h.IsSuperuser,
 		}
 		if err := enc.Encode(doc); err != nil {
 			return err
 		}
 	}
+	refreshOpt := "false"
+	if refresh {
+		refreshOpt = "true"
+	}
 	req := esapi.BulkRequest{
 		Body:    bytes.NewReader(buf.Bytes()),
-		Refresh: "false",
+		Refresh: refreshOpt,
 	}
 	res, err := req.Do(ctx, s.es)
 	if err != nil {
@@ -322,7 +361,8 @@ func (s *Service) bulkIndex(ctx context.Context, hits []lmsdb.AuthUserSearchHit)
 }
 
 // Search finds users by query string. Tries ES first, falls back to MySQL.
-func (s *Service) Search(ctx context.Context, q string, limit int) ([]Hit, error) {
+// When includeInactive is true, inactive (banned) users are included.
+func (s *Service) Search(ctx context.Context, q string, limit int, includeInactive bool) ([]Hit, error) {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return []Hit{}, nil
@@ -335,23 +375,35 @@ func (s *Service) Search(ctx context.Context, q string, limit int) ([]Hit, error
 	}
 
 	if s.ready() {
-		hits, err := s.searchES(ctx, q, limit)
+		hits, err := s.searchES(ctx, q, limit, includeInactive)
 		if err == nil {
 			return hits, nil
 		}
 		log.Printf("usersearch: es search failed, falling back to mysql: %v", err)
 	}
-	return s.searchMySQL(q, limit)
+	return s.searchMySQL(q, limit, includeInactive)
 }
 
-func (s *Service) searchES(ctx context.Context, q string, limit int) ([]Hit, error) {
+func roleFromFlags(isStaff, isSuperuser bool) int {
+	if isSuperuser {
+		return int(models.SuperAdmin)
+	}
+	if isStaff {
+		return int(models.Teacher)
+	}
+	return int(models.Student)
+}
+
+func (s *Service) searchES(ctx context.Context, q string, limit int, includeInactive bool) ([]Hit, error) {
+	filters := []map[string]interface{}{}
+	if !includeInactive {
+		filters = append(filters, map[string]interface{}{"term": map[string]interface{}{"isActive": true}})
+	}
 	body := map[string]interface{}{
 		"size": limit,
 		"query": map[string]interface{}{
 			"bool": map[string]interface{}{
-				"filter": []map[string]interface{}{
-					{"term": map[string]interface{}{"isActive": true}},
-				},
+				"filter": filters,
 				"should": []map[string]interface{}{
 					{"match": map[string]interface{}{"username": map[string]interface{}{"query": q, "operator": "and", "boost": 3}}},
 					{"match": map[string]interface{}{"email": map[string]interface{}{"query": q, "operator": "and", "boost": 2}}},
@@ -397,18 +449,20 @@ func (s *Service) searchES(ctx context.Context, q string, limit int) ([]Hit, err
 			Username: h.Source.Username,
 			Email:    h.Source.Email,
 			FullName: h.Source.FullName,
+			IsActive: h.Source.IsActive,
+			Role:     roleFromFlags(h.Source.IsStaff, h.Source.IsSuperuser),
 		})
 	}
 	return out, nil
 }
 
-func (s *Service) searchMySQL(q string, limit int) ([]Hit, error) {
+func (s *Service) searchMySQL(q string, limit int, includeInactive bool) ([]Hit, error) {
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	rows, err := reader.SearchAuthUsersPrefix(q, limit)
+	rows, err := reader.SearchAuthUsersPrefix(q, limit, includeInactive)
 	if err != nil {
 		return nil, err
 	}
@@ -419,6 +473,8 @@ func (s *Service) searchMySQL(q string, limit int) ([]Hit, error) {
 			Username: r.Username,
 			Email:    r.Email,
 			FullName: strings.TrimSpace(r.FullName),
+			IsActive: r.IsActive,
+			Role:     roleFromFlags(r.IsStaff, r.IsSuperuser),
 		})
 	}
 	return out, nil
