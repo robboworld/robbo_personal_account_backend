@@ -16,6 +16,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
 	"github.com/spf13/viper"
@@ -249,6 +250,28 @@ func (h Handler) Callback(c *gin.Context) {
 	edxUserID := ""
 	role := models.Student
 	if profile, err := lookupLMSProfileByEmail(claims.Email); err == nil && profile != nil {
+		if !profile.IsActive {
+			frontend := viper.GetString("oidc.frontendBaseUrl")
+			if frontend == "" {
+				frontend = "http://localhost:3030"
+			}
+			q := url.Values{}
+			q.Set("err", "user_inactive")
+			edxID := strconv.FormatInt(profile.ID, 10)
+			if ban := moderation.LookupPublicBanInfo(edxID); ban != nil {
+				if ban.Reason != "" {
+					q.Set("reason", ban.Reason)
+				}
+				if ban.IsPermanent {
+					q.Set("permanent", "1")
+				} else if ban.ExpiresAt != nil {
+					q.Set("expiresAt", ban.ExpiresAt.UTC().Format(time.RFC3339))
+				}
+			}
+			redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
+			c.Redirect(http.StatusFound, redirectURL)
+			return
+		}
 		edxUserID = strconv.FormatInt(profile.ID, 10)
 		role = lmsRoleFromProfile(profile)
 		touchLastLogin(profile.ID)

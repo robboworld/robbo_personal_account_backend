@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/spf13/viper"
 )
@@ -283,7 +284,15 @@ func ErrorHandling(err error, c *gin.Context) {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrUserInactive):
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		body := gin.H{"error": err.Error(), "code": "USER_INACTIVE"}
+		if inactive, ok := auth.AsAccountInactive(err); ok && inactive.HasBan {
+			body["ban"] = moderation.PublicBanJSON(&moderation.PublicBanInfo{
+				Reason:      inactive.Reason,
+				ExpiresAt:   inactive.ExpiresAt,
+				IsPermanent: inactive.IsPermanent,
+			})
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, body)
 	case errors.Is(err, http.ErrNoCookie):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:

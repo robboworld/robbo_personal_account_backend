@@ -154,6 +154,22 @@ func (g *LicensingGatewayImpl) RevokeSessionByID(lmsUserID, sessionID string) er
 	return nil
 }
 
+// RevokeAllSessionsForUser marks every non-revoked session for the user as revoked.
+// Returns the number of rows updated.
+func (g *LicensingGatewayImpl) RevokeAllSessionsForUser(lmsUserID string) (int, error) {
+	if lmsUserID == "" {
+		return 0, nil
+	}
+	now := time.Now().UTC()
+	res := g.db.Model(&models.UserSessionDB{}).
+		Where("lms_user_id = ? AND revoked_at IS NULL", lmsUserID).
+		Update("revoked_at", now)
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return int(res.RowsAffected), nil
+}
+
 // ListActiveSessions returns non-revoked, non-expired sessions for the "My
 // sessions" UI, most recently seen first.
 func (g *LicensingGatewayImpl) ListActiveSessions(lmsUserID string) ([]*models.UserSessionCore, error) {

@@ -27,10 +27,25 @@ func (r *mutationResolver) SingIn(ctx context.Context, input models.SignInInput)
 	}
 	accessToken, refreshToken, err := r.authDelegate.SignIn(input.Email, input.Password, uint(input.UserRole), client)
 	if err != nil {
+		ext := map[string]interface{}{"code": signInErrorCode(err)}
+		if errors.Is(err, auth.ErrUserInactive) {
+			ext["code"] = "USER_INACTIVE"
+			if inactive, ok := auth.AsAccountInactive(err); ok && inactive.HasBan {
+				ban := map[string]interface{}{
+					"reason":      inactive.Reason,
+					"isPermanent": inactive.IsPermanent,
+					"expiresAt":   nil,
+				}
+				if inactive.ExpiresAt != nil {
+					ban["expiresAt"] = inactive.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+				}
+				ext["ban"] = ban
+			}
+		}
 		return nil, &gqlerror.Error{
 			Path:       graphql.GetPath(ctx),
 			Message:    err.Error(),
-			Extensions: map[string]interface{}{"code": signInErrorCode(err)},
+			Extensions: ext,
 		}
 	}
 	setRefreshToken(refreshToken, ginContext)

@@ -37,5 +37,6 @@ type Gateway interface {
 	TouchSession(sessionKey string, lastSeenAt time.Time) error
 	RevokeSession(sessionKey string) error
 	RevokeSessionByID(lmsUserID, sessionID string) error
+	RevokeAllSessionsForUser(lmsUserID string) (int, error)
 	ListActiveSessions(lmsUserID string) ([]*models.UserSessionCore, error)
 }

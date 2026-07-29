@@ -10,7 +10,9 @@ import (
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
@@ -222,6 +224,13 @@ func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, err
 		if err := a.sessions.TouchSession(claims.Sid, time.Now().UTC()); err != nil {
 			log.Printf("auth refresh: touch session: %v", err)
 		}
+	}
+
+	if claims.Id != "" && !lmsdb.IsUserActiveCached(claims.Id) {
+		if ban := moderation.LookupPublicBanInfo(claims.Id); ban != nil {
+			return "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
+		}
+		return "", auth.NewAccountInactiveError("", nil, false)
 	}
 
 	user := &models.UserCore{

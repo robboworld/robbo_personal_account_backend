@@ -48,6 +48,11 @@ import (
 	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
 	lichttp "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/http"
 	licusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
+	moddelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/delegate"
+	modgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/gateway"
+	modhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/http"
+	modusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/payments"
 	paydelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/delegate"
 	paygateway "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/gateway"
@@ -83,6 +88,7 @@ type GatewayModule struct {
 	NotificationsGateway notifications.Gateway
 	ProjectsGateway      projects.Gateway
 	LicensingGateway     licensing.Gateway
+	ModerationGateway    moderation.Gateway
 	PaymentsGateway      payments.Gateway
 	RobboGroupGateway    robboGroup.Gateway
 	RobboUnitsGateway    robboUnits.Gateway
@@ -99,6 +105,7 @@ func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
 		NotificationsGateway: notificationgateway.SetupNotificationGateway(postgresClient),
 		ProjectsGateway:      prjgateway.SetupProjectsGateway(postgresClient),
 		LicensingGateway:     licgateway.SetupLicensingGateway(postgresClient),
+		ModerationGateway:    modgateway.SetupBansGateway(postgresClient),
 		PaymentsGateway:      paygateway.SetupPaymentsGateway(postgresClient),
 		RobboGroupGateway:    robboGroupgateway.SetupRobboGroupGateway(postgresClient),
 		RobboUnitsGateway:    robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
@@ -116,13 +123,14 @@ type UseCaseModule struct {
 	NotificationsUseCase notifications.UseCase
 	ProjectsUseCase      projects.UseCase
 	LicensingUseCase     licensing.UseCase
+	ModerationUseCase    moderation.UseCase
 	PaymentsUseCase      payments.UseCase
 	RobboGroupUseCase    robboGroup.UseCase
 	RobboUnitsUseCase    robboUnits.UseCase
 	UsersUseCase         users.UseCase
 }
 
-func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) UseCaseModule {
+func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, userSearch *usersearch.Service) UseCaseModule {
 	licensingUC := licusecase.SetupLicensingUseCase(gateway.LicensingGateway)
 	return UseCaseModule{
 		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway, portalGateway, gateway.LicensingGateway),
@@ -142,9 +150,10 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway) Us
 			gateway.NotificationsGateway,
 			gateway.LicensingGateway,
 		),
-		ProjectsUseCase:  prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
-		LicensingUseCase: licensingUC.UseCase,
-		PaymentsUseCase:  payusecase.SetupPaymentsUseCase(gateway.PaymentsGateway, licensingUC.UseCase).UseCase,
+		ProjectsUseCase:   prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
+		LicensingUseCase:  licensingUC.UseCase,
+		ModerationUseCase: modusecase.SetupBanUseCase(gateway.ModerationGateway, gateway.LicensingGateway, userSearch).UseCase,
+		PaymentsUseCase:   payusecase.SetupPaymentsUseCase(gateway.PaymentsGateway, licensingUC.UseCase).UseCase,
 		RobboGroupUseCase: robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
 		RobboUnitsUseCase: robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
 		UsersUseCase:      usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
@@ -159,6 +168,7 @@ type DelegateModule struct {
 	ProjectPageDelegate  projectPage.Delegate
 	ProjectsDelegate     projects.Delegate
 	LicensingDelegate    licensing.Delegate
+	ModerationDelegate   moderation.Delegate
 	PaymentsDelegate     payments.Delegate
 	RobboGroupDelegate   robboGroup.Delegate
 	RobboUnitsDelegate   robboUnits.Delegate
@@ -174,6 +184,7 @@ func SetupDelegate(usecase UseCaseModule) DelegateModule {
 		ProjectPageDelegate:  ppagedelegate.SetupProjectPageDelegate(usecase.ProjectPageUseCase),
 		ProjectsDelegate:     prjdelegate.SetupProjectDelegate(usecase.ProjectsUseCase),
 		LicensingDelegate:    licdelegate.SetupLicensingDelegate(usecase.LicensingUseCase),
+		ModerationDelegate:   moddelegate.SetupModerationDelegate(usecase.ModerationUseCase),
 		PaymentsDelegate:     paydelegate.SetupPaymentsDelegate(usecase.PaymentsUseCase),
 		RobboGroupDelegate:   robboGroupdelegate.SetupRobboGroupDelegate(usecase.RobboGroupUseCase),
 		RobboUnitsDelegate:   robboUnitsdelegate.SetupRobboUnitsDelegate(usecase.RobboUnitsUseCase),
@@ -196,6 +207,7 @@ type HandlerModule struct {
 	PortalNotificationsHandler portalhttp.NotificationsHandler
 	NotificationsHandler       notificationhttp.Handler
 	UserSearchHandler          usersearchhttp.Handler
+	ModerationHandler          modhttp.Handler
 	OIDCHandler                *oidchttp.Handler
 	LicensingGateway           licensing.Gateway
 }
@@ -213,6 +225,10 @@ func StartUserSearchSync(service *usersearch.Service, lc fx.Lifecycle) {
 			return nil
 		},
 	})
+}
+
+func StartBanExpiryWorker(usecase UseCaseModule, lc fx.Lifecycle) {
+	modusecase.StartBanExpiryWorker(usecase.ModerationUseCase, lc)
 }
 
 func SetupHandler(
@@ -242,6 +258,7 @@ func SetupHandler(
 		PortalNotificationsHandler: portalNotifications,
 		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
 		UserSearchHandler:          usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
+		ModerationHandler:          modhttp.NewHandler(delegate.AuthDelegate, delegate.ModerationDelegate),
 		OIDCHandler:                oidcHandler,
 		LicensingGateway:           gateway.LicensingGateway,
 	}
