@@ -38,8 +38,9 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	if err != nil {
 		return nil, err
 	}
-	// jwt-go v4 validates aud when present; iss is checked below (mock IdP may use host.docker.internal).
-	parser := jwt.NewParser(jwt.WithAudience(c.ClientID))
+	// Signature only; aud checked manually below.
+	// jwt-go v4: if aud claim is present, Parse fails unless WithAudience or WithoutAudienceValidation.
+	parser := jwt.NewParser(jwt.WithoutAudienceValidation())
 	token, err := parser.Parse(idToken, func(token *jwt.Token) (interface{}, error) {
 		if token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
 			return nil, fmt.Errorf("unexpected alg %s", token.Method.Alg())
@@ -65,7 +66,7 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	if !issuerMatches(claims.Iss, c.Issuer) {
 		return nil, errors.New("oidc: invalid_issuer")
 	}
-	if !audienceMatches(claims.Aud, c.ClientID) {
+	if !audienceMatches(claims.Aud, c.ClientID) && !localMockAudienceAccept(claims.Iss, claims.Aud) {
 		return nil, errors.New("oidc: invalid_audience")
 	}
 	if claims.Exp > 0 && time.Now().Unix() >= claims.Exp {
@@ -87,6 +88,31 @@ func audienceMatches(aud interface{}, clientID string) bool {
 	case []interface{}:
 		for _, item := range v {
 			if s, ok := item.(string); ok && s == clientID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// localMockAudienceAccept: navikt/mock-oauth2-server often omits aud or sends issuer id "default".
+func localMockAudienceAccept(iss string, aud interface{}) bool {
+	u, err := url.Parse(iss)
+	if err != nil || !localOIDCHost(u.Hostname()) {
+		return false
+	}
+	if aud == nil {
+		return true
+	}
+	switch v := aud.(type) {
+	case string:
+		return v == "" || v == "default"
+	case []interface{}:
+		if len(v) == 0 {
+			return true
+		}
+		if len(v) == 1 {
+			if s, ok := v[0].(string); ok && s == "default" {
 				return true
 			}
 		}
