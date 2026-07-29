@@ -84,7 +84,7 @@ func isValidPhoneNumber(phone string) bool {
 	return ruPhonePattern.MatchString(phone) || isValidInternationalPhone(phone)
 }
 
-func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
+func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	if userCore == nil {
 		return "", "", auth.ErrUserNotFound
 	}
@@ -143,10 +143,5 @@ func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore) (accessToken, ref
 	userCore.Role = models.Student
 	userCore.FullName = fullName
 
-	accessToken, err = a.GenerateToken(userCore, a.accessExpireDuration, a.accessSigningKey)
-	if err != nil {
-		return "", "", err
-	}
-	refreshToken, err = a.GenerateToken(userCore, a.refreshExpireDuration, a.refreshSigningKey)
-	return accessToken, refreshToken, err
+	return a.issueTokensWithSession(userCore, "lms_db", client)
 }

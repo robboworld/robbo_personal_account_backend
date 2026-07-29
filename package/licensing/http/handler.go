@@ -10,18 +10,26 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch"
 	"github.com/spf13/viper"
 )
 
 type Handler struct {
 	authDelegate      auth.Delegate
 	licensingDelegate licensing.Delegate
+	projectStorage    projectPage.Gateway
 }
 
-func NewLicensingHandler(authDelegate auth.Delegate, licensingDelegate licensing.Delegate) Handler {
+func NewLicensingHandler(
+	authDelegate auth.Delegate,
+	licensingDelegate licensing.Delegate,
+	projectStorage projectPage.Gateway,
+) Handler {
 	return Handler{
 		authDelegate:      authDelegate,
 		licensingDelegate: licensingDelegate,
+		projectStorage:    projectStorage,
 	}
 }
 
@@ -46,6 +54,7 @@ func (h *Handler) InitLicensingRoutes(router *gin.Engine) {
 	{
 		api.POST("/issue", h.IssueLicense)
 		api.GET("/mine", h.ListMyLicenses)
+		api.GET("/entitlements", h.GetEntitlements)
 		api.GET("/:licenseId", h.GetLicense)
 		api.DELETE("/:licenseId/seats/:seatId", h.RevokeSeat)
 		api.POST("/device/link/confirm", h.ConfirmDeviceLink)
@@ -305,8 +314,11 @@ func (h *Handler) AddonBundle(c *gin.Context) {
 
 type issueLicenseRequest struct {
 	LmsUserID    string   `json:"lmsUserId"`
+	LmsUsername  string   `json:"lmsUsername"`
 	SeatLimit    int      `json:"seatLimit"`
 	Capabilities []string `json:"capabilities"`
+	CloudQuotaMB int      `json:"cloudQuotaMb"`
+	SessionLimit int      `json:"sessionLimit"`
 	ExpiresAt    string   `json:"expiresAt"`
 	Note         string   `json:"note"`
 }
@@ -323,14 +335,30 @@ func (h *Handler) IssueLicense(c *gin.Context) {
 		return
 	}
 	var body issueLicenseRequest
-	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.LmsUserID) == "" {
+	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
 		return
 	}
+	lmsUserID := strings.TrimSpace(body.LmsUserID)
+	if lmsUserID == "" {
+		username := strings.TrimSpace(body.LmsUsername)
+		if username == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
+			return
+		}
+		resolved, resolveErr := usersearch.ResolveUsernameToID(username)
+		if resolveErr != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": resolveErr.Error()})
+			return
+		}
+		lmsUserID = resolved
+	}
 	input := models.IssueLicenseInput{
-		LmsUserID:    strings.TrimSpace(body.LmsUserID),
+		LmsUserID:    lmsUserID,
 		SeatLimit:    body.SeatLimit,
 		Capabilities: body.Capabilities,
+		CloudQuotaMB: body.CloudQuotaMB,
+		SessionLimit: body.SessionLimit,
 		Note:         body.Note,
 		IssuedBy:     userID,
 	}
@@ -366,6 +394,40 @@ func (h *Handler) ListMyLicenses(c *gin.Context) {
 		out = append(out, licenseToJSON(lic))
 	}
 	c.JSON(http.StatusOK, gin.H{"licenses": out})
+}
+
+func (h *Handler) GetEntitlements(c *gin.Context) {
+	userID, _, err := h.sessionIdentity(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	ent, err := h.licensingDelegate.ResolveEntitlements(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	var usedBytes int64
+	if h.projectStorage != nil {
+		usedBytes, err = h.projectStorage.GetTotalStorageBytesForOwner(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
+	tariffName := ent.TariffName
+	if tariffName == "" {
+		tariffName = "Free"
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"tariffName":   tariffName,
+		"hasLicense":   ent.HasLicense,
+		"cloudQuotaMb": ent.CloudQuotaMB,
+		"usedBytes":    usedBytes,
+		"sessionLimit": ent.SessionLimit,
+		"seatLimit":    ent.SeatLimit,
+		"capabilities": ent.Capabilities,
+	})
 }
 
 func (h *Handler) GetLicense(c *gin.Context) {
@@ -504,6 +566,8 @@ func licenseToJSON(lic *models.LicenseCore) gin.H {
 		"source":       lic.Source,
 		"seatLimit":    lic.SeatLimit,
 		"capabilities": lic.Capabilities,
+		"cloudQuotaMb": lic.CloudQuotaMB,
+		"sessionLimit": lic.SessionLimit,
 		"expiresAt":    lic.ExpiresAt.Format(time.RFC3339),
 		"issuedBy":     lic.IssuedBy,
 		"note":         lic.Note,

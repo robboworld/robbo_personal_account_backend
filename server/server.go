@@ -71,7 +71,7 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 		gin.Recovery(),
 		gin.Logger(),
 		GinContextToContextMiddleware(),
-		TokenAuthMiddleware(),
+		TokenAuthMiddleware(handlers.LicensingGateway),
 	)
 	handlers.AuthHandler.InitAuthRoutes(router)
 	if handlers.OIDCHandler != nil {
@@ -79,6 +79,8 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 	}
 	handlers.PortalNotificationsHandler.InitRoutes(router)
 	handlers.NotificationsHandler.InitRoutes(router)
+	handlers.UserSearchHandler.InitRoutes(router)
+	handlers.ModerationHandler.InitRoutes(router)
 	handlers.ProjectsHandler.InitProjectRoutes(router)
 	handlers.ProjectPageHandler.InitProjectRoutes(router)
 	handlers.CoursesHandler.InitCourseRoutes(router)

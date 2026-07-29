@@ -25,4 +25,18 @@ type Gateway interface {
 	GetDeviceLinkByDeviceCode(deviceCode string) (*models.DeviceLinkSessionCore, error)
 	GetDeviceLinkByUserCode(userCode string) (*models.DeviceLinkSessionCore, error)
 	UpdateDeviceLink(session *models.DeviceLinkSessionCore) error
+
+	// Web login session tracking (LK + RS3 Web), used to enforce the
+	// concurrent-session tariff limit. Independent of device Seats above.
+	CreateSession(session *models.UserSessionCore) (*models.UserSessionCore, error)
+	// CountActiveSessions counts distinct client IPs (same IP = one session slot).
+	CountActiveSessions(lmsUserID string) (int64, error)
+	GetActiveSession(sessionKey string) (*models.UserSessionCore, error)
+	FindActiveSessionByIP(lmsUserID, ipAddress string) (*models.UserSessionCore, error)
+	ReuseSession(sessionKey, authMode, userAgent string, expiresAt, lastSeenAt time.Time) error
+	TouchSession(sessionKey string, lastSeenAt time.Time) error
+	RevokeSession(sessionKey string) error
+	RevokeSessionByID(lmsUserID, sessionID string) error
+	RevokeAllSessionsForUser(lmsUserID string) (int, error)
+	ListActiveSessions(lmsUserID string) ([]*models.UserSessionCore, error)
 }

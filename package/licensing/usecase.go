@@ -1,6 +1,10 @@
 package licensing
 
-import "github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+import (
+	"time"
+
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+)
 
 // UseCase contains business logic for licensing and activation.
 type UseCase interface {
@@ -18,4 +22,12 @@ type UseCase interface {
 
 	BuildAddonManifest(token, fingerprint string) (map[string]interface{}, error)
 	EncryptAddonBundle(token, fingerprint string) (string, error)
+
+	// Concurrent web-login sessions (tariff session_limit).
+	BeginLoginSession(lmsUserID, authMode, userAgent, ipAddress string, ttl time.Duration) (*models.UserSessionCore, error)
+	TouchLoginSession(sessionKey string) error
+	RevokeLoginSession(sessionKey string) error
+	ListLoginSessions(lmsUserID string) ([]*models.UserSessionCore, error)
+	RevokeLoginSessionByID(lmsUserID, sessionID string) error
+	ResolveEntitlements(lmsUserID string) (Entitlements, error)
 }

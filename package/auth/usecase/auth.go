@@ -2,21 +2,28 @@ package usecase
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
+	"gorm.io/gorm"
 )
 
 type AuthUseCaseImpl struct {
 	users.Gateway
 	portal                portalgateway.Gateway
+	sessions              licensing.Gateway
 	hashSalt              string
 	accessSigningKey      []byte
 	refreshSigningKey     []byte
@@ -29,7 +36,11 @@ type AuthUseCaseModule struct {
 	auth.UseCase
 }
 
-func SetupAuthUseCase(gateway users.Gateway, portal portalgateway.Gateway) AuthUseCaseModule {
+func SetupAuthUseCase(
+	gateway users.Gateway,
+	portal portalgateway.Gateway,
+	sessions licensing.Gateway,
+) AuthUseCaseModule {
 	hashSalt := viper.GetString("auth.hash_salt")
 	accessSigningKey := []byte(viper.GetString("auth.access_signing_key"))
 	refreshSigningKey := []byte(viper.GetString("auth.refresh_signing_key"))
@@ -40,6 +51,7 @@ func SetupAuthUseCase(gateway users.Gateway, portal portalgateway.Gateway) AuthU
 		UseCase: &AuthUseCaseImpl{
 			Gateway:               gateway,
 			portal:                portal,
+			sessions:              sessions,
 			hashSalt:              hashSalt,
 			accessSigningKey:      accessSigningKey,
 			refreshSigningKey:     refreshSigningKey,
@@ -49,17 +61,17 @@ func SetupAuthUseCase(gateway users.Gateway, portal portalgateway.Gateway) AuthU
 	}
 }
 
-func (a *AuthUseCaseImpl) SignIn(email, password string, role uint) (accessToken, refreshToken string, err error) {
+func (a *AuthUseCaseImpl) SignIn(email, password string, role uint, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	if viper.GetBool("legacyPostgres.enabled") {
-		return a.signInLegacy(email, password, role)
+		return a.signInLegacy(email, password, role, client)
 	}
 	if auth.LmsPasswordFallbackEnabled() {
-		return a.signInLMS(email, password)
+		return a.signInLMS(email, password, client)
 	}
 	return "", "", auth.ErrLegacyAuthDisabled
 }
 
-func (a *AuthUseCaseImpl) signInLegacy(email, password string, role uint) (accessToken, refreshToken string, err error) {
+func (a *AuthUseCaseImpl) signInLegacy(email, password string, role uint, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	pwd := sha1.New()
 	pwd.Write([]byte(password))
 	pwd.Write([]byte(a.hashSalt))
@@ -117,21 +129,12 @@ func (a *AuthUseCaseImpl) signInLegacy(email, password string, role uint) (acces
 		return "", "", err
 	}
 
-	accessToken, err = a.GenerateToken(user, a.accessExpireDuration, a.accessSigningKey)
-	if err != nil {
-		return "", "", err
-	}
-	refreshToken, err = a.GenerateToken(user, a.refreshExpireDuration, a.refreshSigningKey)
-	if err != nil {
-		return "", "", err
-	}
-
-	return
+	return a.issueTokensWithSession(user, "legacy_jwt", client)
 }
 
-func (a *AuthUseCaseImpl) SignUp(userCore *models.UserCore) (accessToken, refreshToken string, err error) {
+func (a *AuthUseCaseImpl) SignUp(userCore *models.UserCore, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	if !viper.GetBool("legacyPostgres.enabled") {
-		return a.signUpLMS(userCore)
+		return a.signUpLMS(userCore, client)
 	}
 	pwd := sha1.New()
 	pwd.Write([]byte(userCore.Password))
@@ -183,13 +186,7 @@ func (a *AuthUseCaseImpl) SignUp(userCore *models.UserCore) (accessToken, refres
 		return "", "", err
 	}
 
-	accessToken, err = a.GenerateToken(userCore, a.accessExpireDuration, a.accessSigningKey)
-	if err != nil {
-		return "", "", err
-	}
-	refreshToken, err = a.GenerateToken(userCore, a.refreshExpireDuration, a.refreshSigningKey)
-
-	return
+	return a.issueTokensWithSession(userCore, "legacy_jwt", client)
 }
 
 func (a *AuthUseCaseImpl) ParseToken(token string, key []byte) (claims *models.UserClaims, err error) {
@@ -216,12 +213,32 @@ func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, err
 		return "", err
 	}
 
+	if claims.Sid != "" && a.sessions != nil {
+		sess, sessErr := a.sessions.GetActiveSession(claims.Sid)
+		if sessErr != nil || sess == nil {
+			if sessErr != nil && !errors.Is(sessErr, gorm.ErrRecordNotFound) {
+				log.Printf("auth refresh: get session: %v", sessErr)
+			}
+			return "", auth.ErrSessionNotFound
+		}
+		if err := a.sessions.TouchSession(claims.Sid, time.Now().UTC()); err != nil {
+			log.Printf("auth refresh: touch session: %v", err)
+		}
+	}
+
+	if claims.Id != "" && !lmsdb.IsUserActiveCached(claims.Id) {
+		if ban := moderation.LookupPublicBanInfo(claims.Id); ban != nil {
+			return "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
+		}
+		return "", auth.NewAccountInactiveError("", nil, false)
+	}
+
 	user := &models.UserCore{
 		Id:   claims.Id,
 		Role: claims.Role,
 	}
 
-	newAccessToken, err = a.GenerateToken(user, a.accessExpireDuration, a.accessSigningKey)
+	newAccessToken, err = a.GenerateToken(user, claims.Sid, a.accessExpireDuration, a.accessSigningKey)
 	if err != nil {
 		return "", err
 	}
@@ -229,13 +246,14 @@ func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, err
 	return
 }
 
-func (a *AuthUseCaseImpl) GenerateToken(user *models.UserCore, duration time.Duration, signingKey []byte) (token string, err error) {
+func (a *AuthUseCaseImpl) GenerateToken(user *models.UserCore, sid string, duration time.Duration, signingKey []byte) (token string, err error) {
 	claims := models.UserClaims{
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: jwt.At(time.Now().Add(duration * time.Second)),
 		},
 		Id:   user.Id,
 		Role: user.Role,
+		Sid:  sid,
 	}
 	ss := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	token, err = ss.SignedString(signingKey)
@@ -243,4 +261,67 @@ func (a *AuthUseCaseImpl) GenerateToken(user *models.UserCore, duration time.Dur
 		fmt.Println(err)
 	}
 	return
+}
+
+func (a *AuthUseCaseImpl) SignOut(refreshToken string) error {
+	if refreshToken == "" || a.sessions == nil {
+		return nil
+	}
+	claims, err := a.ParseToken(refreshToken, a.refreshSigningKey)
+	if err != nil || claims.Sid == "" {
+		return nil
+	}
+	return a.sessions.RevokeSession(claims.Sid)
+}
+
+func (a *AuthUseCaseImpl) ListSessions(lmsUserID string) ([]*models.UserSessionCore, error) {
+	if a.sessions == nil {
+		return []*models.UserSessionCore{}, nil
+	}
+	return a.sessions.ListActiveSessions(lmsUserID)
+}
+
+func (a *AuthUseCaseImpl) RevokeSessionByID(lmsUserID, sessionID string) error {
+	if a.sessions == nil {
+		return auth.ErrSessionNotFound
+	}
+	err := a.sessions.RevokeSessionByID(lmsUserID, sessionID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return auth.ErrSessionNotFound
+	}
+	return err
+}
+
+func (a *AuthUseCaseImpl) issueTokensWithSession(
+	user *models.UserCore,
+	authMode string,
+	client auth.ClientInfo,
+) (accessToken, refreshToken string, err error) {
+	sid := ""
+	if a.sessions != nil && user.Id != "" {
+		ttl := time.Duration(a.refreshExpireDuration) * time.Second
+		if ttl <= 0 {
+			ttl = 7 * 24 * time.Hour
+		}
+		sess, createErr := licensing.AcquireLoginSession(
+			a.sessions, user.Id, authMode, client.UserAgent, client.IPAddress, ttl,
+		)
+		if createErr != nil {
+			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
+				return "", "", auth.ErrSessionLimitReached
+			}
+			return "", "", createErr
+		}
+		sid = sess.SessionKey
+	}
+
+	accessToken, err = a.GenerateToken(user, sid, a.accessExpireDuration, a.accessSigningKey)
+	if err != nil {
+		return "", "", err
+	}
+	refreshToken, err = a.GenerateToken(user, sid, a.refreshExpireDuration, a.refreshSigningKey)
+	if err != nil {
+		return "", "", err
+	}
+	return accessToken, refreshToken, nil
 }

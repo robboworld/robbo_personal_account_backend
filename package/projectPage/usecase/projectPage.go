@@ -5,8 +5,10 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
@@ -21,6 +23,7 @@ type ProjectPageUseCaseImpl struct {
 	projectPageGateway  projectPage.Gateway
 	projectGateway      projects.Gateway
 	notificationGateway notifications.Gateway
+	licensingGateway    licensing.Gateway
 }
 
 type ProjectPageUseCaseModule struct {
@@ -32,12 +35,14 @@ func SetupProjectPageUseCase(
 	projectPageGateway projectPage.Gateway,
 	projectGateway projects.Gateway,
 	notificationGateway notifications.Gateway,
+	licensingGateway licensing.Gateway,
 ) ProjectPageUseCaseModule {
 	return ProjectPageUseCaseModule{
 		UseCase: &ProjectPageUseCaseImpl{
 			projectPageGateway:  projectPageGateway,
 			projectGateway:      projectGateway,
 			notificationGateway: notificationGateway,
+			licensingGateway:    licensingGateway,
 		},
 	}
 }
@@ -82,19 +87,20 @@ const emptyProjectJson = "{\"targets\":[{\"isStage\":true,\"name\":\"Stage\",\"v
 	"\":[],\"meta\":{\"semver\":\"3.0.0\",\"vm\":\"0.2.0-prerelease.20220519142410\",\"agent\":\"Mozilla/5.0 (X11;" +
 	" Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36\"}}"
 
-func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string) (newProjectPage *models.ProjectPageCore, err error) {
+func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error) {
+	defaultTitle := projectPage.DefaultProjectTitle(locale)
 	project := models.ProjectCore{}
 	project.AuthorId = authorId
 	project.Json = emptyProjectJson2
-	project.Name = "Untitled"
+	project.Name = defaultTitle
 
 	projectId, createProjectErr := p.projectGateway.CreateProject(&project)
 	if createProjectErr != nil {
 		return nil, createProjectErr
 	}
 
-	projectPage := &models.ProjectPageCore{
-		Title:       "Untitled",
+	page := &models.ProjectPageCore{
+		Title:       defaultTitle,
 		ProjectId:   projectId,
 		Instruction: "",
 		Notes:       "",
@@ -102,7 +108,7 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string) (newProjectP
 		LinkScratch: viper.GetString("projectPage.scratchLink") + "?#" + projectId,
 		IsShared:    false,
 	}
-	newProjectPage, err = p.projectPageGateway.CreateProjectPage(projectPage)
+	newProjectPage, err = p.projectPageGateway.CreateProjectPage(page)
 	if err == nil && newProjectPage != nil {
 		newProjectPage.AuthorUserId = authorId
 		newProjectPage.AuthorName = lookupAuthorName(authorId)
@@ -147,6 +153,8 @@ func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCor
 		core.AuthorUserId = row.OwnerUserID
 		core.AuthorName = lookupAuthorName(row.OwnerUserID)
 		core.IsOwner = false
+		core.LandingFeatured = row.LandingFeatured
+		core.LandingSortOrder = row.LandingSortOrder
 	}
 }
 
@@ -340,7 +348,7 @@ func (p *ProjectPageUseCaseImpl) GetProjectReactions(
 	if err != nil {
 		return nil, err
 	}
-	if !row.IsPublic {
+	if !access.Resolve(viewerId, row).CanRead {
 		return nil, auth.ErrNotAccess
 	}
 	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, strings.TrimSpace(viewerId))
@@ -361,7 +369,7 @@ func (p *ProjectPageUseCaseImpl) PutProjectReaction(
 	if err != nil {
 		return nil, err
 	}
-	if !row.IsPublic {
+	if !access.Resolve(userId, row).CanRead {
 		return nil, auth.ErrNotAccess
 	}
 
@@ -416,13 +424,88 @@ func (p *ProjectPageUseCaseImpl) DeleteProjectReaction(
 	if err != nil {
 		return nil, err
 	}
-	if !row.IsPublic {
+	if !access.Resolve(userId, row).CanRead {
 		return nil, auth.ErrNotAccess
 	}
 	if err := p.projectPageGateway.DeleteProjectReaction(projectPageId, userId); err != nil {
 		return nil, err
 	}
 	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, userId)
+}
+
+func (p *ProjectPageUseCaseImpl) ModerateDeleteProjectPage(
+	projectPageId string,
+	_ string,
+	reason string,
+) error {
+	reason = strings.TrimSpace(reason)
+	if utf8.RuneCountInString(reason) < 3 {
+		return projectPage.ErrBadRequest
+	}
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return err
+	}
+	ownerID := strings.TrimSpace(row.OwnerUserID)
+	title := strings.TrimSpace(row.Title)
+	if title == "" {
+		title = "Untitled"
+	}
+	if err := p.projectGateway.DeleteProject(row.ID); err != nil {
+		return err
+	}
+	if ownerID == "" || p.notificationGateway == nil {
+		return nil
+	}
+	actionURL := "/projects/my"
+	dedupeKey := "project_deleted:" + row.ID
+	body := fmt.Sprintf("Ваш проект «%s» удалён модератором.\nПричина: %s", title, reason)
+	_ = p.notificationGateway.CreateOrUpdateByDedupe(&models.UserNotificationDB{
+		RecipientUserID: ownerID,
+		Title:           "Проект удалён модератором",
+		Body:            body,
+		Kind:            "project_deleted",
+		Severity:        "WARNING",
+		Source:          "system",
+		ActionURL:       &actionURL,
+		DedupeKey:       &dedupeKey,
+	})
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) SetLandingFeatured(
+	projectPageId string,
+	featured bool,
+	sortOrder int,
+) (*models.ProjectPageCore, error) {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
+	if featured {
+		if !row.IsPublic {
+			return nil, projectPage.ErrBadRequest
+		}
+		if sortOrder < 0 {
+			sortOrder = 0
+		}
+	} else {
+		sortOrder = 0
+	}
+	core, err := p.projectPageGateway.SetLandingFeatured(projectPageId, featured, sortOrder)
+	if err != nil {
+		return nil, err
+	}
+	core.AuthorUserId = row.OwnerUserID
+	core.AuthorName = lookupAuthorName(row.OwnerUserID)
+	return core, nil
+}
+
+func (p *ProjectPageUseCaseImpl) ReorderLandingFeatured(items []projectPage.LandingFeaturedOrderItem) error {
+	if len(items) == 0 {
+		return projectPage.ErrBadRequest
+	}
+	return p.projectPageGateway.ReorderLandingFeatured(items)
 }
 
 func (p *ProjectPageUseCaseImpl) GetProjectJSONByToken(projectId string, token string) (string, error) {
@@ -479,6 +562,9 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if !access.Resolve(ownerId, row).CanWrite {
 		return auth.ErrNotAccess
 	}
+	if err := p.enforceCloudQuota(ownerId, projectPageId, int64(len(data))); err != nil {
+		return err
+	}
 	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
 		return err
 	}
@@ -490,6 +576,33 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 		if updateErr != nil {
 			return updateErr
 		}
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforceCloudQuota(ownerId, projectPageId string, newSize int64) error {
+	if p.licensingGateway == nil || newSize <= 0 {
+		return nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, ownerId)
+	if err != nil {
+		return err
+	}
+	if ent.CloudQuotaMB <= 0 {
+		return nil
+	}
+	quotaBytes := int64(ent.CloudQuotaMB) * 1024 * 1024
+	used, err := p.projectPageGateway.GetTotalStorageBytesForOwner(ownerId)
+	if err != nil {
+		return err
+	}
+	oldSize, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
+	if err != nil {
+		return err
+	}
+	projected := used - oldSize + newSize
+	if projected > quotaBytes {
+		return projectPage.ErrCloudQuotaExceeded
 	}
 	return nil
 }

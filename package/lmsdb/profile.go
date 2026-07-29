@@ -206,6 +206,33 @@ func (w *Writer) TouchLastLogin(userID int64) error {
 	return err
 }
 
+// SetUserActive toggles auth_user.is_active (ban / unban).
+func (w *Writer) SetUserActive(userID int64, active bool) error {
+	if w == nil || w.db == nil {
+		return errors.New("lms mysql writer is not configured")
+	}
+	if userID <= 0 {
+		return auth.ErrUserNotFound
+	}
+	activeInt := 0
+	if active {
+		activeInt = 1
+	}
+	res, err := w.db.Exec(`UPDATE auth_user SET is_active = ? WHERE id = ?`, activeInt, userID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return auth.ErrUserNotFound
+	}
+	InvalidateActiveCache(userID)
+	return nil
+}
+
 // UpdateAccountEmail updates auth_user.email only.
 func (w *Writer) UpdateAccountEmail(id int64, email string) error {
 	if w == nil || w.db == nil {

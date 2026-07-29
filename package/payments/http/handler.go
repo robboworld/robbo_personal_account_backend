@@ -55,6 +55,8 @@ type createProductRequest struct {
 	Currency     string   `json:"currency"`
 	SeatLimit    int      `json:"seatLimit"`
 	Capabilities []string `json:"capabilities"`
+	CloudQuotaMB int      `json:"cloudQuotaMb"`
+	SessionLimit int      `json:"sessionLimit"`
 	DurationDays int      `json:"durationDays"`
 	IsActive     *bool    `json:"isActive"`
 }
@@ -86,6 +88,8 @@ func (h *Handler) CreateProduct(c *gin.Context) {
 		Currency:     body.Currency,
 		SeatLimit:    body.SeatLimit,
 		Capabilities: body.Capabilities,
+		CloudQuotaMB: body.CloudQuotaMB,
+		SessionLimit: body.SessionLimit,
 		DurationDays: body.DurationDays,
 		IsActive:     active,
 	})
@@ -226,6 +230,8 @@ func productToJSON(p *models.ProductCore) gin.H {
 		"currency":     p.Currency,
 		"seatLimit":    p.SeatLimit,
 		"capabilities": p.Capabilities,
+		"cloudQuotaMb": p.CloudQuotaMB,
+		"sessionLimit": p.SessionLimit,
 		"durationDays": p.DurationDays,
 		"isActive":     p.IsActive,
 	}

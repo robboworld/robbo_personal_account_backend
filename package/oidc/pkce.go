@@ -51,6 +51,16 @@ func savePKCE(state string, entry pkceEntry) {
 	}
 }
 
+func peekPKCE(state string) (pkceEntry, bool) {
+	pkceStore.mu.Lock()
+	defer pkceStore.mu.Unlock()
+	e, ok := pkceStore.items[state]
+	if !ok || time.Now().After(e.ExpiresAt) {
+		return pkceEntry{}, false
+	}
+	return e, true
+}
+
 func loadPKCE(state string) (pkceEntry, bool) {
 	pkceStore.mu.Lock()
 	defer pkceStore.mu.Unlock()
@@ -88,4 +98,8 @@ func NewPKCEForReturn(returnTo string) (PKCEEntry, error) {
 
 func ConsumePKCE(state string) (PKCEEntry, bool) {
 	return loadPKCE(state)
+}
+
+func PeekPKCE(state string) (PKCEEntry, bool) {
+	return peekPKCE(state)
 }
