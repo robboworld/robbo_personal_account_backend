@@ -1,4 +1,19 @@
 {
   "interactiveLogin": true,
-  "loginPagePath": "/config/login.html"
+  "loginPagePath": "/config/login.html",
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "tokenExpiry": 3600,
+      "requestMappings": [
+        {
+          "requestParam": "code",
+          "match": "*",
+          "claims": {
+            "aud": ["lk-web"]
+          }
+        }
+      ]
+    }
+  ]
 }
