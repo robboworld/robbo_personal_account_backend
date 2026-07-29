@@ -20,12 +20,32 @@ func (r *mutationResolver) SingIn(ctx context.Context, input models.SignInInput)
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	accessToken, refreshToken, err := r.authDelegate.SignIn(input.Email, input.Password, uint(input.UserRole))
+	client := auth.ClientInfo{}
+	if ginContext != nil && ginContext.Request != nil {
+		client.UserAgent = ginContext.Request.UserAgent()
+		client.IPAddress = ginContext.ClientIP()
+	}
+	accessToken, refreshToken, err := r.authDelegate.SignIn(input.Email, input.Password, uint(input.UserRole), client)
 	if err != nil {
+		ext := map[string]interface{}{"code": signInErrorCode(err)}
+		if errors.Is(err, auth.ErrUserInactive) {
+			ext["code"] = "USER_INACTIVE"
+			if inactive, ok := auth.AsAccountInactive(err); ok && inactive.HasBan {
+				ban := map[string]interface{}{
+					"reason":      inactive.Reason,
+					"isPermanent": inactive.IsPermanent,
+					"expiresAt":   nil,
+				}
+				if inactive.ExpiresAt != nil {
+					ban["expiresAt"] = inactive.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+				}
+				ext["ban"] = ban
+			}
+		}
 		return nil, &gqlerror.Error{
 			Path:       graphql.GetPath(ctx),
 			Message:    err.Error(),
-			Extensions: map[string]interface{}{"code": signInErrorCode(err)},
+			Extensions: ext,
 		}
 	}
 	setRefreshToken(refreshToken, ginContext)
@@ -39,6 +59,9 @@ func (r *mutationResolver) SingOut(ctx context.Context) (*models.Error, error) {
 	ginContext, getGinContextErr := GinContextFromContext(ctx)
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
+	}
+	if refreshToken, err := getRefreshToken(ginContext); err == nil {
+		_ = r.authDelegate.SignOut(refreshToken)
 	}
 	setRefreshToken("", ginContext)
 	return &models.Error{}, nil
@@ -92,6 +115,8 @@ func signInErrorCode(err error) string {
 		return "403"
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):
 		return "410"
+	case errors.Is(err, auth.ErrSessionLimitReached):
+		return "SESSION_LIMIT_REACHED"
 	default:
 		return "500"
 	}

@@ -7,12 +7,13 @@ import (
 )
 
 type PersonalInput struct {
-	RecipientUserID string
-	Title           string
-	Body            string
-	Kind            string
-	Severity        string
-	ActionURL       *string
+	RecipientUserID   string
+	RecipientUsername string
+	Title             string
+	Body              string
+	Kind              string
+	Severity          string
+	ActionURL         *string
 }
 
 type AnnouncementInput struct {

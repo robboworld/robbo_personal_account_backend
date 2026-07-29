@@ -19,10 +19,10 @@ type PortalModule struct {
 	OIDCHandler                *oidchttp.Handler
 }
 
-func SetupPortalModule() PortalModule {
+func SetupPortalModule(gateway GatewayModule) PortalModule {
 	gw := portalgateway.SetupPortalGateway()
 	var oidcHandler *oidchttp.Handler
-	if h, err := oidchttp.NewHandler(gw.Gateway); err != nil {
+	if h, err := oidchttp.NewHandler(gw.Gateway, gateway.LicensingGateway); err != nil {
 		log.Printf("[oidc] routes disabled: %v", err)
 	} else {
 		oidcHandler = &h

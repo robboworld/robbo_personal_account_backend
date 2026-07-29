@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -120,7 +121,7 @@ func localMockAudienceAccept(iss string, aud interface{}) bool {
 	return false
 }
 
-// issuerMatches accepts localhost vs host.docker.internal for local mock IdP (same path/port).
+// issuerMatches accepts localhost vs host.docker.internal vs LAN IP for local mock IdP (same path/port).
 func issuerMatches(got, want string) bool {
 	if got == want {
 		return true
@@ -143,12 +144,17 @@ func issuerMatches(got, want string) bool {
 }
 
 func localOIDCHost(host string) bool {
-	switch strings.ToLower(host) {
-	case "localhost", "host.docker.internal", "127.0.0.1":
+	h := strings.ToLower(host)
+	switch h {
+	case "localhost", "host.docker.internal", "127.0.0.1", "::1":
 		return true
-	default:
+	}
+	// Private LAN (test VM accessed by 192.168.x.x / 10.x / 172.16-31.x)
+	ip := net.ParseIP(h)
+	if ip == nil {
 		return false
 	}
+	return ip.IsLoopback() || ip.IsPrivate()
 }
 
 func asString(v interface{}) string {

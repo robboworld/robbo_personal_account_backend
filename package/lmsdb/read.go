@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	_ "github.com/go-sql-driver/mysql"
@@ -122,6 +123,175 @@ func (r *Reader) LookupAuthUserByEmail(email string) (*AuthUserRow, error) {
 		return nil, err
 	}
 	return &u, nil
+}
+
+// LookupAuthUserByUsername returns an active auth_user by username (case-insensitive).
+func (r *Reader) LookupAuthUserByUsername(username string) (*AuthUserRow, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return nil, nil
+	}
+	const q = `SELECT id, username, email FROM auth_user WHERE LOWER(username) = LOWER(?) AND is_active = 1 LIMIT 1`
+	row := r.db.QueryRow(q, username)
+	var u AuthUserRow
+	if err := row.Scan(&u.ID, &u.Username, &u.Email); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &u, nil
+}
+
+// AuthUserSearchHit is a compact user row for admin typeahead / ES indexing.
+type AuthUserSearchHit struct {
+	ID          int64
+	Username    string
+	Email       string
+	FullName    string
+	IsActive    bool
+	IsStaff     bool
+	IsSuperuser bool
+}
+
+// IsUserActive returns whether auth_user.is_active is set for the given LMS user id.
+func (r *Reader) IsUserActive(userID int64) (bool, error) {
+	if userID <= 0 {
+		return false, nil
+	}
+	const q = `SELECT is_active FROM auth_user WHERE id = ? LIMIT 1`
+	var isActive int
+	err := r.db.QueryRow(q, userID).Scan(&isActive)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return isActive != 0, nil
+}
+
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}
+
+// SearchAuthUsersPrefix finds users by username/email/name prefix or substring.
+// When includeInactive is false, only active users are returned.
+func (r *Reader) SearchAuthUsersPrefix(q string, limit int, includeInactive bool) ([]AuthUserSearchHit, error) {
+	q = strings.TrimSpace(q)
+	if q == "" {
+		return nil, nil
+	}
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	pattern := "%" + escapeLike(q) + "%"
+	prefix := escapeLike(q) + "%"
+	activeFilter := "u.is_active = 1 AND"
+	if includeInactive {
+		activeFilter = ""
+	}
+	sqlQ := fmt.Sprintf(`
+		SELECT u.id, u.username, u.email,
+			TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+			u.is_active, u.is_staff, u.is_superuser
+		FROM auth_user u
+		WHERE %s (
+			LOWER(u.username) LIKE LOWER(?) ESCAPE '\\'
+			OR LOWER(u.email) LIKE LOWER(?) ESCAPE '\\'
+			OR LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE LOWER(?) ESCAPE '\\'
+		  )
+		ORDER BY
+			CASE WHEN LOWER(u.username) LIKE LOWER(?) ESCAPE '\\' THEN 0 ELSE 1 END,
+			u.username ASC
+		LIMIT ?`, activeFilter)
+	rows, err := r.db.Query(sqlQ, pattern, pattern, pattern, prefix, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthUserSearchHit
+	for rows.Next() {
+		var h AuthUserSearchHit
+		var isActive, isStaff, isSuper int
+		if err := rows.Scan(&h.ID, &h.Username, &h.Email, &h.FullName, &isActive, &isStaff, &isSuper); err != nil {
+			return nil, err
+		}
+		h.IsActive = isActive != 0
+		h.IsStaff = isStaff != 0
+		h.IsSuperuser = isSuper != 0
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
+// GetAuthUserForIndex loads one auth_user row for ES upsert (includes inactive).
+func (r *Reader) GetAuthUserForIndex(userID int64) (*AuthUserSearchHit, error) {
+	if userID <= 0 {
+		return nil, sql.ErrNoRows
+	}
+	const sqlQ = `
+		SELECT u.id, u.username, u.email,
+			TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+			u.is_active, u.is_staff, u.is_superuser
+		FROM auth_user u
+		WHERE u.id = ?
+		LIMIT 1`
+	var h AuthUserSearchHit
+	var isActive, isStaff, isSuper int
+	err := r.db.QueryRow(sqlQ, userID).Scan(
+		&h.ID, &h.Username, &h.Email, &h.FullName, &isActive, &isStaff, &isSuper,
+	)
+	if err != nil {
+		return nil, err
+	}
+	h.IsActive = isActive != 0
+	h.IsStaff = isStaff != 0
+	h.IsSuperuser = isSuper != 0
+	return &h, nil
+}
+
+// ListAuthUsersForIndex returns all auth_user rows for ES bulk indexing.
+func (r *Reader) ListAuthUsersForIndex(limit, offset int) ([]AuthUserSearchHit, error) {
+	if limit < 1 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	const sqlQ = `
+		SELECT u.id, u.username, u.email,
+			TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+			u.is_active, u.is_staff, u.is_superuser
+		FROM auth_user u
+		ORDER BY u.id ASC
+		LIMIT ? OFFSET ?`
+	rows, err := r.db.Query(sqlQ, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthUserSearchHit
+	for rows.Next() {
+		var h AuthUserSearchHit
+		var isActive, isStaff, isSuper int
+		if err := rows.Scan(&h.ID, &h.Username, &h.Email, &h.FullName, &isActive, &isStaff, &isSuper); err != nil {
+			return nil, err
+		}
+		h.IsActive = isActive != 0
+		h.IsStaff = isStaff != 0
+		h.IsSuperuser = isSuper != 0
+		out = append(out, h)
+	}
+	return out, rows.Err()
 }
 
 // HasEnrollment checks student_courseenrollment for idempotency before API enroll.

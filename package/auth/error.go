@@ -19,4 +19,6 @@ var (
 	ErrMarketingOptInRequired = errors.New("marketing opt-in consent is required")
 	ErrInvalidRegistration   = errors.New("invalid registration data")
 	ErrNotAccess          = errors.New("no access")
+	ErrSessionLimitReached = errors.New("SESSION_LIMIT_REACHED")
+	ErrSessionNotFound     = errors.New("SESSION_NOT_FOUND")
 )

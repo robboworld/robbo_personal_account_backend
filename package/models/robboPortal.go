@@ -58,8 +58,10 @@ type RobboPortalNotificationDB struct {
 func (RobboPortalNotificationDB) TableName() string { return "robbo_portal_notifications" }
 
 type OidcSessionClaims struct {
-	Sub        string `json:"sub"`
-	EdxUserID  string `json:"edx_user_id"`
-	Email      string `json:"email"`
-	Role       uint   `json:"role"`
+	Sub       string `json:"sub"`
+	EdxUserID string `json:"edx_user_id"`
+	Email     string `json:"email"`
+	Role      uint   `json:"role"`
+	// Sid is the concurrent-session tracking key (lk_user_sessions.session_key).
+	Sid string `json:"sid,omitempty"`
 }

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -8,27 +9,31 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
 	"github.com/spf13/viper"
 )
 
 type Handler struct {
-	cfg    *oidc.Config
-	portal portalgateway.Gateway
+	cfg      *oidc.Config
+	portal   portalgateway.Gateway
+	sessions licensing.Gateway
 }
 
-func NewHandler(portal portalgateway.Gateway) (Handler, error) {
+func NewHandler(portal portalgateway.Gateway, sessions licensing.Gateway) (Handler, error) {
 	cfg, err := oidc.LoadConfig()
 	if err != nil {
 		return Handler{}, err
 	}
-	return Handler{cfg: cfg, portal: portal}, nil
+	return Handler{cfg: cfg, portal: portal, sessions: sessions}, nil
 }
 
 func (h Handler) InitRoutes(router *gin.Engine) {
@@ -103,6 +108,14 @@ func (h Handler) Start(c *gin.Context) {
 func (h Handler) Status(c *gin.Context) {
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
 		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sub != "" {
+			if claims.Sid != "" && h.sessions != nil {
+				if sess, sErr := h.sessions.GetActiveSession(claims.Sid); sErr != nil || sess == nil {
+					secure := viper.GetBool("auth.refresh_cookie_secure")
+					c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+					c.JSON(http.StatusOK, authStatusPayload(false, "", "", "", 0))
+					return
+				}
+			}
 			c.JSON(http.StatusOK, authStatusPayload(true, claims.Sub, claims.Email, claims.EdxUserID, claims.Role))
 			return
 		}
@@ -125,24 +138,42 @@ func authStatusPayload(authenticated bool, sub, email, edxUserID string, role ui
 	}
 }
 
+// resolveLogoutTarget builds a post-logout redirect when IdP end_session is not used.
+func resolveLogoutTarget(frontend, returnTo string) string {
+	frontend = strings.TrimRight(frontend, "/")
+	if returnTo == "" {
+		return frontend + "/"
+	}
+	if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
+		return returnTo
+	}
+	if strings.HasPrefix(returnTo, "/") {
+		return frontend + returnTo
+	}
+	return frontend + "/" + returnTo
+}
+
 // Logout clears the BFF session cookie and redirects to the IdP end_session endpoint.
 func (h Handler) Logout(c *gin.Context) {
 	returnTo := c.DefaultQuery("return_to", "")
-	// clear BFF cookie
-	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", false, true)
+	secure := viper.GetBool("auth.refresh_cookie_secure")
+	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" && h.sessions != nil {
+		if claims, parseErr := oidc.ParseSessionToken(cookie); parseErr == nil && claims.Sid != "" {
+			_ = h.sessions.RevokeSession(claims.Sid)
+		}
+	}
+	// clear BFF + password-fallback refresh cookies so PublicAuthGate cannot revive the session
+	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
 
 	logoutEndpoint := viper.GetString("oidc.logoutEndpoint")
+	frontend := viper.GetString("oidc.frontendBaseUrl")
+	if frontend == "" {
+		frontend = "http://localhost:3030"
+	}
+
 	if logoutEndpoint == "" {
-		// no IdP logout configured — just redirect to frontend
-		frontend := viper.GetString("oidc.frontendBaseUrl")
-		if frontend == "" {
-			frontend = "http://localhost:3030"
-		}
-		target := frontend + "/login"
-		if returnTo != "" {
-			target = frontend + returnTo
-		}
-		c.Redirect(http.StatusFound, target)
+		c.Redirect(http.StatusFound, resolveLogoutTarget(frontend, returnTo))
 		return
 	}
 	logoutURL, err := url.Parse(logoutEndpoint)
@@ -151,8 +182,15 @@ func (h Handler) Logout(c *gin.Context) {
 		return
 	}
 	postLogout := viper.GetString("oidc.postLogoutRedirectUri")
-	if returnTo != "" && strings.HasPrefix(returnTo, "http") {
-		postLogout = returnTo
+	if returnTo != "" {
+		if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
+			postLogout = returnTo
+		} else {
+			postLogout = resolveLogoutTarget(frontend, returnTo)
+		}
+	}
+	if postLogout == "" {
+		postLogout = resolveLogoutTarget(frontend, returnTo)
 	}
 	if postLogout != "" {
 		q := logoutURL.Query()
@@ -188,7 +226,8 @@ func (h Handler) Callback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing_code_or_state"})
 		return
 	}
-	entry, ok := oidc.ConsumePKCE(state)
+	// Peek first so a failed token/issuer validation does not burn state into invalid_state on retry.
+	entry, ok := oidc.PeekPKCE(state)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_state"})
 		return
@@ -203,16 +242,79 @@ func (h Handler) Callback(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
+	if _, ok := oidc.ConsumePKCE(state); !ok {
+		// Race: another concurrent callback already consumed — treat as success path only if we still have claims.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_state"})
+		return
+	}
 	edxUserID := ""
 	role := models.Student
 	if profile, err := lookupLMSProfileByEmail(claims.Email); err == nil && profile != nil {
+		if !profile.IsActive {
+			frontend := viper.GetString("oidc.frontendBaseUrl")
+			if frontend == "" {
+				frontend = "http://localhost:3030"
+			}
+			q := url.Values{}
+			q.Set("err", "user_inactive")
+			edxID := strconv.FormatInt(profile.ID, 10)
+			if ban := moderation.LookupPublicBanInfo(edxID); ban != nil {
+				if ban.Reason != "" {
+					q.Set("reason", ban.Reason)
+				}
+				if ban.IsPermanent {
+					q.Set("permanent", "1")
+				} else if ban.ExpiresAt != nil {
+					q.Set("expiresAt", ban.ExpiresAt.UTC().Format(time.RFC3339))
+				}
+			}
+			redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
+			c.Redirect(http.StatusFound, redirectURL)
+			return
+		}
 		edxUserID = strconv.FormatInt(profile.ID, 10)
 		role = lmsRoleFromProfile(profile)
 		touchLastLogin(profile.ID)
 	} else {
 		role = roleCodeToModel(inferRoleCodeFromIDToken(tr.IDToken))
 	}
-	session, err := oidc.IssueSessionToken(claims.Sub, edxUserID, claims.Email, uint(role))
+
+	sid := ""
+	if edxUserID != "" && h.sessions != nil {
+		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
+		ip := oidcClientIP(c)
+		sess, createErr := licensing.AcquireLoginSession(
+			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl,
+		)
+		if createErr != nil {
+			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
+				frontend := viper.GetString("oidc.frontendBaseUrl")
+				if frontend == "" {
+					frontend = "http://localhost:3030"
+				}
+				target := entry.ReturnTo
+				if target == "" {
+					target = "/home"
+				}
+				sep := "?"
+				if strings.Contains(target, "?") {
+					sep = "&"
+				}
+				redirectURL := fmt.Sprintf("%s%s%serr=session_limit_reached",
+					strings.TrimRight(frontend, "/"), target, sep)
+				if strings.HasPrefix(target, "http") {
+					redirectURL = fmt.Sprintf("%s%serr=session_limit_reached", target, sep)
+				}
+				c.Redirect(http.StatusFound, redirectURL)
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "session_create_failed"})
+			return
+		}
+		sid = sess.SessionKey
+	}
+
+	session, err := oidc.IssueSessionToken(claims.Sub, edxUserID, claims.Email, uint(role), sid)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session_issue_failed"})
 		return
@@ -232,6 +334,23 @@ func (h Handler) Callback(c *gin.Context) {
 		frontend = "http://localhost:3030"
 	}
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s%s", strings.TrimRight(frontend, "/"), target))
+}
+
+func oidcClientIP(c *gin.Context) string {
+	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if xri := c.GetHeader("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return c.Request.RemoteAddr
 }
 
 func inferRoleCodeFromIDToken(idToken string) string {

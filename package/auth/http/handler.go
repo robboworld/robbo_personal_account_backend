@@ -4,12 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
+	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/spf13/viper"
 )
 
@@ -26,13 +31,15 @@ func NewAuthHandler(
 }
 
 func (h *Handler) InitAuthRoutes(router *gin.Engine) {
-	auth := router.Group("/auth")
+	authGroup := router.Group("/auth")
 	{
-		auth.POST("/sign-up", h.SignUp)
-		auth.POST("/sign-in", h.SignIn)
-		auth.GET("/refresh", h.Refresh)
-		auth.POST("/sign-out", h.SignOut)
-		auth.GET("/check-auth", h.CheckAuth)
+		authGroup.POST("/sign-up", h.SignUp)
+		authGroup.POST("/sign-in", h.SignIn)
+		authGroup.GET("/refresh", h.Refresh)
+		authGroup.POST("/sign-out", h.SignOut)
+		authGroup.GET("/check-auth", h.CheckAuth)
+		authGroup.GET("/sessions", h.ListSessions)
+		authGroup.DELETE("/sessions/:id", h.RevokeSession)
 	}
 }
 
@@ -46,6 +53,30 @@ type signInResponse struct {
 	AccessToken string `json:"accessToken"`
 }
 
+func clientInfoFromRequest(c *gin.Context) auth.ClientInfo {
+	return auth.ClientInfo{
+		UserAgent: c.Request.UserAgent(),
+		IPAddress: clientIP(c),
+	}
+}
+
+func clientIP(c *gin.Context) string {
+	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	if xri := c.GetHeader("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	if err == nil {
+		return host
+	}
+	return c.Request.RemoteAddr
+}
+
 func (h *Handler) SignIn(c *gin.Context) {
 	fmt.Println("SignIn")
 
@@ -55,7 +86,9 @@ func (h *Handler) SignIn(c *gin.Context) {
 		return
 	}
 
-	accessToken, refreshToken, err := h.delegate.SignIn(signInInput.Email, signInInput.Password, signInInput.Role)
+	accessToken, refreshToken, err := h.delegate.SignIn(
+		signInInput.Email, signInInput.Password, signInInput.Role, clientInfoFromRequest(c),
+	)
 	if err != nil {
 		fmt.Println(err)
 		ErrorHandling(err, c)
@@ -91,7 +124,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 	userCore.HonorCode = body.HonorCode
 	userCore.MarketingOptIn = body.MarketingEmailsOptIn
 
-	accessToken, refreshToken, err := h.delegate.SignUpCore(&userCore)
+	accessToken, refreshToken, err := h.delegate.SignUpCore(&userCore, clientInfoFromRequest(c))
 	if err != nil {
 		ErrorHandling(err, c)
 		return
@@ -127,6 +160,9 @@ func (h *Handler) Refresh(c *gin.Context) {
 
 func (h *Handler) SignOut(c *gin.Context) {
 	fmt.Println("SignOut")
+	if refreshToken, err := getRefreshToken(c); err == nil {
+		_ = h.delegate.SignOut(refreshToken)
+	}
 	setRefreshToken("", c)
 	c.Status(http.StatusOK)
 }
@@ -149,6 +185,79 @@ func (h *Handler) CheckAuth(c *gin.Context) {
 	})
 }
 
+func (h *Handler) ListSessions(c *gin.Context) {
+	userID, _, err := h.delegate.UserIdentity(c)
+	if err != nil || userID == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	sessions, err := h.delegate.ListSessions(userID)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	currentSid := currentSessionKey(c)
+	out := make([]gin.H, 0, len(sessions))
+	for _, s := range sessions {
+		row := sessionToJSON(s)
+		if currentSid != "" && s.SessionKey == currentSid {
+			row["isCurrent"] = true
+		}
+		out = append(out, row)
+	}
+	c.JSON(http.StatusOK, gin.H{"sessions": out})
+}
+
+func (h *Handler) RevokeSession(c *gin.Context) {
+	userID, _, err := h.delegate.UserIdentity(c)
+	if err != nil || userID == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	sessionID := c.Param("id")
+	if sessionID == "" {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
+		return
+	}
+	currentSid := currentSessionKey(c)
+	isCurrent := false
+	if currentSid != "" {
+		if sessions, listErr := h.delegate.ListSessions(userID); listErr == nil {
+			for _, s := range sessions {
+				if s.ID == sessionID && s.SessionKey == currentSid {
+					isCurrent = true
+					break
+				}
+			}
+		}
+	}
+	if err := h.delegate.RevokeSessionByID(userID, sessionID); err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	if isCurrent {
+		secure := viper.GetBool("auth.refresh_cookie_secure")
+		c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+		c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
+		c.JSON(http.StatusOK, gin.H{"revoked": true, "wasCurrent": true})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"revoked": true, "wasCurrent": false})
+}
+
+func sessionToJSON(s *models.UserSessionCore) gin.H {
+	out := gin.H{
+		"id":         s.ID,
+		"authMode":   s.AuthMode,
+		"userAgent":  s.UserAgent,
+		"ipAddress":  s.IPAddress,
+		"createdAt":  s.CreatedAt.UTC().Format(time.RFC3339),
+		"lastSeenAt": s.LastSeenAt.UTC().Format(time.RFC3339),
+		"expiresAt":  s.ExpiresAt.UTC().Format(time.RFC3339),
+	}
+	return out
+}
+
 func ErrorHandling(err error, c *gin.Context) {
 	switch {
 	case errors.Is(err, auth.ErrEmailAlreadyExist):
@@ -161,6 +270,13 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrInvalidAccessToken), errors.Is(err, auth.ErrInvalidTypeClaims), errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrSessionNotFound):
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error(), "code": "SESSION_NOT_FOUND"})
+	case errors.Is(err, auth.ErrSessionLimitReached):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "SESSION_LIMIT_REACHED",
+		})
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):
 		c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrUserNotFound):
@@ -168,7 +284,15 @@ func ErrorHandling(err error, c *gin.Context) {
 	case errors.Is(err, auth.ErrInvalidCredentials):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrUserInactive):
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": err.Error()})
+		body := gin.H{"error": err.Error(), "code": "USER_INACTIVE"}
+		if inactive, ok := auth.AsAccountInactive(err); ok && inactive.HasBan {
+			body["ban"] = moderation.PublicBanJSON(&moderation.PublicBanInfo{
+				Reason:      inactive.Reason,
+				ExpiresAt:   inactive.ExpiresAt,
+				IsPermanent: inactive.IsPermanent,
+			})
+		}
+		c.AbortWithStatusJSON(http.StatusForbidden, body)
 	case errors.Is(err, http.ErrNoCookie):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
@@ -201,4 +325,60 @@ func setRefreshToken(value string, c *gin.Context) {
 		viper.GetBool("auth.refresh_cookie_secure"),
 		true,
 	)
+}
+
+func currentSessionKey(c *gin.Context) string {
+	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
+		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sid != "" {
+			return claims.Sid
+		}
+	}
+	header := c.GetHeader("Authorization")
+	parts := strings.Split(header, " ")
+	if len(parts) == 2 {
+		if claims, err := oidc.ParseSessionToken(parts[1]); err == nil && claims.Sid != "" {
+			return claims.Sid
+		}
+		if claims, err := hParseAccessTokenSid(parts[1]); err == nil {
+			return claims
+		}
+	}
+	if refresh, err := c.Cookie("refresh_token"); err == nil && refresh != "" {
+		if claims, err := hParseRefreshTokenSid(refresh); err == nil {
+			return claims
+		}
+	}
+	return ""
+}
+
+// Lightweight sid extractors avoid circular deps on auth usecase from this file.
+func hParseAccessTokenSid(token string) (string, error) {
+	claims, err := parseUserClaims(token, []byte(viper.GetString("auth.access_signing_key")))
+	if err != nil {
+		return "", err
+	}
+	return claims.Sid, nil
+}
+
+func hParseRefreshTokenSid(token string) (string, error) {
+	claims, err := parseUserClaims(token, []byte(viper.GetString("auth.refresh_signing_key")))
+	if err != nil {
+		return "", err
+	}
+	return claims.Sid, nil
+}
+
+func parseUserClaims(token string, key []byte) (*models.UserClaims, error) {
+	data, err := jwt.ParseWithClaims(token, &models.UserClaims{},
+		func(t *jwt.Token) (interface{}, error) {
+			return key, nil
+		})
+	if err != nil {
+		return nil, err
+	}
+	claims, ok := data.Claims.(*models.UserClaims)
+	if !ok {
+		return nil, auth.ErrInvalidTypeClaims
+	}
+	return claims, nil
 }

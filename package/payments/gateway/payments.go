@@ -72,6 +72,8 @@ func (g *PaymentsGatewayImpl) CreateProduct(product *models.ProductCore) (*model
 		Currency:     product.Currency,
 		SeatLimit:    product.SeatLimit,
 		Capabilities: pq.StringArray(product.Capabilities),
+		CloudQuotaMB: product.CloudQuotaMB,
+		SessionLimit: product.SessionLimit,
 		DurationDays: product.DurationDays,
 		IsActive:     product.IsActive,
 	}

@@ -49,6 +49,8 @@ func (g *LicensingGatewayImpl) CreateLicense(license *models.LicenseCore) (*mode
 		Source:       license.Source,
 		SeatLimit:    license.SeatLimit,
 		Capabilities: pq.StringArray(license.Capabilities),
+		CloudQuotaMB: license.CloudQuotaMB,
+		SessionLimit: license.SessionLimit,
 		ExpiresAt:    license.ExpiresAt,
 		Note:         license.Note,
 	}
