@@ -8,5 +8,8 @@ var (
 	ErrInternalServerLevel = errors.New("internal server error")
 	ErrBadRequest          = errors.New("bad request")
 	ErrBadRequestBody      = errors.New("bad request body")
-	ErrCloudQuotaExceeded  = errors.New("CLOUD_QUOTA_EXCEEDED")
+	ErrProjectLimitReached = errors.New("PROJECT_LIMIT_REACHED")
+	ErrProjectSizeExceeded = errors.New("PROJECT_SIZE_EXCEEDED")
+	// ErrCloudQuotaExceeded is kept as an alias for older clients.
+	ErrCloudQuotaExceeded = ErrProjectSizeExceeded
 )

@@ -311,7 +311,7 @@ func (h *Handler) UploadProjectSb3(c *gin.Context) {
 		return
 	}
 	projectPageId := c.Param("projectPageId")
-	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+	if err := c.Request.ParseMultipartForm(128 << 20); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, "invalid multipart form")
 		return
 	}
@@ -701,10 +701,15 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case projectPage.ErrBadRequestBody:
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case projectPage.ErrCloudQuotaExceeded:
+	case projectPage.ErrProjectLimitReached:
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
 			"error": err.Error(),
-			"code":  "CLOUD_QUOTA_EXCEEDED",
+			"code":  "PROJECT_LIMIT_REACHED",
+		})
+	case projectPage.ErrProjectSizeExceeded:
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "PROJECT_SIZE_EXCEEDED",
 		})
 	case projects.ErrProjectNotFound:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())

@@ -408,8 +408,14 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		return
 	}
 	var usedBytes int64
+	var projectCount int64
 	if h.projectStorage != nil {
 		usedBytes, err = h.projectStorage.GetTotalStorageBytesForOwner(userID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		projectCount, err = h.projectStorage.CountProjectsByOwner(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -420,13 +426,16 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		tariffName = "Free"
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"tariffName":   tariffName,
-		"hasLicense":   ent.HasLicense,
-		"cloudQuotaMb": ent.CloudQuotaMB,
-		"usedBytes":    usedBytes,
-		"sessionLimit": ent.SessionLimit,
-		"seatLimit":    ent.SeatLimit,
-		"capabilities": ent.Capabilities,
+		"tariffName":         tariffName,
+		"hasLicense":         ent.HasLicense,
+		"cloudQuotaMb":       ent.MaxProjectSizeMB,
+		"maxProjectSizeMb":   ent.MaxProjectSizeMB,
+		"maxProjects":        ent.MaxProjects,
+		"projectCount":       projectCount,
+		"usedBytes":          usedBytes,
+		"sessionLimit":       ent.SessionLimit,
+		"seatLimit":          ent.SeatLimit,
+		"capabilities":       ent.Capabilities,
 	})
 }
 

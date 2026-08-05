@@ -16,6 +16,7 @@ type Gateway interface {
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
 	GetTotalStorageBytesForOwner(ownerUserID string) (int64, error)
 	GetCurrentVersionSizeBytes(projectPageId string) (int64, error)
+	CountProjectsByOwner(ownerUserID string) (int64, error)
 	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)
 	GetProjectReactionSummary(projectId, viewerUserId string) (*models.ProjectReactionsHTTP, error)
 	UpsertProjectReaction(projectId, userId, reactionCode string) error
