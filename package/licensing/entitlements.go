@@ -10,21 +10,25 @@ import (
 )
 
 // Free/Standard tariff defaults, used when the account has no active license.
-// SessionLimit=0 means unlimited (only paid tariffs enforce a concurrent-session cap).
+// SessionLimit=0 / MaxProjects=0 means unlimited (only paid tariffs enforce a concurrent-session cap).
+// FreeCloudQuotaMB is the max size of a single .sb3 project (not a total storage quota).
 const (
 	FreeCloudQuotaMB = 10
 	FreeSessionLimit = 0
+	FreeMaxProjects  = 20
 )
 
 // Entitlements is the resolved set of limits/capabilities for an account,
 // derived from its active license (if any) or the Free/Standard defaults.
 type Entitlements struct {
-	HasLicense   bool
-	TariffName   string
-	CloudQuotaMB int
-	SessionLimit int
-	SeatLimit    int
-	Capabilities []string
+	HasLicense       bool
+	TariffName       string
+	CloudQuotaMB     int // alias / legacy: same as MaxProjectSizeMB
+	MaxProjectSizeMB int // max .sb3 size per project in MB
+	MaxProjects      int // max total projects (published + drafts); 0 = unlimited
+	SessionLimit     int
+	SeatLimit        int
+	Capabilities     []string
 }
 
 // ResolveEntitlements looks up the account's active, non-expired license and
@@ -45,13 +49,19 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 			if lic.SeatLimit >= 5 || lic.SessionLimit >= 5 || lic.CloudQuotaMB >= 500 {
 				name = "Class"
 			}
+			sizeMB := lic.CloudQuotaMB
+			if sizeMB <= 0 {
+				sizeMB = FreeCloudQuotaMB
+			}
 			return Entitlements{
-				HasLicense:   true,
-				TariffName:   name,
-				CloudQuotaMB: lic.CloudQuotaMB,
-				SessionLimit: lic.SessionLimit,
-				SeatLimit:    lic.SeatLimit,
-				Capabilities: lic.Capabilities,
+				HasLicense:       true,
+				TariffName:       name,
+				CloudQuotaMB:     sizeMB,
+				MaxProjectSizeMB: sizeMB,
+				MaxProjects:      0, // unlimited for paid
+				SessionLimit:     lic.SessionLimit,
+				SeatLimit:        lic.SeatLimit,
+				Capabilities:     lic.Capabilities,
 			}, nil
 		}
 	}
@@ -60,10 +70,12 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 
 func freeEntitlements() Entitlements {
 	return Entitlements{
-		HasLicense:   false,
-		TariffName:   "Free",
-		CloudQuotaMB: FreeCloudQuotaMB,
-		SessionLimit: FreeSessionLimit,
+		HasLicense:       false,
+		TariffName:       "Free",
+		CloudQuotaMB:     FreeCloudQuotaMB,
+		MaxProjectSizeMB: FreeCloudQuotaMB,
+		MaxProjects:      FreeMaxProjects,
+		SessionLimit:     FreeSessionLimit,
 	}
 }
 

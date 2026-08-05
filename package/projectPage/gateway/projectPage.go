@@ -432,6 +432,18 @@ func (r *ProjectPageGatewayImpl) GetCurrentVersionSizeBytes(projectPageId string
 	return size, err
 }
 
+// CountProjectsByOwner returns total projects for the owner (published + drafts).
+func (r *ProjectPageGatewayImpl) CountProjectsByOwner(ownerUserID string) (int64, error) {
+	if strings.TrimSpace(ownerUserID) == "" {
+		return 0, nil
+	}
+	var count int64
+	err := r.projectStorageDB.Model(&models.ScratchProjectDB{}).
+		Where("owner_user_id = ? AND deleted_at IS NULL", ownerUserID).
+		Count(&count).Error
+	return count, err
+}
+
 func (r *ProjectPageGatewayImpl) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {
 	var rows []models.ScratchReactionTypeDB
 	err := r.projectStorageDB.

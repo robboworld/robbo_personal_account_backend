@@ -59,11 +59,15 @@ func (r *mutationResolver) CreateProjectPage(ctx context.Context) (models.Projec
 		projectPage.LocaleFromAcceptLanguage(ginContext.GetHeader("Accept-Language")),
 	)
 	if createProjectPageErr != nil {
+		code := "500"
+		if createProjectPageErr == projectPage.ErrProjectLimitReached {
+			code = "PROJECT_LIMIT_REACHED"
+		}
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
 			Message: createProjectPageErr.Error(),
 			Extensions: map[string]interface{}{
-				"code": "500",
+				"code": code,
 			},
 		}
 	}
@@ -103,11 +107,17 @@ func (r *mutationResolver) UpdateProjectPage(ctx context.Context, input models.U
 				},
 			}
 		}
+		code := "500"
+		if updateProjectPageErr == projectPage.ErrProjectSizeExceeded {
+			code = "PROJECT_SIZE_EXCEEDED"
+		} else if updateProjectPageErr == projectPage.ErrProjectLimitReached {
+			code = "PROJECT_LIMIT_REACHED"
+		}
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
 			Message: updateProjectPageErr.Error(),
 			Extensions: map[string]interface{}{
-				"code": "500",
+				"code": code,
 			},
 		}
 	}

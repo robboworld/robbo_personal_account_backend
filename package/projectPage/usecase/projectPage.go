@@ -88,6 +88,9 @@ const emptyProjectJson = "{\"targets\":[{\"isStage\":true,\"name\":\"Stage\",\"v
 	" Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36\"}}"
 
 func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error) {
+	if err := p.enforceProjectCountLimit(authorId); err != nil {
+		return nil, err
+	}
 	defaultTitle := projectPage.DefaultProjectTitle(locale)
 	project := models.ProjectCore{}
 	project.AuthorId = authorId
@@ -174,6 +177,12 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 		return nil, auth.ErrNotAccess
 	}
 	projectPage.ProjectId = existing.ProjectId
+
+	if !existing.IsShared && projectPage.IsShared {
+		if err := p.enforcePublishSizeLimit(authorId, existing.ProjectPageId); err != nil {
+			return nil, err
+		}
+	}
 
 	updated, err := p.projectPageGateway.UpdateProjectPage(projectPage)
 	if err != nil {
@@ -562,7 +571,7 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if !access.Resolve(ownerId, row).CanWrite {
 		return auth.ErrNotAccess
 	}
-	if err := p.enforceCloudQuota(ownerId, projectPageId, int64(len(data))); err != nil {
+	if err := p.enforceProjectSizeLimit(ownerId, int64(len(data))); err != nil {
 		return err
 	}
 	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
@@ -580,7 +589,28 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	return nil
 }
 
-func (p *ProjectPageUseCaseImpl) enforceCloudQuota(ownerId, projectPageId string, newSize int64) error {
+func (p *ProjectPageUseCaseImpl) enforceProjectCountLimit(authorId string) error {
+	if p.licensingGateway == nil {
+		return nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, authorId)
+	if err != nil {
+		return err
+	}
+	if ent.MaxProjects <= 0 {
+		return nil
+	}
+	count, err := p.projectPageGateway.CountProjectsByOwner(authorId)
+	if err != nil {
+		return err
+	}
+	if count >= int64(ent.MaxProjects) {
+		return projectPage.ErrProjectLimitReached
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforceProjectSizeLimit(ownerId string, newSize int64) error {
 	if p.licensingGateway == nil || newSize <= 0 {
 		return nil
 	}
@@ -588,21 +618,34 @@ func (p *ProjectPageUseCaseImpl) enforceCloudQuota(ownerId, projectPageId string
 	if err != nil {
 		return err
 	}
-	if ent.CloudQuotaMB <= 0 {
+	maxMB := ent.MaxProjectSizeMB
+	if maxMB <= 0 {
 		return nil
 	}
-	quotaBytes := int64(ent.CloudQuotaMB) * 1024 * 1024
-	used, err := p.projectPageGateway.GetTotalStorageBytesForOwner(ownerId)
+	if newSize > int64(maxMB)*1024*1024 {
+		return projectPage.ErrProjectSizeExceeded
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforcePublishSizeLimit(authorId, projectPageId string) error {
+	if p.licensingGateway == nil {
+		return nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, authorId)
 	if err != nil {
 		return err
 	}
-	oldSize, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
+	maxMB := ent.MaxProjectSizeMB
+	if maxMB <= 0 {
+		return nil
+	}
+	size, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
 	if err != nil {
 		return err
 	}
-	projected := used - oldSize + newSize
-	if projected > quotaBytes {
-		return projectPage.ErrCloudQuotaExceeded
+	if size > int64(maxMB)*1024*1024 {
+		return projectPage.ErrProjectSizeExceeded
 	}
 	return nil
 }
