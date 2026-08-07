@@ -612,6 +612,9 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if err := p.enforceProjectSizeLimit(ownerId, int64(len(data))); err != nil {
 		return err
 	}
+	if err := validateSb3Archive(data); err != nil {
+		return err
+	}
 	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
 		return err
 	}
