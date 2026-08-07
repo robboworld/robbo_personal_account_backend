@@ -17,6 +17,7 @@ type ProjectPageCore struct {
 	IsShared         bool
 	LandingFeatured  bool
 	LandingSortOrder int
+	Tags             []string
 	AuthorUserId     string
 	AuthorName       string
 	IsOwner          bool
@@ -74,6 +75,7 @@ func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 		IsShared:         ht.IsShared,
 		LandingFeatured:  ht.LandingFeatured,
 		LandingSortOrder: ht.LandingSortOrder,
+		Tags:             ht.Tags, // nil means "omit / keep existing" on update
 		AuthorUserId:     ht.AuthorUserID,
 		AuthorName:       ht.AuthorName,
 		IsOwner:          ht.IsOwner,
@@ -92,6 +94,11 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.IsShared = projectPage.IsShared
 	ht.LandingFeatured = projectPage.LandingFeatured
 	ht.LandingSortOrder = projectPage.LandingSortOrder
+	if projectPage.Tags == nil {
+		ht.Tags = []string{}
+	} else {
+		ht.Tags = projectPage.Tags
+	}
 	ht.AuthorUserID = projectPage.AuthorUserId
 	ht.AuthorName = projectPage.AuthorName
 	ht.IsOwner = projectPage.IsOwner

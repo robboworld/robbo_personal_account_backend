@@ -40,9 +40,9 @@ func (p *ProjectPageDelegateImpl) DeleteProjectPage(projectId string, authorId s
 	return p.UseCase.DeleteProjectPage(projectId, authorId)
 }
 
-func (p *ProjectPageDelegateImpl) UpdateProjectPage(projectPage *models.ProjectPageHTTP, authorId string) (projectPageUpdated models.ProjectPageHTTP, err error) {
+func (p *ProjectPageDelegateImpl) UpdateProjectPage(projectPage *models.ProjectPageHTTP, authorId string, role models.Role) (projectPageUpdated models.ProjectPageHTTP, err error) {
 	projectPageCore := projectPage.ToCore()
-	projectPageUpdatedCore, err := p.UseCase.UpdateProjectPage(projectPageCore, authorId)
+	projectPageUpdatedCore, err := p.UseCase.UpdateProjectPage(projectPageCore, authorId, role)
 	if err != nil {
 		log.Println(err)
 		return
@@ -140,7 +140,7 @@ func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pag
 	return
 }
 
-func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string, landingFeaturedOnly bool) (
+func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string, filter projectPage.PublicListFilter) (
 	projectPages []*models.ProjectPageHTTP,
 	countRows int,
 	err error,
@@ -153,7 +153,7 @@ func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string, l
 	if parseSzErr != nil || pageSizeInt32 < 1 {
 		pageSizeInt32 = 10
 	}
-	projectPagesCore, countRowsInt64, err := p.UseCase.GetPublicProjectPages(int(pageInt32), int(pageSizeInt32), landingFeaturedOnly)
+	projectPagesCore, countRowsInt64, err := p.UseCase.GetPublicProjectPages(int(pageInt32), int(pageSizeInt32), filter)
 	if err != nil {
 		return
 	}

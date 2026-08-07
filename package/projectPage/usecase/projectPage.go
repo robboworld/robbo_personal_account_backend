@@ -14,6 +14,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/playtoken"
+	projecttags "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/tags"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -158,10 +159,13 @@ func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCor
 		core.IsOwner = false
 		core.LandingFeatured = row.LandingFeatured
 		core.LandingSortOrder = row.LandingSortOrder
+		if core.Tags == nil {
+			core.Tags = append([]string(nil), []string(row.Tags)...)
+		}
 	}
 }
 
-func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string) (
+func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string, role models.Role) (
 	projectPageUpdated *models.ProjectPageCore,
 	err error,
 ) {
@@ -173,12 +177,33 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	if err != nil {
 		return nil, err
 	}
-	if !access.Resolve(authorId, row).CanWrite {
+	acc := access.Resolve(authorId, row)
+	isSuperAdmin := role == models.SuperAdmin
+	if !acc.CanWrite && !isSuperAdmin {
 		return nil, auth.ErrNotAccess
 	}
+
+	if projectPage.Tags == nil {
+		projectPage.Tags = append([]string(nil), existing.Tags...)
+	} else {
+		normalized, normErr := projecttags.NormalizeList(projectPage.Tags)
+		if normErr != nil {
+			return nil, normErr
+		}
+		projectPage.Tags = normalized
+	}
+
+	if !acc.CanWrite {
+		// SuperAdmin may update tags only on others' projects.
+		projectPage.Title = existing.Title
+		projectPage.Instruction = existing.Instruction
+		projectPage.Notes = existing.Notes
+		projectPage.IsShared = existing.IsShared
+	}
+
 	projectPage.ProjectId = existing.ProjectId
 
-	if !existing.IsShared && projectPage.IsShared {
+	if acc.CanWrite && !existing.IsShared && projectPage.IsShared {
 		if err := p.enforcePublishSizeLimit(authorId, existing.ProjectPageId); err != nil {
 			return nil, err
 		}
@@ -190,7 +215,7 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	}
 	updated.AuthorUserId = row.OwnerUserID
 	updated.AuthorName = lookupAuthorName(row.OwnerUserID)
-	updated.IsOwner = true
+	updated.IsOwner = acc.IsOwner
 	return updated, nil
 }
 
@@ -235,12 +260,25 @@ func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewer
 	return core, err
 }
 
-func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (
+func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, filter projectPage.PublicListFilter) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
 	err error,
 ) {
-	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize, landingFeaturedOnly)
+	filter.Query = strings.TrimSpace(filter.Query)
+	if len(filter.Tags) > 0 {
+		normalized, normErr := projecttags.NormalizeFilterList(filter.Tags)
+		if normErr != nil {
+			return nil, 0, normErr
+		}
+		filter.Tags = normalized
+	} else {
+		filter.Tags = nil
+	}
+	if filter.Query != "" {
+		filter.AuthorUserIDs = lookupAuthorIDsForQuery(filter.Query)
+	}
+	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize, filter)
 	if err != nil {
 		return nil, 0, err
 	}

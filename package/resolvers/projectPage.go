@@ -94,9 +94,10 @@ func (r *mutationResolver) UpdateProjectPage(ctx context.Context, input models.U
 		Notes:         input.Notes,
 		Title:         input.Title,
 		IsShared:      input.IsShared,
+		Tags:          input.Tags,
 	}
 
-	updateProjectPage, updateProjectPageErr := r.projectPageDelegate.UpdateProjectPage(updateProjectPageInput, userId)
+	updateProjectPage, updateProjectPageErr := r.projectPageDelegate.UpdateProjectPage(updateProjectPageInput, userId, userRole)
 	if updateProjectPageErr != nil {
 		if updateProjectPageErr == auth.ErrNotAccess {
 			return nil, &gqlerror.Error{

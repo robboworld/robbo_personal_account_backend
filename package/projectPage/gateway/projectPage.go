@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
@@ -83,6 +84,7 @@ func toProjectPageCore(projectDB *models.ScratchProjectDB) *models.ProjectPageCo
 		IsShared:         projectDB.IsPublic,
 		LandingFeatured:  projectDB.LandingFeatured,
 		LandingSortOrder: projectDB.LandingSortOrder,
+		Tags:             append([]string(nil), []string(projectDB.Tags)...),
 	}
 }
 
@@ -140,11 +142,16 @@ func (r *ProjectPageGatewayImpl) DeleteProjectPage(projectId string) (err error)
 
 func (r *ProjectPageGatewayImpl) UpdateProjectPage(core *models.ProjectPageCore) (projectPageUpdated *models.ProjectPageCore, err error) {
 	err = r.projectStorageDB.Transaction(func(tx *gorm.DB) (err error) {
+		tags := core.Tags
+		if tags == nil {
+			tags = []string{}
+		}
 		updates := map[string]interface{}{
 			"instruction": core.Instruction,
 			"note":        core.Notes,
 			"title":       core.Title,
 			"is_public":   core.IsShared,
+			"tags":        pq.StringArray(tags),
 		}
 		targetID := core.ProjectPageId
 		if targetID == "" {
@@ -241,7 +248,7 @@ func (r *ProjectPageGatewayImpl) GetScratchProjectById(projectPageId string) (pr
 	return &row, nil
 }
 
-func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (
+func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, filter projectPage.PublicListFilter) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
 	err error,
@@ -257,26 +264,42 @@ func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, landi
 		Model(&models.ScratchProjectDB{}).
 		Select(
 			"id, owner_user_id, title, instruction, note, scratch_vm_json, is_public, landing_featured, "+
-				"landing_sort_order, preview_mime, preview_updated_at, version_counter, current_version_id, "+
+				"landing_sort_order, tags, preview_mime, preview_updated_at, version_counter, current_version_id, "+
 				"created_at, updated_at, deleted_at",
 		).
 		Where("is_public = ? AND deleted_at IS NULL", true)
-	if landingFeaturedOnly {
+	countQuery := r.projectStorageDB.Model(&models.ScratchProjectDB{}).
+		Where("is_public = ? AND deleted_at IS NULL", true)
+
+	if filter.LandingFeaturedOnly {
 		query = query.Where("landing_featured = ?", true)
+		countQuery = countQuery.Where("landing_featured = ?", true)
 	}
+	if len(filter.Tags) > 0 {
+		query = query.Where("tags @> ?", pq.Array(filter.Tags))
+		countQuery = countQuery.Where("tags @> ?", pq.Array(filter.Tags))
+	}
+	if q := strings.TrimSpace(filter.Query); q != "" {
+		like := "%" + q + "%"
+		orParts := []string{"title ILIKE ?", "EXISTS (SELECT 1 FROM unnest(tags) AS t(tag) WHERE t.tag ILIKE ?)"}
+		orArgs := []interface{}{like, like}
+		if len(filter.AuthorUserIDs) > 0 {
+			orParts = append(orParts, "owner_user_id IN ?")
+			orArgs = append(orArgs, filter.AuthorUserIDs)
+		}
+		orClause := "(" + strings.Join(orParts, " OR ") + ")"
+		query = query.Where(orClause, orArgs...)
+		countQuery = countQuery.Where(orClause, orArgs...)
+	}
+
 	var rows []models.ScratchProjectDB
 	orderClause := "updated_at DESC"
-	if landingFeaturedOnly {
+	if filter.LandingFeaturedOnly {
 		orderClause = "landing_sort_order ASC, updated_at DESC"
 	}
 	err = query.Order(orderClause).Limit(pageSize).Offset(offset).Find(&rows).Error
 	if err != nil {
 		return nil, 0, err
-	}
-	countQuery := r.projectStorageDB.Model(&models.ScratchProjectDB{}).
-		Where("is_public = ? AND deleted_at IS NULL", true)
-	if landingFeaturedOnly {
-		countQuery = countQuery.Where("landing_featured = ?", true)
 	}
 	countQuery.Count(&countRows)
 	for i := range rows {
