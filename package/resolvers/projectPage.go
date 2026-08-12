@@ -113,6 +113,8 @@ func (r *mutationResolver) UpdateProjectPage(ctx context.Context, input models.U
 			code = "PROJECT_SIZE_EXCEEDED"
 		} else if updateProjectPageErr == projectPage.ErrProjectLimitReached {
 			code = "PROJECT_LIMIT_REACHED"
+		} else if updateProjectPageErr == projectPage.ErrInvalidProjectFile {
+			code = "INVALID_PROJECT_FILE"
 		}
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),

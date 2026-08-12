@@ -24,7 +24,7 @@ type UseCase interface {
 	EncryptAddonBundle(token, fingerprint string) (string, error)
 
 	// Concurrent web-login sessions (tariff session_limit).
-	BeginLoginSession(lmsUserID, authMode, userAgent, ipAddress string, ttl time.Duration) (*models.UserSessionCore, error)
+	BeginLoginSession(lmsUserID, authMode, userAgent, ipAddress string, ttl time.Duration, role models.Role) (*models.UserSessionCore, error)
 	TouchLoginSession(sessionKey string) error
 	RevokeLoginSession(sessionKey string) error
 	ListLoginSessions(lmsUserID string) ([]*models.UserSessionCore, error)

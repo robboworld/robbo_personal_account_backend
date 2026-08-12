@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -205,6 +206,9 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 
 	if acc.CanWrite && !existing.IsShared && projectPage.IsShared {
 		if err := p.enforcePublishSizeLimit(authorId, existing.ProjectPageId); err != nil {
+			return nil, err
+		}
+		if err := p.enforcePublishProjectValid(existing.ProjectPageId, row); err != nil {
 			return nil, err
 		}
 	}
@@ -687,6 +691,30 @@ func (p *ProjectPageUseCaseImpl) enforcePublishSizeLimit(authorId, projectPageId
 	}
 	if size > int64(maxMB)*1024*1024 {
 		return projectPage.ErrProjectSizeExceeded
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforcePublishProjectValid(
+	projectPageId string,
+	row *models.ScratchProjectDB,
+) error {
+	archive, err := p.projectPageGateway.GetLatestSb3Archive(projectPageId)
+	if err != nil {
+		if !errors.Is(err, projectPage.ErrSb3ArchiveNotFound) {
+			return err
+		}
+		vmJSON := ""
+		if row != nil {
+			vmJSON = row.ScratchVMJSON
+		}
+		if vErr := validateScratchVMJSON(vmJSON); vErr != nil {
+			return projectPage.ErrInvalidProjectFile
+		}
+		return nil
+	}
+	if vErr := validateSb3Archive(archive); vErr != nil {
+		return projectPage.ErrInvalidProjectFile
 	}
 	return nil
 }
