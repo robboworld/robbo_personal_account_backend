@@ -2,124 +2,168 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>Robbo LK — mock OIDC login</title>
+  <title>Вход — Robbo ЛК</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     :root {
       color-scheme: light;
-      font-family: system-ui, sans-serif;
+      --text: #383838;
+      --muted: #707070;
+      --accent: #00af41;
+      --accent-hover: #009638;
+      --panel: #fff;
+      --border: #e5ebe7;
     }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background-color: #edf9f2;
+      background-image:
+        radial-gradient(ellipse 95% 72% at 92% 8%, rgba(133, 217, 164, 0.55) 0%, rgba(184, 233, 202, 0.28) 38%, transparent 68%),
+        radial-gradient(ellipse 80% 65% at 6% 92%, rgba(0, 175, 65, 0.2) 0%, rgba(184, 233, 202, 0.14) 42%, transparent 70%),
+        linear-gradient(152deg, #b8e9ca 0%, #dbf4e4 18%, #ecfdf5 42%, #edf9f2 68%, #fafefa 90%, #fff 100%);
       display: grid;
       place-items: center;
-      background: #f3f5f7;
-      color: #111;
+      padding: 1.5rem;
     }
-    .card {
-      width: min(640px, calc(100vw - 32px));
-      background: #fff;
-      border: 1px solid #d9dee5;
-      border-radius: 12px;
-      padding: 24px;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+    .panel {
+      width: min(420px, calc(100vw - 32px));
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px 24px 24px;
+      box-shadow: 0 12px 40px rgba(0, 80, 40, 0.08);
+    }
+    .brand {
+      font-size: 0.85rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 8px;
     }
     h1 {
       margin: 0 0 8px;
-      font-size: 1.35rem;
+      font-size: 1.5rem;
+      font-weight: 700;
     }
-    p {
-      margin: 0 0 16px;
-      color: #555;
+    .lead {
+      margin: 0 0 20px;
+      color: var(--muted);
       line-height: 1.45;
+      font-size: 0.95rem;
     }
     label {
       display: block;
-      margin: 12px 0 6px;
+      margin: 0 0 6px;
       font-weight: 600;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
     }
     input[type="text"],
     textarea {
       width: 100%;
-      box-sizing: border-box;
       border: 1px solid #c7ced8;
       border-radius: 8px;
       padding: 10px 12px;
       font: inherit;
       background: #fff;
       color: #111;
+      margin-bottom: 12px;
     }
     textarea {
-      min-height: 160px;
+      min-height: 96px;
       resize: vertical;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 0.92rem;
+      font-size: 0.88rem;
     }
     .presets {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin: 8px 0 4px;
+      margin: 0 0 14px;
     }
-    button,
-    input[type="submit"] {
+    .presets button {
       border: 1px solid #c7ced8;
       border-radius: 8px;
       background: #fff;
       color: #111;
-      padding: 8px 12px;
+      padding: 6px 10px;
       font: inherit;
+      font-size: 0.85rem;
       cursor: pointer;
     }
+    .presets button:hover {
+      background: #f6f8fa;
+    }
     input[type="submit"] {
-      margin-top: 16px;
+      margin-top: 4px;
       width: 100%;
-      background: #0b5fff;
-      border-color: #0b5fff;
+      border: none;
+      border-radius: 8px;
+      background: var(--accent);
       color: #fff;
+      font: inherit;
       font-weight: 600;
+      font-size: 1rem;
+      padding: 12px 16px;
+      cursor: pointer;
     }
     input[type="submit"]:hover {
-      background: #0949cc;
-      border-color: #0949cc;
-      color: #fff;
-    }
-    button:hover {
-      background: #f6f8fa;
-      color: #111;
+      background: var(--accent-hover);
     }
     .hint {
-      margin-top: 12px;
+      margin: 14px 0 0;
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .claims-wrap.collapsed textarea,
+    .claims-wrap.collapsed > label {
+      display: none;
+    }
+    .toggle {
+      background: none;
+      border: none;
+      color: var(--accent);
+      padding: 0;
+      margin: 0 0 10px;
+      font: inherit;
       font-size: 0.85rem;
-      color: #666;
+      cursor: pointer;
+      text-decoration: underline;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>Mock OAuth2 — вход в ЛК</h1>
-    <p>Username — произвольный <code>sub</code>. В claims укажите email из LMS, например <code>{"email":"lms@lms.ru"}</code>.</p>
+  <div class="panel">
+    <p class="brand">Robbo ЛК</p>
+    <h1>Вход</h1>
+    <p class="lead">Mock OAuth2 — стандартный вход в локальный ЛК. Укажите email из LMS.</p>
 
     <form id="login-form" method="post">
-      <label for="username">Username / subject</label>
+      <label for="username">Имя пользователя или email</label>
       <input id="username" name="username" type="text" required autocomplete="username"
              placeholder="lms@lms.ru">
 
-      <label for="claims">Claims (JSON)</label>
       <div class="presets">
-        <button type="button" data-preset="superadmin-lms">SuperAdmin lms@lms.ru</button>
-        <button type="button" data-preset="superadmin-admin">SuperAdmin admin@mail.ru</button>
+        <button type="button" data-preset="superadmin-lms">lms@lms.ru</button>
+        <button type="button" data-preset="superadmin-admin">admin@mail.ru</button>
         <button type="button" data-preset="megaassik">megaassik@mail.ru</button>
       </div>
-      <textarea id="claims" name="claims" autocomplete="off"
-                placeholder='{"email":"lms@lms.ru"}'></textarea>
 
-      <input type="submit" value="Sign-in">
+      <button type="button" class="toggle" id="toggle-claims" aria-expanded="false">Дополнительно: claims JSON</button>
+      <div class="claims-wrap collapsed" id="claims-wrap">
+        <label for="claims">Claims (JSON)</label>
+        <textarea id="claims" name="claims" autocomplete="off"
+                  placeholder='{"email":"lms@lms.ru"}'></textarea>
+      </div>
+
+      <input type="submit" value="Войти">
     </form>
 
-    <p class="hint">Значения сохраняются в localStorage браузера и подставляются при следующем входе.</p>
+    <p class="hint">Значения сохраняются в браузере и подставляются при следующем входе.</p>
   </div>
 
   <script>
@@ -147,6 +191,8 @@
       var usernameInput = document.getElementById('username');
       var claimsInput = document.getElementById('claims');
       var form = document.getElementById('login-form');
+      var claimsWrap = document.getElementById('claims-wrap');
+      var toggleClaims = document.getElementById('toggle-claims');
 
       function readStorage(key, fallback) {
         try {
@@ -165,8 +211,31 @@
         }
       }
 
-      usernameInput.value = readStorage(STORAGE_USERNAME, DEFAULT_USERNAME);
-      claimsInput.value = readStorage(STORAGE_CLAIMS, DEFAULT_CLAIMS);
+      function readCookie(name) {
+        try {
+          var match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+          return match ? decodeURIComponent(match[1]) : '';
+        } catch (e) {
+          return '';
+        }
+      }
+
+      function clearCookie(name) {
+        document.cookie = name + '=; path=/; max-age=0; SameSite=Lax';
+      }
+
+      var cookieUser = readCookie(STORAGE_USERNAME);
+      var cookieClaims = readCookie(STORAGE_CLAIMS);
+      usernameInput.value = cookieUser || readStorage(STORAGE_USERNAME, DEFAULT_USERNAME);
+      claimsInput.value = cookieClaims || readStorage(STORAGE_CLAIMS, DEFAULT_CLAIMS);
+      if (cookieUser) {
+        writeStorage(STORAGE_USERNAME, cookieUser);
+        clearCookie(STORAGE_USERNAME);
+      }
+      if (cookieClaims) {
+        writeStorage(STORAGE_CLAIMS, cookieClaims);
+        clearCookie(STORAGE_CLAIMS);
+      }
 
       document.querySelectorAll('[data-preset]').forEach(function (button) {
         button.addEventListener('click', function () {
@@ -179,10 +248,24 @@
         });
       });
 
+      toggleClaims.addEventListener('click', function () {
+        var collapsed = claimsWrap.classList.toggle('collapsed');
+        toggleClaims.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      });
+
       form.addEventListener('submit', function () {
         writeStorage(STORAGE_USERNAME, usernameInput.value.trim());
         writeStorage(STORAGE_CLAIMS, claimsInput.value);
       });
+
+      // Auto-continue when LK /login prepared cookies (shared across localhost ports).
+      var fromLk = readCookie('robbo_mock_oidc_autosubmit') === '1';
+      if (fromLk) {
+        clearCookie('robbo_mock_oidc_autosubmit');
+      }
+      if (fromLk && usernameInput.value.trim() && claimsInput.value.trim()) {
+        form.submit();
+      }
     })();
   </script>
 </body>

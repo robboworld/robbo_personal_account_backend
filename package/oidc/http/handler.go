@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
@@ -43,6 +42,8 @@ func (h Handler) InitRoutes(router *gin.Engine) {
 		g.GET("/callback", h.Callback)
 		g.GET("/logout", h.Logout)
 		g.GET("/status", h.Status)
+		g.POST("/verify-credentials", h.VerifyCredentials)
+		g.POST("/password-login", h.PasswordLogin)
 	}
 }
 
@@ -80,7 +81,7 @@ func (h Handler) Start(c *gin.Context) {
 	if prompt != "none" && prompt != "login" && prompt != "consent" {
 		prompt = "none"
 	}
-	entry, err := oidc.NewPKCEForReturn(returnTo)
+	entry, err := oidc.NewPKCEForReturnWithPrompt(returnTo, prompt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "pkce_init_failed"})
 		return
@@ -121,6 +122,159 @@ func (h Handler) Status(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, authStatusPayload(false, "", "", "", 0))
+}
+
+// VerifyCredentials checks LMS MySQL email/username + password before starting OIDC.
+// Does not issue a session — used by the LK /login form to reject unknown users early.
+func (h Handler) VerifyCredentials(c *gin.Context) {
+	u, errCode, status := lookupLMSUserForPasswordLogin(c)
+	if errCode != "" {
+		c.JSON(status, gin.H{"ok": false, "error": errCode})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":    true,
+		"email": u.Email,
+	})
+}
+
+// PasswordLogin verifies LMS credentials and issues the BFF session cookie without
+// redirecting through the IdP login UI (avoids a mock/LMS page flash on /login).
+func (h Handler) PasswordLogin(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		ReturnTo string `json:"return_to"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid_body"})
+		return
+	}
+	// Re-bind into context for shared lookup — parse manually.
+	login := strings.TrimSpace(body.Email)
+	if login == "" {
+		login = strings.TrimSpace(body.Username)
+	}
+	password := body.Password
+	if login == "" || password == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "missing_credentials"})
+		return
+	}
+
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "lms_unavailable"})
+		return
+	}
+	defer reader.Close()
+
+	u, err := reader.LookupAuthUserForLogin(login)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "lms_unavailable"})
+		return
+	}
+	if u == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "error": "user_not_found"})
+		return
+	}
+	if !u.IsActive {
+		c.JSON(http.StatusForbidden, gin.H{"ok": false, "error": "user_inactive"})
+		return
+	}
+	if !lmsdb.VerifyDjangoPassword(password, u.Password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "error": "invalid_credentials"})
+		return
+	}
+
+	edxUserID := strconv.FormatInt(u.ID, 10)
+	role := models.Student
+	if u.IsSuperuser {
+		role = models.SuperAdmin
+	} else if u.IsStaff {
+		role = models.Teacher
+	}
+	touchLastLogin(u.ID)
+
+	sid := ""
+	if h.sessions != nil {
+		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
+		ip := oidcClientIP(c)
+		sess, createErr := licensing.AcquireLoginSession(
+			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl,
+		)
+		if createErr != nil {
+			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
+				c.JSON(http.StatusConflict, gin.H{"ok": false, "error": "session_limit_reached"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "session_create_failed"})
+			return
+		}
+		sid = sess.SessionKey
+	}
+
+	sub := u.Username
+	if sub == "" {
+		sub = u.Email
+	}
+	session, err := oidc.IssueSessionToken(sub, edxUserID, u.Email, uint(role), sid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "session_issue_failed"})
+		return
+	}
+	secure := viper.GetBool("auth.refresh_cookie_secure")
+	c.SetCookie(oidc.SessionCookieName, session, oidc.SessionTTLSeconds(), "/", "", secure, true)
+
+	returnTo := strings.TrimSpace(body.ReturnTo)
+	if returnTo == "" {
+		returnTo = "/home"
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"ok":        true,
+		"email":     u.Email,
+		"return_to": returnTo,
+	})
+}
+
+func lookupLMSUserForPasswordLogin(c *gin.Context) (*lmsdb.AuthUserLogin, string, int) {
+	var body struct {
+		Email    string `json:"email"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		return nil, "invalid_body", http.StatusBadRequest
+	}
+	login := strings.TrimSpace(body.Email)
+	if login == "" {
+		login = strings.TrimSpace(body.Username)
+	}
+	password := body.Password
+	if login == "" || password == "" {
+		return nil, "missing_credentials", http.StatusBadRequest
+	}
+
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return nil, "lms_unavailable", http.StatusServiceUnavailable
+	}
+	defer reader.Close()
+
+	u, err := reader.LookupAuthUserForLogin(login)
+	if err != nil {
+		return nil, "lms_unavailable", http.StatusServiceUnavailable
+	}
+	if u == nil {
+		return nil, "user_not_found", http.StatusUnauthorized
+	}
+	if !u.IsActive {
+		return nil, "user_inactive", http.StatusForbidden
+	}
+	if !lmsdb.VerifyDjangoPassword(password, u.Password) {
+		return nil, "invalid_credentials", http.StatusUnauthorized
+	}
+	return u, "", http.StatusOK
 }
 
 func authStatusPayload(authenticated bool, sub, email, edxUserID string, role uint) gin.H {
@@ -202,12 +356,29 @@ func (h Handler) Logout(c *gin.Context) {
 
 func (h Handler) Callback(c *gin.Context) {
 	if errParam := c.Query("error"); errParam != "" {
-		// login_required means the IdP has no active session → retry with interactive login
+		// login_required / interaction_required: IdP has no session.
+		// Silent (prompt=none) → back to LK /login so AuthLayout stays visible.
+		// Interactive (prompt=login) → retry start with prompt=login (IdP form).
 		if errParam == "login_required" || errParam == "interaction_required" {
 			state := c.Query("state")
 			returnTo := "/home"
+			prompt := "login"
 			if entry, ok := oidc.ConsumePKCE(state); ok {
 				returnTo = entry.ReturnTo
+				if entry.Prompt != "" {
+					prompt = entry.Prompt
+				}
+			}
+			if prompt == "none" {
+				frontend := viper.GetString("oidc.frontendBaseUrl")
+				if frontend == "" {
+					frontend = "http://localhost:3030"
+				}
+				q := url.Values{}
+				q.Set("return_to", returnTo)
+				redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
+				c.Redirect(http.StatusFound, redirectURL)
+				return
 			}
 			startURL := fmt.Sprintf("/auth/oidc/start?prompt=login&return_to=%s",
 				url.QueryEscape(returnTo))
@@ -276,7 +447,19 @@ func (h Handler) Callback(c *gin.Context) {
 		role = lmsRoleFromProfile(profile)
 		touchLastLogin(profile.ID)
 	} else {
-		role = roleCodeToModel(inferRoleCodeFromIDToken(tr.IDToken))
+		// Unknown email / no LMS user — do not create a LK session.
+		frontend := viper.GetString("oidc.frontendBaseUrl")
+		if frontend == "" {
+			frontend = "http://localhost:3030"
+		}
+		q := url.Values{}
+		q.Set("err", "user_not_found")
+		if claims.Email != "" {
+			q.Set("email", claims.Email)
+		}
+		redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
+		c.Redirect(http.StatusFound, redirectURL)
+		return
 	}
 
 	sid := ""
@@ -351,52 +534,6 @@ func oidcClientIP(c *gin.Context) string {
 		return host
 	}
 	return c.Request.RemoteAddr
-}
-
-func inferRoleCodeFromIDToken(idToken string) string {
-	parser := jwt.Parser{}
-	token, _, err := parser.ParseUnverified(idToken, jwt.MapClaims{})
-	if err != nil {
-		return "student"
-	}
-	raw, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return "student"
-	}
-	if claimBool(raw["is_superuser"]) {
-		return "super_admin"
-	}
-	if claimBool(raw["is_staff"]) {
-		return "teacher"
-	}
-	return "student"
-}
-
-func claimBool(v interface{}) bool {
-	switch b := v.(type) {
-	case bool:
-		return b
-	case string:
-		return strings.EqualFold(b, "true") || b == "1"
-	}
-	return false
-}
-
-func roleCodeToModel(code string) models.Role {
-	switch strings.ToLower(strings.TrimSpace(code)) {
-	case "teacher":
-		return models.Teacher
-	case "parent":
-		return models.Parent
-	case "free_listener":
-		return models.FreeListener
-	case "unit_admin":
-		return models.UnitAdmin
-	case "super_admin":
-		return models.SuperAdmin
-	default:
-		return models.Student
-	}
 }
 
 func lookupLMSProfileByEmail(email string) (*lmsdb.AuthUserProfile, error) {
