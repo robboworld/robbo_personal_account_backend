@@ -68,6 +68,7 @@ func userCoreFromLMSProfile(u *lmsdb.AuthUserProfile) models.UserCore {
 		Gender:           nullStringToValue(u.Gender),
 		Language:         nullStringToValue(u.Language),
 		Bio:              nullStringToValue(u.Bio),
+		AvatarID:         lmsdb.ParseAvatarIDFromMeta(u.Meta),
 		Role:             lmsRoleFromProfile(u),
 		CreatedAt:        u.DateJoined.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}
@@ -153,4 +154,24 @@ func (r *UsersGatewayImpl) searchLMSStudentsByEmail(email string, page, pageSize
 		students = append(students, &models.StudentCore{UserCore: core})
 	}
 	return students, countRows, nil
+}
+
+func (r *UsersGatewayImpl) SetUserAvatar(userID, avatarID string) (models.UserCore, error) {
+	id, err := strconv.ParseInt(strings.TrimSpace(userID), 10, 64)
+	if err != nil || id <= 0 {
+		return models.UserCore{}, auth.ErrUserNotFound
+	}
+	writer, err := lmsdb.NewWriterFromConfig()
+	if err != nil {
+		return models.UserCore{}, err
+	}
+	defer writer.Close()
+
+	if err := writer.UpdateProfileAvatarID(id, avatarID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return models.UserCore{}, auth.ErrUserNotFound
+		}
+		return models.UserCore{}, err
+	}
+	return r.lmsUserCoreByID(userID)
 }

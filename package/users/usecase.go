@@ -49,6 +49,8 @@ type UseCase interface {
 	UpdateSuperAdmin(superAdmin *models.SuperAdminCore) (superAdminUpdated *models.SuperAdminCore, err error)
 	DeleteSuperAdmin(superAdminId string) (err error)
 
+	SetUserAvatar(userID, avatarID string) (user models.UserCore, err error)
+
 	CreateStudentParentRelation(parentId, childrenId string) (studentsHTTP []*models.StudentCore, err error)
 	SetNewUnitAdminForRobboUnit(unitAdminId, robboUnitId string) (err error)
 	DeleteUnitAdminForRobboUnit(unitAdminId, robboUnitId string) (err error)

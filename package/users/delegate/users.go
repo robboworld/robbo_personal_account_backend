@@ -597,6 +597,16 @@ func (p *UsersDelegateImpl) DeleteSuperAdmin(superAdminId string) (err error) {
 	return p.UseCase.DeleteSuperAdmin(superAdminId)
 }
 
+func (p *UsersDelegateImpl) SetUserAvatar(userID, avatarID string) (user *models.UserHTTP, err error) {
+	core, err := p.UseCase.SetUserAvatar(userID, avatarID)
+	if err != nil {
+		return nil, err
+	}
+	user = &models.UserHTTP{}
+	user.FromCore(&core)
+	return user, nil
+}
+
 func (p *UsersDelegateImpl) CreateStudentParentRelation(parentId, childrenId string) (studentsHTTP []*models.StudentHTTP, err error) {
 	studentsCore, err := p.UseCase.CreateStudentParentRelation(parentId, childrenId)
 	if err != nil {

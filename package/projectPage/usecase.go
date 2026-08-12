@@ -23,6 +23,12 @@ type UseCase interface {
 	GetProjectReactions(projectPageId, viewerId string) (*models.ProjectReactionsHTTP, error)
 	PutProjectReaction(projectPageId, userId, reactionCode string) (*models.ProjectReactionsHTTP, error)
 	DeleteProjectReaction(projectPageId, userId string) (*models.ProjectReactionsHTTP, error)
+	GetProjectComments(projectPageId, viewerId string) (*models.ProjectCommentsHTTP, error)
+	CreateProjectComment(projectPageId, userId, body string, parentID *string) (*models.ProjectCommentHTTP, error)
+	DeleteProjectComment(projectPageId, commentId, userId string, role models.Role) error
+	GetCommentReactions(projectPageId, commentId, viewerId string) (*models.CommentReactionsHTTP, error)
+	PutCommentReaction(projectPageId, commentId, userId, reactionCode string) (*models.CommentReactionsHTTP, error)
+	DeleteCommentReaction(projectPageId, commentId, userId string) (*models.CommentReactionsHTTP, error)
 	ModerateDeleteProjectPage(projectPageId, moderatorId, reason string) error
 	SetLandingFeatured(projectPageId string, featured bool, sortOrder int) (*models.ProjectPageCore, error)
 	ReorderLandingFeatured(items []LandingFeaturedOrderItem) error

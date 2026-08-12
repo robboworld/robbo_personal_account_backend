@@ -47,6 +47,8 @@ type Gateway interface {
 	GetSuperAdmin(email, password string) (superAdmin *models.SuperAdminCore, err error)
 	GetSuperAdminById(superAdminId string) (superAdmin *models.SuperAdminCore, err error)
 
+	SetUserAvatar(userID, avatarID string) (user models.UserCore, err error)
+
 	CreateStudentParentRelation(relation *models.ChildrenOfParentCore) (err error)
 	DeleteRelationByParentId(parentId string) (err error)
 	DeleteRelationByChildrenId(childrenId string) (err error)

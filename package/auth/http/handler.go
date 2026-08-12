@@ -15,18 +15,22 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
 	"github.com/spf13/viper"
 )
 
 type Handler struct {
 	delegate auth.Delegate
+	streak   streak.UseCase
 }
 
 func NewAuthHandler(
 	authDelegate auth.Delegate,
+	streakUC streak.UseCase,
 ) Handler {
 	return Handler{
 		delegate: authDelegate,
+		streak:   streakUC,
 	}
 }
 
@@ -38,6 +42,8 @@ func (h *Handler) InitAuthRoutes(router *gin.Engine) {
 		authGroup.GET("/refresh", h.Refresh)
 		authGroup.POST("/sign-out", h.SignOut)
 		authGroup.GET("/check-auth", h.CheckAuth)
+		authGroup.GET("/login-streak", h.GetLoginStreak)
+		authGroup.POST("/login-streak/increment", h.IncrementLoginStreak)
 		authGroup.GET("/sessions", h.ListSessions)
 		authGroup.DELETE("/sessions/:id", h.RevokeSession)
 	}
@@ -168,8 +174,9 @@ func (h *Handler) SignOut(c *gin.Context) {
 }
 
 type userIdentity struct {
-	Id   string `json:"id"`
-	Role uint   `json:"role"`
+	Id          string                  `json:"id"`
+	Role        uint                    `json:"role"`
+	LoginStreak *models.LoginStreakHTTP `json:"loginStreak,omitempty"`
 }
 
 func (h *Handler) CheckAuth(c *gin.Context) {
@@ -179,10 +186,62 @@ func (h *Handler) CheckAuth(c *gin.Context) {
 		ErrorHandling(err, c)
 		return
 	}
-	c.JSON(http.StatusOK, &userIdentity{
-		userId,
-		uint(role),
-	})
+	resp := &userIdentity{
+		Id:   userId,
+		Role: uint(role),
+	}
+	if h.streak != nil && strings.TrimSpace(userId) != "" {
+		tz := strings.TrimSpace(c.GetHeader("X-User-Timezone"))
+		if streakInfo, streakErr := h.streak.RecordVisit(userId, tz); streakErr != nil {
+			log.Printf("check-auth: record streak for %s: %v", userId, streakErr)
+		} else {
+			resp.LoginStreak = streakInfo
+		}
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func (h *Handler) GetLoginStreak(c *gin.Context) {
+	callerID, role, err := h.delegate.UserIdentity(c)
+	if err != nil || strings.TrimSpace(callerID) == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	targetID := strings.TrimSpace(c.Query("userId"))
+	if targetID == "" {
+		targetID = callerID
+	} else if targetID != callerID && role != models.SuperAdmin && role != models.UnitAdmin {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	if h.streak == nil {
+		c.JSON(http.StatusOK, models.LoginStreakHTTP{})
+		return
+	}
+	info, getErr := h.streak.Get(targetID)
+	if getErr != nil {
+		ErrorHandling(getErr, c)
+		return
+	}
+	c.JSON(http.StatusOK, info)
+}
+
+func (h *Handler) IncrementLoginStreak(c *gin.Context) {
+	userID, _, err := h.delegate.UserIdentity(c)
+	if err != nil || strings.TrimSpace(userID) == "" {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if h.streak == nil {
+		c.JSON(http.StatusOK, models.LoginStreakHTTP{})
+		return
+	}
+	info, incErr := h.streak.Increment(userID)
+	if incErr != nil {
+		ErrorHandling(incErr, c)
+		return
+	}
+	c.JSON(http.StatusOK, info)
 }
 
 func (h *Handler) ListSessions(c *gin.Context) {

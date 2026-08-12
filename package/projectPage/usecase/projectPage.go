@@ -15,6 +15,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/playtoken"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
@@ -36,6 +37,7 @@ func SetupProjectPageUseCase(
 	projectGateway projects.Gateway,
 	notificationGateway notifications.Gateway,
 	licensingGateway licensing.Gateway,
+	_ users.Gateway,
 ) ProjectPageUseCaseModule {
 	return ProjectPageUseCaseModule{
 		UseCase: &ProjectPageUseCaseImpl{
@@ -111,7 +113,9 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale strin
 	newProjectPage, err = p.projectPageGateway.CreateProjectPage(page)
 	if err == nil && newProjectPage != nil {
 		newProjectPage.AuthorUserId = authorId
-		newProjectPage.AuthorName = lookupAuthorName(authorId)
+		author := lookupAuthorInfo(authorId)
+		newProjectPage.AuthorName = author.Name
+		newProjectPage.AuthorAvatarId = author.AvatarID
 		newProjectPage.IsOwner = true
 	}
 	return
@@ -136,7 +140,9 @@ func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId stri
 		return nil, nil, acc, err
 	}
 	core.AuthorUserId = row.OwnerUserID
-	core.AuthorName = lookupAuthorName(row.OwnerUserID)
+	author := lookupAuthorInfo(row.OwnerUserID)
+	core.AuthorName = author.Name
+	core.AuthorAvatarId = author.AvatarID
 	core.IsOwner = acc.IsOwner
 	return core, row, acc, nil
 }
@@ -151,7 +157,9 @@ func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCor
 			continue
 		}
 		core.AuthorUserId = row.OwnerUserID
-		core.AuthorName = lookupAuthorName(row.OwnerUserID)
+		author := lookupAuthorInfo(row.OwnerUserID)
+		core.AuthorName = author.Name
+		core.AuthorAvatarId = author.AvatarID
 		core.IsOwner = false
 		core.LandingFeatured = row.LandingFeatured
 		core.LandingSortOrder = row.LandingSortOrder
@@ -180,7 +188,9 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 		return nil, err
 	}
 	updated.AuthorUserId = row.OwnerUserID
-	updated.AuthorName = lookupAuthorName(row.OwnerUserID)
+	author := lookupAuthorInfo(row.OwnerUserID)
+	updated.AuthorName = author.Name
+	updated.AuthorAvatarId = author.AvatarID
 	updated.IsOwner = true
 	return updated, nil
 }
@@ -211,7 +221,9 @@ func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId string, page
 			return []*models.ProjectPageCore{}, 0, errGetProjectPageById
 		}
 		projectPage.AuthorUserId = authorId
-		projectPage.AuthorName = lookupAuthorName(authorId)
+		author := lookupAuthorInfo(authorId)
+		projectPage.AuthorName = author.Name
+		projectPage.AuthorAvatarId = author.AvatarID
 		projectPage.IsOwner = true
 		projectPages = append(projectPages, projectPage)
 	}
@@ -497,7 +509,9 @@ func (p *ProjectPageUseCaseImpl) SetLandingFeatured(
 		return nil, err
 	}
 	core.AuthorUserId = row.OwnerUserID
-	core.AuthorName = lookupAuthorName(row.OwnerUserID)
+	author := lookupAuthorInfo(row.OwnerUserID)
+	core.AuthorName = author.Name
+	core.AuthorAvatarId = author.AvatarID
 	return core, nil
 }
 

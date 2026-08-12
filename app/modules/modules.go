@@ -59,6 +59,14 @@ import (
 	payhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/http"
 	payusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/resolvers"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
+	streakgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/gateway"
+	streakusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
+	tcgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/gateway"
+	tchtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/http"
+	tcusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/usecase"
+	ppageaccess "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	robboGroupdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/delegate"
 	robboGroupgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/gateway"
@@ -90,12 +98,19 @@ type GatewayModule struct {
 	LicensingGateway     licensing.Gateway
 	ModerationGateway    moderation.Gateway
 	PaymentsGateway      payments.Gateway
+	StreakGateway        streak.Gateway
+	TeacherClassGateway  teacherclass.Gateway
 	RobboGroupGateway    robboGroup.Gateway
 	RobboUnitsGateway    robboUnits.Gateway
 	UsersGateway         users.Gateway
 }
 
 func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
+	tcGw := tcgateway.SetupTeacherClassGateway(postgresClient)
+	ppageaccess.CohortTeacherReader = func(teacherID, courseID, cohortID string) bool {
+		inv, err := tcGw.Gateway.GetInviteByCourseCohort(courseID, cohortID)
+		return err == nil && inv != nil && inv.OwnerTeacherID == teacherID && inv.ArchivedAt == nil
+	}
 	return GatewayModule{
 		AuthGateway:          authgateway.SetupAuthGateway(postgresClient),
 		CohortsGateway:       chrtgateway.SetupCohortsGateway(postgresClient),
@@ -107,6 +122,8 @@ func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
 		LicensingGateway:     licgateway.SetupLicensingGateway(postgresClient),
 		ModerationGateway:    modgateway.SetupBansGateway(postgresClient),
 		PaymentsGateway:      paygateway.SetupPaymentsGateway(postgresClient),
+		StreakGateway:        streakgateway.SetupStreakGateway(postgresClient).Gateway,
+		TeacherClassGateway:  tcGw.Gateway,
 		RobboGroupGateway:    robboGroupgateway.SetupRobboGroupGateway(postgresClient),
 		RobboUnitsGateway:    robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
 		UsersGateway:         usersgateway.SetupUsersGateway(postgresClient),
@@ -125,6 +142,8 @@ type UseCaseModule struct {
 	LicensingUseCase     licensing.UseCase
 	ModerationUseCase    moderation.UseCase
 	PaymentsUseCase      payments.UseCase
+	StreakUseCase        streak.UseCase
+	TeacherClassUseCase  teacherclass.UseCase
 	RobboGroupUseCase    robboGroup.UseCase
 	RobboUnitsUseCase    robboUnits.UseCase
 	UsersUseCase         users.UseCase
@@ -132,8 +151,13 @@ type UseCaseModule struct {
 
 func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, userSearch *usersearch.Service) UseCaseModule {
 	licensingUC := licusecase.SetupLicensingUseCase(gateway.LicensingGateway)
+	streakUC := streakusecase.SetupStreakUseCase(gateway.StreakGateway)
+	edxMod := edxusecase.SetupEdxApiUseCase()
+	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase)
 	return UseCaseModule{
-		AuthUseCase:         authusecase.SetupAuthUseCase(gateway.UsersGateway, portalGateway, gateway.LicensingGateway),
+		AuthUseCase: authusecase.SetupAuthUseCase(
+			gateway.UsersGateway, portalGateway, gateway.LicensingGateway, streakUC.UseCase,
+		),
 		CohortsUseCase:      chrtusecase.SetupCohortUseCase(gateway.CohortsGateway),
 		CoursePacketUseCase: coursePacketusecase.SetupCoursePacketUseCase(gateway.CoursePacketGateway),
 		CoursesUseCase: crsusecase.SetupCourseUseCase(
@@ -142,21 +166,24 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 			gateway.RobboUnitsGateway,
 			gateway.RobboGroupGateway,
 		),
-		EdxUseCase:           edxusecase.SetupEdxApiUseCase(),
+		EdxUseCase:           edxMod.UseCase,
 		NotificationsUseCase: notificationusecase.SetupNotificationUseCase(gateway.NotificationsGateway),
 		ProjectPageUseCase: ppageusecase.SetupProjectPageUseCase(
 			gateway.ProjectPageGateway,
 			gateway.ProjectsGateway,
 			gateway.NotificationsGateway,
 			gateway.LicensingGateway,
+			gateway.UsersGateway,
 		),
-		ProjectsUseCase:   prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
-		LicensingUseCase:  licensingUC.UseCase,
-		ModerationUseCase: modusecase.SetupBanUseCase(gateway.ModerationGateway, gateway.LicensingGateway, userSearch).UseCase,
-		PaymentsUseCase:   payusecase.SetupPaymentsUseCase(gateway.PaymentsGateway, licensingUC.UseCase).UseCase,
-		RobboGroupUseCase: robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
-		RobboUnitsUseCase: robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
-		UsersUseCase:      usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
+		ProjectsUseCase:     prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
+		LicensingUseCase:    licensingUC.UseCase,
+		ModerationUseCase:   modusecase.SetupBanUseCase(gateway.ModerationGateway, gateway.LicensingGateway, userSearch).UseCase,
+		PaymentsUseCase:     payusecase.SetupPaymentsUseCase(gateway.PaymentsGateway, licensingUC.UseCase).UseCase,
+		StreakUseCase:       streakUC.UseCase,
+		TeacherClassUseCase: tcUC.UseCase,
+		RobboGroupUseCase:   robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
+		RobboUnitsUseCase:   robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
+		UsersUseCase:        usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
 	}
 }
 
@@ -208,6 +235,7 @@ type HandlerModule struct {
 	NotificationsHandler       notificationhttp.Handler
 	UserSearchHandler          usersearchhttp.Handler
 	ModerationHandler          modhttp.Handler
+	TeacherClassHandler        tchtpp.Handler
 	OIDCHandler                *oidchttp.Handler
 	LicensingGateway           licensing.Gateway
 }
@@ -246,7 +274,7 @@ func SetupHandler(
 			delegate.ProjectsDelegate,
 			delegate.ProjectPageDelegate,
 		),
-		AuthHandler:                authhttp.NewAuthHandler(delegate.AuthDelegate),
+		AuthHandler:                authhttp.NewAuthHandler(delegate.AuthDelegate, usecase.StreakUseCase),
 		CoursesHandler:             crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
 		CohortsHandler:             chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
 		UsersHandler:               usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
@@ -259,6 +287,7 @@ func SetupHandler(
 		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
 		UserSearchHandler:          usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
 		ModerationHandler:          modhttp.NewHandler(delegate.AuthDelegate, delegate.ModerationDelegate),
+		TeacherClassHandler:        tchtpp.NewTeacherClassHandler(delegate.AuthDelegate, usecase.TeacherClassUseCase),
 		OIDCHandler:                oidcHandler,
 		LicensingGateway:           gateway.LicensingGateway,
 	}

@@ -401,6 +401,7 @@ type ProjectPageHTTP struct {
 	LandingSortOrder int    `json:"landingSortOrder"`
 	AuthorUserID     string `json:"authorUserId"`
 	AuthorName       string `json:"authorName"`
+	AuthorAvatarID   string `json:"authorAvatarId,omitempty"`
 	IsOwner          bool   `json:"isOwner"`
 }
 
@@ -578,5 +579,6 @@ type UserHTTP struct {
 	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
 	Gender           *string `json:"gender,omitempty"`
 	Language         *string `json:"language,omitempty"`
+	AvatarID         *string `json:"avatarId,omitempty"`
 	CreatedAt        string  `json:"createdAt"`
 }

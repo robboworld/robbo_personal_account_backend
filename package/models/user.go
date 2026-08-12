@@ -60,6 +60,7 @@ type UserCore struct {
 	YearOfBirth      *int
 	Gender           string
 	Language         string
+	AvatarID         string
 	CreatedAt        string
 }
 
@@ -81,6 +82,7 @@ func (em *UserHTTP) ToCore() UserCore {
 		YearOfBirth:      em.YearOfBirth,
 		Gender:           StrPtrVal(em.Gender),
 		Language:         StrPtrVal(em.Language),
+		AvatarID:         StrPtrVal(em.AvatarID),
 		CreatedAt:        em.CreatedAt,
 	}
 }
@@ -102,6 +104,7 @@ func (em *UserHTTP) FromCore(user *UserCore) {
 	em.YearOfBirth = user.YearOfBirth
 	em.Gender = StrPtr(user.Gender)
 	em.Language = StrPtr(user.Language)
+	em.AvatarID = StrPtr(user.AvatarID)
 	em.CreatedAt = user.CreatedAt
 }
 

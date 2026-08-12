@@ -9,4 +9,6 @@ var (
 	ErrBadRequest          = errors.New("bad request")
 	ErrBadRequestBody      = errors.New("bad request body")
 	ErrCloudQuotaExceeded  = errors.New("CLOUD_QUOTA_EXCEEDED")
+	ErrProfanityDetected   = errors.New("profanity_detected")
+	ErrCommentNotFound     = errors.New("comment not found")
 )

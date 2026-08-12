@@ -110,6 +110,11 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if c.Request.Method == "GET" && (path == "/api/join/preview" ||
+			(strings.HasPrefix(path, "/api/join/") && strings.HasSuffix(path, "/preview"))) {
+			c.Next()
+			return
+		}
 		// Public RS3 activation / device-link / addon delivery (no BFF session).
 		if path == "/v1/activate" ||
 			path == "/v1/seats/deactivate" ||

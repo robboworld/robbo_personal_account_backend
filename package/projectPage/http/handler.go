@@ -27,7 +27,7 @@ func allAuthenticatedRoles() []models.Role {
 }
 
 func projectCreateRoles() []models.Role {
-	return []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	return []models.Role{models.Student, models.Teacher, models.UnitAdmin, models.SuperAdmin}
 }
 
 func superAdminOnly() []models.Role {
@@ -77,6 +77,12 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 		projectPageGroup.GET("/:projectPageId/reactions", h.GetProjectReactions)
 		projectPageGroup.PUT("/:projectPageId/reactions", h.PutProjectReaction)
 		projectPageGroup.DELETE("/:projectPageId/reactions", h.DeleteProjectReaction)
+		projectPageGroup.GET("/:projectPageId/comments", h.GetProjectComments)
+		projectPageGroup.POST("/:projectPageId/comments", h.CreateProjectComment)
+		projectPageGroup.DELETE("/:projectPageId/comments/:commentId", h.DeleteProjectComment)
+		projectPageGroup.GET("/:projectPageId/comments/:commentId/reactions", h.GetCommentReactions)
+		projectPageGroup.PUT("/:projectPageId/comments/:commentId/reactions", h.PutCommentReaction)
+		projectPageGroup.DELETE("/:projectPageId/comments/:commentId/reactions", h.DeleteCommentReaction)
 		projectPageGroup.GET("/:projectPageId/play-token", h.IssuePlayToken)
 		projectPageGroup.GET("/:projectPageId/play", h.PlayProjectSb3)
 		projectPageGroup.GET("/:projectPageId/download", h.DownloadProjectSb3)
@@ -165,6 +171,117 @@ func (h *Handler) PutProjectReaction(c *gin.Context) {
 		c.Param("projectPageId"),
 		userID,
 		request.Code,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *Handler) GetProjectComments(c *gin.Context) {
+	viewerID := optionalViewerID(c, h.authDelegate)
+	comments, err := h.projectPageDelegate.GetProjectComments(c.Param("projectPageId"), viewerID)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, comments)
+}
+
+func (h *Handler) CreateProjectComment(c *gin.Context) {
+	userID, ok := h.reactionIdentity(c)
+	if !ok {
+		return
+	}
+	var request models.CreateCommentRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	comment, err := h.projectPageDelegate.CreateProjectComment(
+		c.Param("projectPageId"),
+		userID,
+		request.Body,
+		request.ParentID,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusCreated, comment)
+}
+
+func (h *Handler) DeleteProjectComment(c *gin.Context) {
+	userID, role, err := h.authDelegate.UserIdentity(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, allAuthenticatedRoles(), c); accessErr != nil {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": accessErr.Error()})
+		return
+	}
+	if err := h.projectPageDelegate.DeleteProjectComment(
+		c.Param("projectPageId"),
+		c.Param("commentId"),
+		userID,
+		role,
+	); err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) GetCommentReactions(c *gin.Context) {
+	viewerID := optionalViewerID(c, h.authDelegate)
+	summary, err := h.projectPageDelegate.GetCommentReactions(
+		c.Param("projectPageId"),
+		c.Param("commentId"),
+		viewerID,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *Handler) PutCommentReaction(c *gin.Context) {
+	userID, ok := h.reactionIdentity(c)
+	if !ok {
+		return
+	}
+	var request struct {
+		Code string `json:"code"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil {
+		ErrorHandling(projectPage.ErrBadRequestBody, c)
+		return
+	}
+	summary, err := h.projectPageDelegate.PutCommentReaction(
+		c.Param("projectPageId"),
+		c.Param("commentId"),
+		userID,
+		request.Code,
+	)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, summary)
+}
+
+func (h *Handler) DeleteCommentReaction(c *gin.Context) {
+	userID, ok := h.reactionIdentity(c)
+	if !ok {
+		return
+	}
+	summary, err := h.projectPageDelegate.DeleteCommentReaction(
+		c.Param("projectPageId"),
+		c.Param("commentId"),
+		userID,
 	)
 	if err != nil {
 		ErrorHandling(err, c)
@@ -706,6 +823,10 @@ func ErrorHandling(err error, c *gin.Context) {
 			"error": err.Error(),
 			"code":  "CLOUD_QUOTA_EXCEEDED",
 		})
+	case projectPage.ErrProfanityDetected:
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "profanity_detected"})
+	case projectPage.ErrCommentNotFound:
+		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case projects.ErrProjectNotFound:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
 	case auth.ErrInvalidAccessToken:

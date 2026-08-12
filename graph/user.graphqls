@@ -14,6 +14,7 @@ type UserHttp {
     yearOfBirth: Int
     gender: String
     language: String
+    avatarId: String
     createdAt: Timestamp!
 }
 
@@ -50,6 +51,7 @@ union GetUserResult = StudentHttp | ParentHttp | TeacherHttp | UnitAdminHttp | S
 type Mutation {
     UpdateSuperAdmin(input: UpdateProfileInput!): SuperAdminResult!
     UpdateFreeListener(input: UpdateProfileInput!): FreeListenerResult!
+    SetUserAvatar(avatarId: String): UserHttp!
 }
 
 type Query {

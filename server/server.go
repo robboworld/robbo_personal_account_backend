@@ -86,6 +86,7 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 	handlers.CoursesHandler.InitCourseRoutes(router)
 	handlers.LicensingHandler.InitLicensingRoutes(router)
 	handlers.PaymentsHandler.InitPaymentsRoutes(router)
+	handlers.TeacherClassHandler.InitRoutes(router)
 	//handlers.CohortsHandler.InitCohortRoutes(router)
 	//handlers.UsersHandler.InitUsersRoutes(router)
 	//handlers.RobboUnitsHandler.InitRobboUnitsRoutes(router)
