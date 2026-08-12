@@ -17,12 +17,13 @@ const (
 
 // BeginLoginSession checks the concurrent-session tariff limit, then inserts a
 // new lk_user_sessions row (or reuses one for the same IP). Returns the
-// session_key to embed as JWT/BFF sid.
+// session_key to embed as JWT/BFF sid. Admins (SuperAdmin / UnitAdmin) skip the limit.
 func (u *LicensingUseCaseImpl) BeginLoginSession(
 	lmsUserID, authMode, userAgent, ipAddress string,
 	ttl time.Duration,
+	role models.Role,
 ) (*models.UserSessionCore, error) {
-	return licensing.AcquireLoginSession(u.gateway, lmsUserID, authMode, userAgent, ipAddress, ttl)
+	return licensing.AcquireLoginSession(u.gateway, lmsUserID, authMode, userAgent, ipAddress, ttl, role)
 }
 
 // TouchLoginSession bumps last_seen_at for an active session. Returns

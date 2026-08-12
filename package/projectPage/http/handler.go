@@ -736,6 +736,11 @@ func ErrorHandling(err error, c *gin.Context) {
 			"error": err.Error(),
 			"code":  "PROJECT_SIZE_EXCEEDED",
 		})
+	case errors.Is(err, projectPage.ErrInvalidProjectFile):
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+			"code":  "INVALID_PROJECT_FILE",
+		})
 	case errors.Is(err, projects.ErrProjectNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case errors.Is(err, auth.ErrInvalidAccessToken):

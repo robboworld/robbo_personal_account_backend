@@ -4,7 +4,6 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"strings"
 
@@ -34,36 +33,45 @@ func extractProjectJSONFromSb3(data []byte) (string, error) {
 	return "", nil
 }
 
-// validateSb3Archive ensures the payload is a ZIP with project.json that has a Stage target.
-// Empty/broken uploads otherwise make Scratch VM throw "Non-ascii character in FixedAsciiString".
-func validateSb3Archive(data []byte) error {
-	if len(data) < 4 || data[0] != 'P' || data[1] != 'K' {
-		return fmt.Errorf("%w: not a valid .sb3 (zip) archive", projectPage.ErrBadRequest)
-	}
-	vmJSON, err := extractProjectJSONFromSb3(data)
-	if err != nil {
-		return fmt.Errorf("%w: not a valid .sb3 (zip) archive", projectPage.ErrBadRequest)
-	}
+// validateScratchVMJSON ensures project.json looks like a loadable Scratch 3 project.
+func validateScratchVMJSON(vmJSON string) error {
 	if strings.TrimSpace(vmJSON) == "" {
-		return fmt.Errorf("%w: project.json missing in .sb3", projectPage.ErrBadRequest)
+		return projectPage.ErrInvalidProjectFile
 	}
 	var parsed struct {
 		Targets []struct {
 			IsStage bool `json:"isStage"`
 		} `json:"targets"`
+		Meta *struct {
+			Semver string `json:"semver"`
+		} `json:"meta"`
 	}
 	if err := json.Unmarshal([]byte(vmJSON), &parsed); err != nil {
-		return fmt.Errorf("%w: invalid project.json", projectPage.ErrBadRequest)
+		return projectPage.ErrInvalidProjectFile
 	}
-	hasStage := false
+	if parsed.Meta == nil || strings.TrimSpace(parsed.Meta.Semver) == "" {
+		return projectPage.ErrInvalidProjectFile
+	}
 	for _, t := range parsed.Targets {
 		if t.IsStage {
-			hasStage = true
-			break
+			return nil
 		}
 	}
-	if !hasStage {
-		return fmt.Errorf("%w: project.json has no Stage target", projectPage.ErrBadRequest)
+	return projectPage.ErrInvalidProjectFile
+}
+
+// validateSb3Archive ensures the payload is a ZIP with a loadable project.json.
+// Empty/broken uploads otherwise make Scratch VM throw validation / FixedAsciiString errors.
+func validateSb3Archive(data []byte) error {
+	if len(data) < 4 || data[0] != 'P' || data[1] != 'K' {
+		return projectPage.ErrInvalidProjectFile
 	}
-	return nil
+	vmJSON, err := extractProjectJSONFromSb3(data)
+	if err != nil {
+		return projectPage.ErrInvalidProjectFile
+	}
+	if strings.TrimSpace(vmJSON) == "" {
+		return projectPage.ErrInvalidProjectFile
+	}
+	return validateScratchVMJSON(vmJSON)
 }

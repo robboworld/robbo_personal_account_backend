@@ -397,7 +397,7 @@ func (h *Handler) ListMyLicenses(c *gin.Context) {
 }
 
 func (h *Handler) GetEntitlements(c *gin.Context) {
-	userID, _, err := h.sessionIdentity(c)
+	userID, role, err := h.sessionIdentity(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
@@ -407,6 +407,7 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	licensing.ApplyAdminSessionSeatExemption(&ent, role)
 	var usedBytes int64
 	var projectCount int64
 	if h.projectStorage != nil {

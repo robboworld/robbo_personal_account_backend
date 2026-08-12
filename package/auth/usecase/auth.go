@@ -304,7 +304,7 @@ func (a *AuthUseCaseImpl) issueTokensWithSession(
 			ttl = 7 * 24 * time.Hour
 		}
 		sess, createErr := licensing.AcquireLoginSession(
-			a.sessions, user.Id, authMode, client.UserAgent, client.IPAddress, ttl,
+			a.sessions, user.Id, authMode, client.UserAgent, client.IPAddress, ttl, user.Role,
 		)
 		if createErr != nil {
 			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
