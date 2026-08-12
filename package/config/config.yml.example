@@ -113,3 +113,6 @@ api:
   token_expiration_time: 0
   client_id: ""
   client_secret: ""
+
+frontend:
+  publicUrl: "http://localhost:3030"

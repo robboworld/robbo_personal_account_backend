@@ -19,6 +19,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
 	"github.com/spf13/viper"
 )
 
@@ -26,14 +27,15 @@ type Handler struct {
 	cfg      *oidc.Config
 	portal   portalgateway.Gateway
 	sessions licensing.Gateway
+	streak   streak.UseCase
 }
 
-func NewHandler(portal portalgateway.Gateway, sessions licensing.Gateway) (Handler, error) {
+func NewHandler(portal portalgateway.Gateway, sessions licensing.Gateway, streakUC streak.UseCase) (Handler, error) {
 	cfg, err := oidc.LoadConfig()
 	if err != nil {
 		return Handler{}, err
 	}
-	return Handler{cfg: cfg, portal: portal, sessions: sessions}, nil
+	return Handler{cfg: cfg, portal: portal, sessions: sessions, streak: streakUC}, nil
 }
 
 func (h Handler) InitRoutes(router *gin.Engine) {
@@ -275,6 +277,11 @@ func (h Handler) Callback(c *gin.Context) {
 		edxUserID = strconv.FormatInt(profile.ID, 10)
 		role = lmsRoleFromProfile(profile)
 		touchLastLogin(profile.ID)
+		if h.streak != nil {
+			if _, streakErr := h.streak.RecordVisit(edxUserID, "UTC"); streakErr != nil {
+				log.Printf("oidc: record streak for user %s: %v", edxUserID, streakErr)
+			}
+		}
 	} else {
 		role = roleCodeToModel(inferRoleCodeFromIDToken(tr.IDToken))
 	}

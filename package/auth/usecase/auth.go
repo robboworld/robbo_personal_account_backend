@@ -14,6 +14,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -24,6 +25,7 @@ type AuthUseCaseImpl struct {
 	users.Gateway
 	portal                portalgateway.Gateway
 	sessions              licensing.Gateway
+	streak                streak.UseCase
 	hashSalt              string
 	accessSigningKey      []byte
 	refreshSigningKey     []byte
@@ -40,6 +42,7 @@ func SetupAuthUseCase(
 	gateway users.Gateway,
 	portal portalgateway.Gateway,
 	sessions licensing.Gateway,
+	streakUC streak.UseCase,
 ) AuthUseCaseModule {
 	hashSalt := viper.GetString("auth.hash_salt")
 	accessSigningKey := []byte(viper.GetString("auth.access_signing_key"))
@@ -52,6 +55,7 @@ func SetupAuthUseCase(
 			Gateway:               gateway,
 			portal:                portal,
 			sessions:              sessions,
+			streak:                streakUC,
 			hashSalt:              hashSalt,
 			accessSigningKey:      accessSigningKey,
 			refreshSigningKey:     refreshSigningKey,

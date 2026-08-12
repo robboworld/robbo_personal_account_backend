@@ -179,6 +179,100 @@ func (p *EdxApiUseCaseImpl) AddStudent(username, courseId string, cohortId int) 
 	return body, nil
 }
 
+func cohortAPIRoot() string {
+	base := viper.GetString("api_urls.postCohort")
+	const suffix = "courses/"
+	if len(base) >= len(suffix) && base[len(base)-len(suffix):] == suffix {
+		return base[:len(base)-len(suffix)]
+	}
+	return base
+}
+
+func encodeCourseKey(courseId string) string {
+	return url.PathEscape(courseId)
+}
+
+func (p *EdxApiUseCaseImpl) requestWithAuth(method, urlAddr string, params map[string]interface{}, okStatuses ...int) (respBody []byte, err error) {
+	err = p.RefreshToken()
+	if err != nil {
+		return nil, edx.ErrTknNotRefresh
+	}
+	var bodyReader *bytes.Buffer
+	if params != nil {
+		data, mErr := json.Marshal(params)
+		if mErr != nil {
+			return nil, edx.ErrJsonMarshal
+		}
+		bodyReader = bytes.NewBuffer(data)
+	} else {
+		bodyReader = bytes.NewBuffer(nil)
+	}
+	request, err := http.NewRequest(method, urlAddr, bodyReader)
+	if err != nil {
+		return nil, edx.ErrOnReq
+	}
+	request.Header.Add("Authorization", "Bearer "+viper.GetString("api.token"))
+	if params != nil {
+		request.Header.Add("Content-Type", "application/json;charset=utf-8")
+	}
+	client := &http.Client{}
+	response, err := client.Do(request)
+	if err != nil {
+		return nil, edx.ErrOnResp
+	}
+	defer response.Body.Close()
+	body, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, edx.ErrReadRespBody
+	}
+	if len(okStatuses) == 0 {
+		okStatuses = []int{http.StatusOK}
+	}
+	for _, code := range okStatuses {
+		if response.StatusCode == code {
+			return body, nil
+		}
+	}
+	log.Printf("edx %s %s -> %d: %s", method, urlAddr, response.StatusCode, string(body))
+	return nil, edx.ErrIncorrectInputParam
+}
+
+func (p *EdxApiUseCaseImpl) GetCohortSettings(courseId string) (respBody []byte, err error) {
+	urlAddr := cohortAPIRoot() + "settings/" + encodeCourseKey(courseId)
+	return p.GetWithAuth(urlAddr)
+}
+
+func (p *EdxApiUseCaseImpl) SetCohortSettings(courseId string, params map[string]interface{}) (respBody []byte, err error) {
+	urlAddr := cohortAPIRoot() + "settings/" + encodeCourseKey(courseId)
+	return p.requestWithAuth(http.MethodPut, urlAddr, params, http.StatusOK)
+}
+
+func (p *EdxApiUseCaseImpl) ListCohorts(courseId string) (respBody []byte, err error) {
+	urlAddr := viper.GetString("api_urls.postCohort") + encodeCourseKey(courseId) + "/cohorts/"
+	return p.GetWithAuth(urlAddr)
+}
+
+func (p *EdxApiUseCaseImpl) GetCohort(courseId string, cohortId int) (respBody []byte, err error) {
+	urlAddr := viper.GetString("api_urls.postCohort") + encodeCourseKey(courseId) + "/cohorts/" + strconv.Itoa(cohortId)
+	return p.GetWithAuth(urlAddr)
+}
+
+func (p *EdxApiUseCaseImpl) PatchCohort(courseId string, cohortId int, params map[string]interface{}) (respBody []byte, err error) {
+	urlAddr := viper.GetString("api_urls.postCohort") + encodeCourseKey(courseId) + "/cohorts/" + strconv.Itoa(cohortId)
+	return p.requestWithAuth(http.MethodPatch, urlAddr, params, http.StatusOK)
+}
+
+func (p *EdxApiUseCaseImpl) ListCohortUsers(courseId string, cohortId int) (respBody []byte, err error) {
+	urlAddr := viper.GetString("api_urls.postCohort") + encodeCourseKey(courseId) + "/cohorts/" + strconv.Itoa(cohortId) + "/users"
+	return p.GetWithAuth(urlAddr)
+}
+
+func (p *EdxApiUseCaseImpl) RemoveCohortUser(username, courseId string, cohortId int) (err error) {
+	urlAddr := viper.GetString("api_urls.postCohort") + encodeCourseKey(courseId) + "/cohorts/" + strconv.Itoa(cohortId) + "/users/" + url.PathEscape(username)
+	_, err = p.requestWithAuth(http.MethodDelete, urlAddr, nil, http.StatusOK, http.StatusNoContent)
+	return err
+}
+
 func (p *EdxApiUseCaseImpl) GetAllPublicCourses(pageNumber int) (respBody []byte, err error) {
 	if pageNumber <= 0 || pageNumber >= 5000 {
 		return nil, edx.ErrOnReq

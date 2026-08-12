@@ -7,11 +7,19 @@ func ensureParseTimeDSN(dsn string) string {
 	if dsn == "" {
 		return dsn
 	}
-	if strings.Contains(dsn, "parseTime=") {
-		return dsn
+	if !strings.Contains(dsn, "parseTime=") {
+		if strings.Contains(dsn, "?") {
+			dsn += "&parseTime=true"
+		} else {
+			dsn += "?parseTime=true"
+		}
 	}
-	if strings.Contains(dsn, "?") {
-		return dsn + "&parseTime=true"
+	// Avoid mojibake for Cyrillic names (auth_userprofile.name, etc.).
+	if !strings.Contains(dsn, "charset=") {
+		dsn += "&charset=utf8mb4"
 	}
-	return dsn + "?parseTime=true"
+	if !strings.Contains(dsn, "collation=") {
+		dsn += "&collation=utf8mb4_unicode_ci"
+	}
+	return dsn
 }

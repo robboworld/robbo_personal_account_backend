@@ -138,8 +138,13 @@ func (a *AuthUseCaseImpl) signUpLMS(userCore *models.UserCore, client auth.Clien
 	if err := writer.TouchLastLogin(userID); err != nil {
 		log.Printf("lms sign-up: touch last_login for user %d: %v", userID, err)
 	}
-
 	userCore.Id = strconv.FormatInt(userID, 10)
+	if a.streak != nil {
+		if _, streakErr := a.streak.RecordVisit(userCore.Id, "UTC"); streakErr != nil {
+			log.Printf("lms sign-up: record streak for user %s: %v", userCore.Id, streakErr)
+		}
+	}
+
 	userCore.Role = models.Student
 	userCore.FullName = fullName
 

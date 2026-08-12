@@ -19,6 +19,7 @@ type ProjectPageCore struct {
 	LandingSortOrder int
 	AuthorUserId     string
 	AuthorName       string
+	AuthorAvatarId   string
 	IsOwner          bool
 }
 
@@ -76,6 +77,7 @@ func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 		LandingSortOrder: ht.LandingSortOrder,
 		AuthorUserId:     ht.AuthorUserID,
 		AuthorName:       ht.AuthorName,
+		AuthorAvatarId:   ht.AuthorAvatarID,
 		IsOwner:          ht.IsOwner,
 	}
 }
@@ -94,5 +96,6 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.LandingSortOrder = projectPage.LandingSortOrder
 	ht.AuthorUserID = projectPage.AuthorUserId
 	ht.AuthorName = projectPage.AuthorName
+	ht.AuthorAvatarID = projectPage.AuthorAvatarId
 	ht.IsOwner = projectPage.IsOwner
 }

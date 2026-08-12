@@ -5,9 +5,11 @@ package resolvers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/skinnykaen/robbo_student_personal_account.git/graph/generated"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/avatars"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/utils"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -188,6 +190,43 @@ func (r *mutationResolver) UpdateFreeListener(ctx context.Context, input models.
 	return &models.FreeListenerHTTP{
 		UserHTTP: &updated.UserHTTP,
 	}, nil
+}
+
+// SetUserAvatar is the resolver for the SetUserAvatar field.
+func (r *mutationResolver) SetUserAvatar(ctx context.Context, avatarID *string) (*models.UserHTTP, error) {
+	ginContext, getGinContextErr := GinContextFromContext(ctx)
+	if getGinContextErr != nil {
+		return nil, getGinContextErr
+	}
+	userID, ok := ginContext.Value("user_id").(string)
+	if !ok || userID == "" {
+		return nil, &gqlerror.Error{
+			Path:    graphql.GetPath(ctx),
+			Message: "unauthorized",
+			Extensions: map[string]interface{}{
+				"code": "401",
+			},
+		}
+	}
+	id := ""
+	if avatarID != nil {
+		id = *avatarID
+	}
+	updated, err := r.usersDelegate.SetUserAvatar(userID, id)
+	if err != nil {
+		code := "500"
+		if errors.Is(err, avatars.ErrInvalidAvatarID) {
+			code = "400"
+		}
+		return nil, &gqlerror.Error{
+			Path:    graphql.GetPath(ctx),
+			Message: err.Error(),
+			Extensions: map[string]interface{}{
+				"code": code,
+			},
+		}
+	}
+	return updated, nil
 }
 
 // Mutation returns generated.MutationResolver implementation.

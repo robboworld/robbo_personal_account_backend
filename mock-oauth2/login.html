@@ -109,34 +109,44 @@
 
       <label for="claims">Claims (JSON)</label>
       <div class="presets">
+        <button type="button" data-preset="teacher">Teacher teacher@robbo.local</button>
+        <button type="button" data-preset="student">Student 1@1</button>
         <button type="button" data-preset="superadmin-lms">SuperAdmin lms@lms.ru</button>
         <button type="button" data-preset="superadmin-admin">SuperAdmin admin@mail.ru</button>
         <button type="button" data-preset="megaassik">megaassik@mail.ru</button>
       </div>
       <textarea id="claims" name="claims" autocomplete="off"
-                placeholder='{"email":"lms@lms.ru"}'></textarea>
+                placeholder='{"email":"teacher@robbo.local","is_staff":true}'></textarea>
 
       <input type="submit" value="Sign-in">
     </form>
 
-    <p class="hint">Значения сохраняются в localStorage браузера и подставляются при следующем входе.</p>
+    <p class="hint">Значения сохраняются в localStorage браузера и подставляются при следующем входе. Роль в ЛК: из LMS по email (<code>is_staff</code> → Teacher), иначе из claims.</p>
   </div>
 
   <script>
     (function () {
       var STORAGE_USERNAME = 'robbo_mock_oidc_username';
       var STORAGE_CLAIMS = 'robbo_mock_oidc_claims';
-      var DEFAULT_USERNAME = 'lms@lms.ru';
-      var DEFAULT_CLAIMS = '{\n  "email": "lms@lms.ru"\n}';
+      var DEFAULT_USERNAME = 'teacher@robbo.local';
+      var DEFAULT_CLAIMS = '{\n  "email": "teacher@robbo.local",\n  "is_staff": true\n}';
 
       var PRESETS = {
+        teacher: {
+          username: 'teacher@robbo.local',
+          claims: '{\n  "email": "teacher@robbo.local",\n  "is_staff": true\n}'
+        },
+        student: {
+          username: '1@1',
+          claims: '{\n  "email": "1@1"\n}'
+        },
         'superadmin-lms': {
           username: 'lms@lms.ru',
-          claims: '{\n  "email": "lms@lms.ru"\n}'
+          claims: '{\n  "email": "lms@lms.ru",\n  "is_superuser": true,\n  "is_staff": true\n}'
         },
         'superadmin-admin': {
           username: 'admin@mail.ru',
-          claims: '{\n  "email": "admin@mail.ru"\n}'
+          claims: '{\n  "email": "admin@mail.ru",\n  "is_superuser": true,\n  "is_staff": true\n}'
         },
         megaassik: {
           username: 'megaassik@mail.ru',

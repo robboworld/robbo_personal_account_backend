@@ -46,8 +46,12 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string, client auth.ClientIn
 	}
 
 	touchLastLogin(u.ID)
-
 	edxID := strconv.FormatInt(u.ID, 10)
+	if a.streak != nil {
+		if _, streakErr := a.streak.RecordVisit(edxID, "UTC"); streakErr != nil {
+			log.Printf("lms auth: record streak for user %s: %v", edxID, streakErr)
+		}
+	}
 
 	user := &models.UserCore{
 		Id:    edxID,

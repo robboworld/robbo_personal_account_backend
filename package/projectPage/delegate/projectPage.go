@@ -110,6 +110,56 @@ func (p *ProjectPageDelegateImpl) DeleteProjectReaction(
 	return p.UseCase.DeleteProjectReaction(projectPageId, userId)
 }
 
+func (p *ProjectPageDelegateImpl) GetProjectComments(
+	projectPageId string,
+	viewerId string,
+) (*models.ProjectCommentsHTTP, error) {
+	return p.UseCase.GetProjectComments(projectPageId, viewerId)
+}
+
+func (p *ProjectPageDelegateImpl) CreateProjectComment(
+	projectPageId string,
+	userId string,
+	body string,
+	parentID *string,
+) (*models.ProjectCommentHTTP, error) {
+	return p.UseCase.CreateProjectComment(projectPageId, userId, body, parentID)
+}
+
+func (p *ProjectPageDelegateImpl) DeleteProjectComment(
+	projectPageId string,
+	commentId string,
+	userId string,
+	role models.Role,
+) error {
+	return p.UseCase.DeleteProjectComment(projectPageId, commentId, userId, role)
+}
+
+func (p *ProjectPageDelegateImpl) GetCommentReactions(
+	projectPageId string,
+	commentId string,
+	viewerId string,
+) (*models.CommentReactionsHTTP, error) {
+	return p.UseCase.GetCommentReactions(projectPageId, commentId, viewerId)
+}
+
+func (p *ProjectPageDelegateImpl) PutCommentReaction(
+	projectPageId string,
+	commentId string,
+	userId string,
+	reactionCode string,
+) (*models.CommentReactionsHTTP, error) {
+	return p.UseCase.PutCommentReaction(projectPageId, commentId, userId, reactionCode)
+}
+
+func (p *ProjectPageDelegateImpl) DeleteCommentReaction(
+	projectPageId string,
+	commentId string,
+	userId string,
+) (*models.CommentReactionsHTTP, error) {
+	return p.UseCase.DeleteCommentReaction(projectPageId, commentId, userId)
+}
+
 func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pageSize string) (
 	projectPages []*models.ProjectPageHTTP,
 	countRows int,

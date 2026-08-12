@@ -408,6 +408,10 @@ func (p *UsersUseCaseImpl) DeleteSuperAdmin(superAdminId string) (err error) {
 	return p.usersGateway.DeleteSuperAdmin(superAdminId)
 }
 
+func (p *UsersUseCaseImpl) SetUserAvatar(userID, avatarID string) (user models.UserCore, err error) {
+	return p.usersGateway.SetUserAvatar(userID, avatarID)
+}
+
 func (p *UsersUseCaseImpl) CreateStudentParentRelation(parentId, childrenId string) (studentsCore []*models.StudentCore, err error) {
 	relationCore := &models.ChildrenOfParentCore{
 		ChildId:  childrenId,

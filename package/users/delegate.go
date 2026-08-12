@@ -54,6 +54,8 @@ type Delegate interface {
 	UpdateSuperAdmin(superAdminHTTP *models.SuperAdminHTTP) (superAdminUpdated *models.SuperAdminHTTP, err error)
 	DeleteSuperAdmin(superAdminId string) (err error)
 
+	SetUserAvatar(userID, avatarID string) (user *models.UserHTTP, err error)
+
 	CreateStudentParentRelation(parentId, childrenId string) (studentsHTTP []*models.StudentHTTP, err error)
 	SetNewUnitAdminForRobboUnit(unitAdminId, robboUnitId string) (err error)
 	DeleteUnitAdminForRobboUnit(unitAdminId, robboUnitId string) (err error)

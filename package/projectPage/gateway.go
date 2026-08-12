@@ -20,6 +20,14 @@ type Gateway interface {
 	GetProjectReactionSummary(projectId, viewerUserId string) (*models.ProjectReactionsHTTP, error)
 	UpsertProjectReaction(projectId, userId, reactionCode string) error
 	DeleteProjectReaction(projectId, userId string) error
+	ListProjectComments(projectId string, limit int) ([]models.ScratchProjectCommentDB, error)
+	GetCommentByID(commentId string) (*models.ScratchProjectCommentDB, error)
+	CreateComment(comment *models.ScratchProjectCommentDB) (*models.ScratchProjectCommentDB, error)
+	SoftDeleteComment(commentId string) error
+	GetCommentReactionSummary(commentId, viewerUserId string) (*models.CommentReactionsHTTP, error)
+	GetCommentReactionSummaries(commentIds []string, viewerUserId string) (map[string]models.CommentReactionsHTTP, error)
+	UpsertCommentReaction(commentId, userId, reactionCode string) error
+	DeleteCommentReaction(commentId, userId string) error
 	SetLandingFeatured(projectPageId string, featured bool, sortOrder int) (*models.ProjectPageCore, error)
 	ReorderLandingFeatured(items []LandingFeaturedOrderItem) error
 }
