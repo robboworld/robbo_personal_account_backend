@@ -2,6 +2,14 @@ package projectPage
 
 import "github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 
+// PublicListFilter filters the guest-readable public project catalog.
+type PublicListFilter struct {
+	LandingFeaturedOnly bool
+	Query               string
+	Tags                []string
+	AuthorUserIDs       []string
+}
+
 type Gateway interface {
 	CreateProjectPage(projectPageCore *models.ProjectPageCore) (newProjectPage *models.ProjectPageCore, err error)
 	UpdateProjectPage(projectPageCore *models.ProjectPageCore) (projectPageUpdated *models.ProjectPageCore, err error)
@@ -9,13 +17,14 @@ type Gateway interface {
 	GetProjectPageById(projectPageId string) (projectPageCore *models.ProjectPageCore, err error)
 	GetProjectPageByProjectId(projectId string) (projectPageCore *models.ProjectPageCore, err error)
 	GetScratchProjectById(projectPageId string) (projectDB *models.ScratchProjectDB, err error)
-	GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (projectPages []*models.ProjectPageCore, countRows int64, err error)
+	GetPublicProjectPages(page, pageSize int, filter PublicListFilter) (projectPages []*models.ProjectPageCore, countRows int64, err error)
 	GetPreviewImage(projectPageId string) (data []byte, mime string, err error)
 	SavePreviewImage(projectPageId string, data []byte, mime string) error
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
 	GetTotalStorageBytesForOwner(ownerUserID string) (int64, error)
 	GetCurrentVersionSizeBytes(projectPageId string) (int64, error)
+	CountProjectsByOwner(ownerUserID string) (int64, error)
 	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)
 	GetProjectReactionSummary(projectId, viewerUserId string) (*models.ProjectReactionsHTTP, error)
 	UpsertProjectReaction(projectId, userId, reactionCode string) error

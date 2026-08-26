@@ -8,6 +8,7 @@ type ProjectPageHttp {
 	linkScratch: String!
 	title: String!
 	isShared: Boolean!
+	tags: [String!]!
 	authorUserId: String!
 	authorName: String!
 	isOwner: Boolean!
@@ -29,6 +30,7 @@ input UpdateProjectPage {
 	notes: String!
 	title: String!
 	isShared: Boolean!
+	tags: [String!]
 }
 
 union ProjectPageResult = ProjectPageHttp | Error

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/playtoken"
+	projecttags "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/tags"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
@@ -90,6 +92,9 @@ const emptyProjectJson = "{\"targets\":[{\"isStage\":true,\"name\":\"Stage\",\"v
 	" Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36\"}}"
 
 func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error) {
+	if err := p.enforceProjectCountLimit(authorId); err != nil {
+		return nil, err
+	}
 	defaultTitle := projectPage.DefaultProjectTitle(locale)
 	project := models.ProjectCore{}
 	project.AuthorId = authorId
@@ -163,10 +168,13 @@ func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCor
 		core.IsOwner = false
 		core.LandingFeatured = row.LandingFeatured
 		core.LandingSortOrder = row.LandingSortOrder
+		if core.Tags == nil {
+			core.Tags = append([]string(nil), []string(row.Tags)...)
+		}
 	}
 }
 
-func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string) (
+func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string, role models.Role) (
 	projectPageUpdated *models.ProjectPageCore,
 	err error,
 ) {
@@ -178,10 +186,40 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	if err != nil {
 		return nil, err
 	}
-	if !access.Resolve(authorId, row).CanWrite {
+	acc := access.Resolve(authorId, row)
+	isSuperAdmin := role == models.SuperAdmin
+	if !acc.CanWrite && !isSuperAdmin {
 		return nil, auth.ErrNotAccess
 	}
+
+	if projectPage.Tags == nil {
+		projectPage.Tags = append([]string(nil), existing.Tags...)
+	} else {
+		normalized, normErr := projecttags.NormalizeList(projectPage.Tags)
+		if normErr != nil {
+			return nil, normErr
+		}
+		projectPage.Tags = normalized
+	}
+
+	if !acc.CanWrite {
+		// SuperAdmin may update tags only on others' projects.
+		projectPage.Title = existing.Title
+		projectPage.Instruction = existing.Instruction
+		projectPage.Notes = existing.Notes
+		projectPage.IsShared = existing.IsShared
+	}
+
 	projectPage.ProjectId = existing.ProjectId
+
+	if acc.CanWrite && !existing.IsShared && projectPage.IsShared {
+		if err := p.enforcePublishSizeLimit(authorId, existing.ProjectPageId); err != nil {
+			return nil, err
+		}
+		if err := p.enforcePublishProjectValid(existing.ProjectPageId, row); err != nil {
+			return nil, err
+		}
+	}
 
 	updated, err := p.projectPageGateway.UpdateProjectPage(projectPage)
 	if err != nil {
@@ -191,7 +229,7 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	author := lookupAuthorInfo(row.OwnerUserID)
 	updated.AuthorName = author.Name
 	updated.AuthorAvatarId = author.AvatarID
-	updated.IsOwner = true
+	updated.IsOwner = acc.IsOwner
 	return updated, nil
 }
 
@@ -238,12 +276,25 @@ func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewer
 	return core, err
 }
 
-func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, landingFeaturedOnly bool) (
+func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, filter projectPage.PublicListFilter) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
 	err error,
 ) {
-	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize, landingFeaturedOnly)
+	filter.Query = strings.TrimSpace(filter.Query)
+	if len(filter.Tags) > 0 {
+		normalized, normErr := projecttags.NormalizeFilterList(filter.Tags)
+		if normErr != nil {
+			return nil, 0, normErr
+		}
+		filter.Tags = normalized
+	} else {
+		filter.Tags = nil
+	}
+	if filter.Query != "" {
+		filter.AuthorUserIDs = lookupAuthorIDsForQuery(filter.Query)
+	}
+	projectPages, countRows, err = p.projectPageGateway.GetPublicProjectPages(page, pageSize, filter)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -576,7 +627,10 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if !access.Resolve(ownerId, row).CanWrite {
 		return auth.ErrNotAccess
 	}
-	if err := p.enforceCloudQuota(ownerId, projectPageId, int64(len(data))); err != nil {
+	if err := p.enforceProjectSizeLimit(ownerId, int64(len(data))); err != nil {
+		return err
+	}
+	if err := validateSb3Archive(data); err != nil {
 		return err
 	}
 	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
@@ -594,7 +648,28 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	return nil
 }
 
-func (p *ProjectPageUseCaseImpl) enforceCloudQuota(ownerId, projectPageId string, newSize int64) error {
+func (p *ProjectPageUseCaseImpl) enforceProjectCountLimit(authorId string) error {
+	if p.licensingGateway == nil {
+		return nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, authorId)
+	if err != nil {
+		return err
+	}
+	if ent.MaxProjects <= 0 {
+		return nil
+	}
+	count, err := p.projectPageGateway.CountProjectsByOwner(authorId)
+	if err != nil {
+		return err
+	}
+	if count >= int64(ent.MaxProjects) {
+		return projectPage.ErrProjectLimitReached
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforceProjectSizeLimit(ownerId string, newSize int64) error {
 	if p.licensingGateway == nil || newSize <= 0 {
 		return nil
 	}
@@ -602,21 +677,58 @@ func (p *ProjectPageUseCaseImpl) enforceCloudQuota(ownerId, projectPageId string
 	if err != nil {
 		return err
 	}
-	if ent.CloudQuotaMB <= 0 {
+	maxMB := ent.MaxProjectSizeMB
+	if maxMB <= 0 {
 		return nil
 	}
-	quotaBytes := int64(ent.CloudQuotaMB) * 1024 * 1024
-	used, err := p.projectPageGateway.GetTotalStorageBytesForOwner(ownerId)
+	if newSize > int64(maxMB)*1024*1024 {
+		return projectPage.ErrProjectSizeExceeded
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforcePublishSizeLimit(authorId, projectPageId string) error {
+	if p.licensingGateway == nil {
+		return nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, authorId)
 	if err != nil {
 		return err
 	}
-	oldSize, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
+	maxMB := ent.MaxProjectSizeMB
+	if maxMB <= 0 {
+		return nil
+	}
+	size, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
 	if err != nil {
 		return err
 	}
-	projected := used - oldSize + newSize
-	if projected > quotaBytes {
-		return projectPage.ErrCloudQuotaExceeded
+	if size > int64(maxMB)*1024*1024 {
+		return projectPage.ErrProjectSizeExceeded
+	}
+	return nil
+}
+
+func (p *ProjectPageUseCaseImpl) enforcePublishProjectValid(
+	projectPageId string,
+	row *models.ScratchProjectDB,
+) error {
+	archive, err := p.projectPageGateway.GetLatestSb3Archive(projectPageId)
+	if err != nil {
+		if !errors.Is(err, projectPage.ErrSb3ArchiveNotFound) {
+			return err
+		}
+		vmJSON := ""
+		if row != nil {
+			vmJSON = row.ScratchVMJSON
+		}
+		if vErr := validateScratchVMJSON(vmJSON); vErr != nil {
+			return projectPage.ErrInvalidProjectFile
+		}
+		return nil
+	}
+	if vErr := validateSb3Archive(archive); vErr != nil {
+		return projectPage.ErrInvalidProjectFile
 	}
 	return nil
 }

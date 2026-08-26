@@ -14,6 +14,7 @@ type PKCEEntry struct {
 	CodeVerifier  string
 	CodeChallenge string
 	ReturnTo      string
+	Prompt        string
 	ExpiresAt     time.Time
 }
 
@@ -73,6 +74,10 @@ func loadPKCE(state string) (pkceEntry, bool) {
 }
 
 func NewPKCEForReturn(returnTo string) (PKCEEntry, error) {
+	return NewPKCEForReturnWithPrompt(returnTo, "")
+}
+
+func NewPKCEForReturnWithPrompt(returnTo, prompt string) (PKCEEntry, error) {
 	state, err := randomURLSafe(16)
 	if err != nil {
 		return PKCEEntry{}, err
@@ -91,6 +96,7 @@ func NewPKCEForReturn(returnTo string) (PKCEEntry, error) {
 		CodeVerifier:  verifier,
 		CodeChallenge: codeChallengeS256(verifier),
 		ReturnTo:      returnTo,
+		Prompt:        prompt,
 	}
 	savePKCE(state, entry)
 	return entry, nil
