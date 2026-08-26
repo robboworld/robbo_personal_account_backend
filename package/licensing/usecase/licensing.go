@@ -155,7 +155,7 @@ func (u *LicensingUseCaseImpl) Activate(licenseKey, fingerprint, publicBase stri
 	if err != nil {
 		return nil, err
 	}
-	if int(count) >= lic.SeatLimit {
+	if int(count) >= lic.SeatLimit && !licensing.LMSUserHasUnlimitedSessionsAndSeats(lic.LmsUserID) {
 		return nil, licensing.ErrSeatLimitReached
 	}
 

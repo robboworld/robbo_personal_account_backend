@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -428,7 +429,7 @@ func (h *Handler) UploadProjectSb3(c *gin.Context) {
 		return
 	}
 	projectPageId := c.Param("projectPageId")
-	if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+	if err := c.Request.ParseMultipartForm(128 << 20); err != nil {
 		c.AbortWithStatusJSON(http.StatusBadRequest, "invalid multipart form")
 		return
 	}
@@ -518,7 +519,7 @@ func (h *Handler) UpdateProjectPage(c *gin.Context) {
 		return
 	}
 	log.Println(inp)
-	_, err := h.projectPageDelegate.UpdateProjectPage(inp.ProjectPage, userId)
+	_, err := h.projectPageDelegate.UpdateProjectPage(inp.ProjectPage, userId, role)
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -713,7 +714,12 @@ func (h *Handler) GetPublicProjectPages(c *gin.Context) {
 	pageSize := c.DefaultQuery("pageSize", "10")
 	featured := strings.ToLower(strings.TrimSpace(c.Query("featured")))
 	landingFeaturedOnly := featured == "landing" || featured == "olympiad" || featured == "1" || featured == "true"
-	projectPages, countRows, err := h.projectPageDelegate.GetPublicProjectPages(page, pageSize, landingFeaturedOnly)
+	filter := projectPage.PublicListFilter{
+		LandingFeaturedOnly: landingFeaturedOnly,
+		Query:               strings.TrimSpace(c.Query("q")),
+		Tags:                collectTagQueryParams(c),
+	}
+	projectPages, countRows, err := h.projectPageDelegate.GetPublicProjectPages(page, pageSize, filter)
 	if err != nil {
 		ErrorHandling(err, c)
 		return
@@ -722,6 +728,25 @@ func (h *Handler) GetPublicProjectPages(c *gin.Context) {
 		ProjectPages: projectPages,
 		CountRows:    countRows,
 	})
+}
+
+// collectTagQueryParams reads repeated ?tag=a&tag=b and optional comma-separated ?tags=a,b.
+func collectTagQueryParams(c *gin.Context) []string {
+	var raw []string
+	raw = append(raw, c.QueryArray("tag")...)
+	if joined := strings.TrimSpace(c.Query("tags")); joined != "" {
+		raw = append(raw, joined)
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		for _, part := range strings.Split(item, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
 }
 
 const maxPreviewUploadBytes = 2 * 1024 * 1024
@@ -807,35 +832,46 @@ func (h *Handler) UploadProjectPreview(c *gin.Context) {
 }
 
 func ErrorHandling(err error, c *gin.Context) {
-	switch err {
-	case projectPage.ErrBadRequest:
+	switch {
+	case errors.Is(err, projectPage.ErrBadRequest):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case projectPage.ErrInternalServerLevel:
+	case errors.Is(err, projectPage.ErrInternalServerLevel):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case projectPage.ErrPageNotFound:
+	case errors.Is(err, projectPage.ErrPageNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
-	case projectPage.ErrSb3ArchiveNotFound:
+	case errors.Is(err, projectPage.ErrSb3ArchiveNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
-	case projectPage.ErrBadRequestBody:
+	case errors.Is(err, projectPage.ErrBadRequestBody):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case projectPage.ErrCloudQuotaExceeded:
+	case errors.Is(err, projectPage.ErrProjectLimitReached):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
 			"error": err.Error(),
-			"code":  "CLOUD_QUOTA_EXCEEDED",
+			"code":  "PROJECT_LIMIT_REACHED",
 		})
-	case projectPage.ErrProfanityDetected:
+	case errors.Is(err, projectPage.ErrProjectSizeExceeded):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "PROJECT_SIZE_EXCEEDED",
+		})
+	case errors.Is(err, projectPage.ErrInvalidProjectFile):
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+			"code":  "INVALID_PROJECT_FILE",
+		})
+	case errors.Is(err, projectPage.ErrProfanityDetected):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "profanity_detected"})
-	case projectPage.ErrCommentNotFound:
+	case errors.Is(err, projectPage.ErrCommentNotFound):
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
-	case projects.ErrProjectNotFound:
-		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case auth.ErrInvalidAccessToken:
+	case errors.Is(err, projects.ErrProjectNotFound):
+		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
+	case errors.Is(err, auth.ErrInvalidAccessToken):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrTokenNotFound:
+	case errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrNotAccess:
+	case errors.Is(err, auth.ErrNotAccess):
 		c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
 	default:
+		log.Println(err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
 	}
 }
