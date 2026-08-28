@@ -140,6 +140,42 @@ func (g *LicensingGatewayImpl) UpdateLicense(license *models.LicenseCore) error 
 	return g.db.Model(&models.LicenseDB{}).Where("id = ?", license.ID).Updates(updates).Error
 }
 
+func (g *LicensingGatewayImpl) RevokeActiveOrderLicenses(lmsUserID, exceptLicenseID string) error {
+	lmsUserID = strings.TrimSpace(lmsUserID)
+	if lmsUserID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	q := g.db.Model(&models.LicenseDB{}).
+		Where("lms_user_id = ? AND source = ? AND status = ?", lmsUserID, models.LicenseSourceOrder, models.LicenseStatusActive).
+		Where("expires_at > ?", now)
+	if exceptLicenseID != "" {
+		q = q.Where("id != ?", exceptLicenseID)
+	}
+	return q.Updates(map[string]interface{}{
+		"status":     models.LicenseStatusRevoked,
+		"updated_at": now,
+	}).Error
+}
+
+func (g *LicensingGatewayImpl) GetProductTitle(productID string) (string, error) {
+	productID = strings.TrimSpace(productID)
+	if productID == "" {
+		return "", nil
+	}
+	var row struct {
+		Title string `gorm:"column:title"`
+	}
+	err := g.db.Table("products").Select("title").Where("id = ?", productID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(row.Title), nil
+}
+
 func (g *LicensingGatewayImpl) ListSeats(licenseID string) ([]*models.SeatCore, error) {
 	var rows []models.SeatDB
 	if err := g.db.Where("license_id = ?", licenseID).Order("activated_at ASC").Find(&rows).Error; err != nil {

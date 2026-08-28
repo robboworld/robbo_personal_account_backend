@@ -404,6 +404,7 @@ type ProjectPageHTTP struct {
 	AuthorName       string   `json:"authorName"`
 	AuthorAvatarID   string   `json:"authorAvatarId,omitempty"`
 	IsOwner          bool     `json:"isOwner"`
+	ReactionCount    int64    `json:"reactionCount"`
 }
 
 func (ProjectPageHTTP) IsProjectPageResult() {}

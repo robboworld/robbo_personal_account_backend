@@ -13,6 +13,8 @@ type Gateway interface {
 	GetLicenseByID(id string) (*models.LicenseCore, error)
 	ListLicensesByUser(lmsUserID string) ([]*models.LicenseCore, error)
 	UpdateLicense(license *models.LicenseCore) error
+	RevokeActiveOrderLicenses(lmsUserID, exceptLicenseID string) error
+	GetProductTitle(productID string) (string, error)
 
 	ListSeats(licenseID string) ([]*models.SeatCore, error)
 	GetSeatByFingerprint(licenseID, fingerprint string) (*models.SeatCore, error)

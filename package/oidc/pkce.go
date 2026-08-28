@@ -9,13 +9,14 @@ import (
 )
 
 type PKCEEntry struct {
-	State         string
-	Nonce         string
-	CodeVerifier  string
-	CodeChallenge string
-	ReturnTo      string
-	Prompt        string
-	ExpiresAt     time.Time
+	State             string
+	Nonce             string
+	CodeVerifier      string
+	CodeChallenge     string
+	ReturnTo          string
+	Prompt            string
+	KickOtherSessions bool
+	ExpiresAt         time.Time
 }
 
 type pkceEntry = PKCEEntry
@@ -78,6 +79,10 @@ func NewPKCEForReturn(returnTo string) (PKCEEntry, error) {
 }
 
 func NewPKCEForReturnWithPrompt(returnTo, prompt string) (PKCEEntry, error) {
+	return NewPKCEForReturnWithPromptAndKick(returnTo, prompt, false)
+}
+
+func NewPKCEForReturnWithPromptAndKick(returnTo, prompt string, kickOtherSessions bool) (PKCEEntry, error) {
 	state, err := randomURLSafe(16)
 	if err != nil {
 		return PKCEEntry{}, err
@@ -91,12 +96,13 @@ func NewPKCEForReturnWithPrompt(returnTo, prompt string) (PKCEEntry, error) {
 		return PKCEEntry{}, err
 	}
 	entry := PKCEEntry{
-		State:         state,
-		Nonce:         nonce,
-		CodeVerifier:  verifier,
-		CodeChallenge: codeChallengeS256(verifier),
-		ReturnTo:      returnTo,
-		Prompt:        prompt,
+		State:             state,
+		Nonce:             nonce,
+		CodeVerifier:      verifier,
+		CodeChallenge:     codeChallengeS256(verifier),
+		ReturnTo:          returnTo,
+		Prompt:            prompt,
+		KickOtherSessions: kickOtherSessions,
 	}
 	savePKCE(state, entry)
 	return entry, nil

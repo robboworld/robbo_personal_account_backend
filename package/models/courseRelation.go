@@ -27,7 +27,7 @@ type CourseRelationDB struct {
 func (em *CourseRelationDB) ToCore() *CourseRelationCore {
 	return &CourseRelationCore{
 		Id:           strconv.FormatUint(uint64(em.ID), 10),
-		LastModified: em.UpdatedAt.String(),
+		LastModified: RFC3339UTC(em.UpdatedAt),
 		Parameter:    em.Parameter,
 		CourseId:     em.CourseId,
 		ObjectId:     em.ObjectId,

@@ -8,6 +8,9 @@ type PublicListFilter struct {
 	Query               string
 	Tags                []string
 	AuthorUserIDs       []string
+	// Sort: "popular" orders by reaction count desc, then updated_at desc.
+	// Empty keeps updated_at desc. Featured lists ignore this and use landing_sort_order.
+	Sort string
 }
 
 type Gateway interface {

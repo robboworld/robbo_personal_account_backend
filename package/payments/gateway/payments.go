@@ -96,6 +96,14 @@ func (g *PaymentsGatewayImpl) CreateOrder(order *models.OrderCore) (*models.Orde
 	if order.YookassaPaymentID != "" {
 		row.YookassaPaymentID = &order.YookassaPaymentID
 	}
+	if order.HasLimitSnapshot() {
+		cloud := order.CloudQuotaMB
+		seats := order.SeatLimit
+		sessions := order.SessionLimit
+		row.CloudQuotaMB = &cloud
+		row.SeatLimit = &seats
+		row.SessionLimit = &sessions
+	}
 	if err := g.db.Create(&row).Error; err != nil {
 		return nil, err
 	}

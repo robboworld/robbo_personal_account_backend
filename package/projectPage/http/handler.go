@@ -718,6 +718,7 @@ func (h *Handler) GetPublicProjectPages(c *gin.Context) {
 		LandingFeaturedOnly: landingFeaturedOnly,
 		Query:               strings.TrimSpace(c.Query("q")),
 		Tags:                collectTagQueryParams(c),
+		Sort:                strings.ToLower(strings.TrimSpace(c.Query("sort"))),
 	}
 	projectPages, countRows, err := h.projectPageDelegate.GetPublicProjectPages(page, pageSize, filter)
 	if err != nil {
@@ -777,7 +778,7 @@ func (h *Handler) GetProjectPreview(c *gin.Context) {
 		ErrorHandling(err, c)
 		return
 	}
-	c.Header("Cache-Control", "public, max-age=300")
+	c.Header("Cache-Control", "private, no-cache")
 	c.Data(http.StatusOK, mime, data)
 }
 

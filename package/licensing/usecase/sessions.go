@@ -68,3 +68,8 @@ func (u *LicensingUseCaseImpl) RevokeLoginSessionByID(lmsUserID, sessionID strin
 func (u *LicensingUseCaseImpl) ResolveEntitlements(lmsUserID string) (licensing.Entitlements, error) {
 	return licensing.ResolveEntitlements(u.gateway, lmsUserID)
 }
+
+// RevokeActiveOrderLicenses marks previous paid order licenses as revoked after a Class upgrade.
+func (u *LicensingUseCaseImpl) RevokeActiveOrderLicenses(lmsUserID, exceptLicenseID string) error {
+	return u.gateway.RevokeActiveOrderLicenses(lmsUserID, exceptLicenseID)
+}
