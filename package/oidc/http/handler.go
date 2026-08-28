@@ -83,7 +83,8 @@ func (h Handler) Start(c *gin.Context) {
 	if prompt != "none" && prompt != "login" && prompt != "consent" {
 		prompt = "none"
 	}
-	entry, err := oidc.NewPKCEForReturnWithPrompt(returnTo, prompt)
+	kickOtherSessions := c.Query("kick_other_sessions") == "1" || c.Query("kick_other_sessions") == "true"
+	entry, err := oidc.NewPKCEForReturnWithPromptAndKick(returnTo, prompt, kickOtherSessions)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "pkce_init_failed"})
 		return
@@ -144,10 +145,11 @@ func (h Handler) VerifyCredentials(c *gin.Context) {
 // redirecting through the IdP login UI (avoids a mock/LMS page flash on /login).
 func (h Handler) PasswordLogin(c *gin.Context) {
 	var body struct {
-		Email    string `json:"email"`
-		Username string `json:"username"`
-		Password string `json:"password"`
-		ReturnTo string `json:"return_to"`
+		Email             string `json:"email"`
+		Username          string `json:"username"`
+		Password          string `json:"password"`
+		ReturnTo          string `json:"return_to"`
+		KickOtherSessions bool   `json:"kickOtherSessions"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid_body"})
@@ -202,6 +204,12 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 	if h.sessions != nil {
 		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
 		ip := oidcClientIP(c)
+		if body.KickOtherSessions {
+			if kickErr := licensing.KickOtherSessions(h.sessions, edxUserID); kickErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "session_create_failed"})
+				return
+			}
+		}
 		sess, createErr := licensing.AcquireLoginSession(
 			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl, role,
 		)
@@ -473,6 +481,12 @@ func (h Handler) Callback(c *gin.Context) {
 	if edxUserID != "" && h.sessions != nil {
 		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
 		ip := oidcClientIP(c)
+		if entry.KickOtherSessions {
+			if kickErr := licensing.KickOtherSessions(h.sessions, edxUserID); kickErr != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "session_create_failed"})
+				return
+			}
+		}
 		sess, createErr := licensing.AcquireLoginSession(
 			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl, role,
 		)

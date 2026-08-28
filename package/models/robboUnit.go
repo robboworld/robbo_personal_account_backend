@@ -22,7 +22,7 @@ type RobboUnitDB struct {
 func (em *RobboUnitDB) ToCore() *RobboUnitCore {
 	return &RobboUnitCore{
 		Id:           strconv.FormatUint(uint64(em.ID), 10),
-		LastModified: em.UpdatedAt.String(),
+		LastModified: RFC3339UTC(em.UpdatedAt),
 		Name:         em.Name,
 		City:         em.City,
 	}

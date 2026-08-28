@@ -8,8 +8,9 @@ import (
 
 // ClientInfo carries request metadata stored on lk_user_sessions rows.
 type ClientInfo struct {
-	UserAgent string
-	IPAddress string
+	UserAgent         string
+	IPAddress         string
+	KickOtherSessions bool
 }
 
 type UseCase interface {

@@ -49,10 +49,7 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 	now := time.Now().UTC()
 	for _, lic := range licenses {
 		if lic.Status == models.LicenseStatusActive && lic.ExpiresAt.After(now) {
-			name := "Individual"
-			if lic.SeatLimit >= 5 || lic.SessionLimit >= 5 || lic.CloudQuotaMB >= 500 {
-				name = "Class"
-			}
+			name := resolveTariffName(gateway, lic)
 			sizeMB := lic.CloudQuotaMB
 			if sizeMB <= 0 {
 				sizeMB = FreeCloudQuotaMB
@@ -70,6 +67,21 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 		}
 	}
 	return freeEntitlements(), nil
+}
+
+func resolveTariffName(gateway Gateway, lic *models.LicenseCore) string {
+	if lic == nil {
+		return "Individual"
+	}
+	if lic.ProductID != "" {
+		if title, err := gateway.GetProductTitle(lic.ProductID); err == nil && strings.TrimSpace(title) != "" {
+			return strings.TrimSpace(title)
+		}
+	}
+	if lic.SeatLimit >= 5 || lic.SessionLimit >= 5 || lic.CloudQuotaMB >= 500 {
+		return "Class"
+	}
+	return "Individual"
 }
 
 func freeEntitlements() Entitlements {
@@ -148,6 +160,20 @@ func CheckSessionLimit(gateway Gateway, lmsUserID string, role models.Role) erro
 		return ErrSessionLimitReached
 	}
 	return nil
+}
+
+// KickOtherSessions revokes every non-revoked web session for the user so a
+// subsequent AcquireLoginSession can succeed after session_limit_reached.
+func KickOtherSessions(gateway Gateway, lmsUserID string) error {
+	if gateway == nil {
+		return nil
+	}
+	lmsUserID = strings.TrimSpace(lmsUserID)
+	if lmsUserID == "" {
+		return nil
+	}
+	_, err := gateway.RevokeAllSessionsForUser(lmsUserID)
+	return err
 }
 
 // AcquireLoginSession reuses an active session for the same IP when present;

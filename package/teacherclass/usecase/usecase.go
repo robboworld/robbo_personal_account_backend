@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/big"
 	"strconv"
 	"strings"
@@ -473,11 +474,27 @@ func (u *UseCaseImpl) ListMembers(teacherID, classID string) ([]teacherclass.Coh
 		return nil, err
 	}
 	cohortID, _ := strconv.Atoi(inv.EdxCohortID)
-	body, err := u.edx.ListCohortUsers(inv.EdxCourseID, cohortID)
-	if err != nil {
-		return nil, fmt.Errorf("%w: list users", teacherclass.ErrInternal)
+	type edxResult struct {
+		body []byte
+		err  error
 	}
-	return u.parseCohortUsers(body), nil
+	ch := make(chan edxResult, 1)
+	go func() {
+		body, err := u.edx.ListCohortUsers(inv.EdxCourseID, cohortID)
+		ch <- edxResult{body: body, err: err}
+	}()
+	select {
+	case res := <-ch:
+		if res.err != nil {
+			// Open edX unreachable (local/dev): keep board usable without roster.
+			log.Printf("teacherclass: list cohort users %s/%s: %v", inv.EdxCourseID, inv.EdxCohortID, res.err)
+			return []teacherclass.CohortUserDTO{}, nil
+		}
+		return u.parseCohortUsers(res.body), nil
+	case <-time.After(2 * time.Second):
+		log.Printf("teacherclass: list cohort users %s/%s: timeout", inv.EdxCourseID, inv.EdxCohortID)
+		return []teacherclass.CohortUserDTO{}, nil
+	}
 }
 
 func (u *UseCaseImpl) AddMembersByEmail(teacherID, classID string, emails []string) (added []string, missing []string, err error) {
@@ -724,9 +741,11 @@ func (u *UseCaseImpl) LiveRoster(teacherID, classID, assignmentID string) ([]tea
 	if err != nil {
 		return nil, err
 	}
-	projects, err := u.gw.ListProjectsByCohortAssignment("", assignmentID)
+	var projects []models.ScratchProjectDB
 	if assignmentID != "" {
 		projects, err = u.gw.ListSubmissions(assignmentID)
+	} else {
+		projects, err = u.gw.ListProjectsByCohortAssignment("", assignmentID)
 	}
 	if err != nil {
 		return nil, err
@@ -756,6 +775,26 @@ func (u *UseCaseImpl) LiveRoster(teacherID, classID, assignmentID string) ([]tea
 		}
 		out = append(out, row)
 	}
+	// Offline / EdX down: still show students who already have assignment projects.
+	if len(out) == 0 {
+		for i := range projects {
+			p := &projects[i]
+			row := teacherclass.LiveStudentDTO{
+				UserID:       p.OwnerUserID,
+				Username:     p.OwnerUserID,
+				Name:         p.OwnerUserID,
+				ProjectID:    p.ID,
+				ProjectTitle: p.Title,
+				SavedToday:   !p.UpdatedAt.Before(today),
+			}
+			t := p.UpdatedAt
+			row.UpdatedAt = &t
+			if p.ReviewStatus != nil {
+				row.ReviewStatus = *p.ReviewStatus
+			}
+			out = append(out, row)
+		}
+	}
 	return out, nil
 }
 
@@ -775,6 +814,28 @@ func (u *UseCaseImpl) ProgressMatrix(teacherID, classID string) ([]teacherclass.
 	assignDTOs := make([]teacherclass.AssignmentDTO, 0, len(assignments))
 	for i := range assignments {
 		assignDTOs = append(assignDTOs, assignmentDTO(&assignments[i]))
+	}
+	// Offline: synthesize members from anyone who has a project for these assignments.
+	if len(members) == 0 {
+		seen := map[string]struct{}{}
+		for i := range assignments {
+			subs, subErr := u.gw.ListSubmissions(assignments[i].ID)
+			if subErr != nil {
+				continue
+			}
+			for j := range subs {
+				uid := subs[j].OwnerUserID
+				if _, ok := seen[uid]; ok {
+					continue
+				}
+				seen[uid] = struct{}{}
+				members = append(members, teacherclass.CohortUserDTO{
+					UserID:   uid,
+					Username: uid,
+					Name:     uid,
+				})
+			}
+		}
 	}
 	rows := make([]teacherclass.ProgressRowDTO, 0, len(members))
 	for _, m := range members {

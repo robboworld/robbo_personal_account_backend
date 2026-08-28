@@ -50,9 +50,10 @@ func (h *Handler) InitAuthRoutes(router *gin.Engine) {
 }
 
 type signInput struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Role     uint   `json:"role"`
+	Email             string `json:"email"`
+	Password          string `json:"password"`
+	Role              uint   `json:"role"`
+	KickOtherSessions bool   `json:"kickOtherSessions"`
 }
 
 type signInResponse struct {
@@ -92,8 +93,10 @@ func (h *Handler) SignIn(c *gin.Context) {
 		return
 	}
 
+	client := clientInfoFromRequest(c)
+	client.KickOtherSessions = signInInput.KickOtherSessions
 	accessToken, refreshToken, err := h.delegate.SignIn(
-		signInInput.Email, signInInput.Password, signInInput.Role, clientInfoFromRequest(c),
+		signInInput.Email, signInInput.Password, signInInput.Role, client,
 	)
 	if err != nil {
 		fmt.Println(err)

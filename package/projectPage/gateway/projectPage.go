@@ -69,12 +69,13 @@ func (r *ProjectPageGatewayImpl) CreateProjectPage(page *models.ProjectPageCore)
 func toProjectPageCore(projectDB *models.ScratchProjectDB) *models.ProjectPageCore {
 	scratchLink := viper.GetString("projectPage.scratchLink") + "?#" + projectDB.ID
 	preview := ""
-	if strings.TrimSpace(projectDB.PreviewMime) != "" {
+	hasVersion := projectDB.CurrentVersionID != nil && strings.TrimSpace(*projectDB.CurrentVersionID) != ""
+	if strings.TrimSpace(projectDB.PreviewMime) != "" || hasVersion {
 		preview = "/projectPage/" + projectDB.ID + "/preview"
 	}
 	return &models.ProjectPageCore{
 		ProjectPageId:    projectDB.ID,
-		LastModified:     projectDB.UpdatedAt.String(),
+		LastModified:     models.RFC3339UTC(projectDB.UpdatedAt),
 		Title:            projectDB.Title,
 		ProjectId:        projectDB.ID,
 		Instruction:      projectDB.Instruction,
@@ -248,6 +249,11 @@ func (r *ProjectPageGatewayImpl) GetScratchProjectById(projectPageId string) (pr
 	return &row, nil
 }
 
+type publicListRow struct {
+	models.ScratchProjectDB
+	ReactionCount int64 `gorm:"column:reaction_count"`
+}
+
 func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, filter projectPage.PublicListFilter) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
@@ -261,49 +267,69 @@ func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, filte
 	}
 	offset := (page - 1) * pageSize
 	query := r.projectStorageDB.
-		Model(&models.ScratchProjectDB{}).
+		Table("scratch_projects").
 		Select(
-			"id, owner_user_id, title, instruction, note, scratch_vm_json, is_public, landing_featured, "+
-				"landing_sort_order, tags, preview_mime, preview_updated_at, version_counter, current_version_id, "+
-				"created_at, updated_at, deleted_at",
+			"scratch_projects.id, scratch_projects.owner_user_id, scratch_projects.title, scratch_projects.instruction, "+
+				"scratch_projects.note, scratch_projects.scratch_vm_json, scratch_projects.is_public, "+
+				"scratch_projects.landing_featured, scratch_projects.landing_sort_order, scratch_projects.tags, "+
+				"scratch_projects.preview_mime, scratch_projects.preview_updated_at, scratch_projects.version_counter, "+
+				"scratch_projects.current_version_id, scratch_projects.created_at, scratch_projects.updated_at, "+
+				"scratch_projects.deleted_at, COALESCE(rc.reaction_count, 0) AS reaction_count",
 		).
-		Where("is_public = ? AND deleted_at IS NULL", true)
+		Joins(
+			"LEFT JOIN (SELECT project_id, COUNT(*) AS reaction_count FROM scratch_project_reactions GROUP BY project_id) rc "+
+				"ON rc.project_id = scratch_projects.id",
+		).
+		Where("scratch_projects.is_public = ? AND scratch_projects.deleted_at IS NULL", true)
 	countQuery := r.projectStorageDB.Model(&models.ScratchProjectDB{}).
 		Where("is_public = ? AND deleted_at IS NULL", true)
 
 	if filter.LandingFeaturedOnly {
-		query = query.Where("landing_featured = ?", true)
+		query = query.Where("scratch_projects.landing_featured = ?", true)
 		countQuery = countQuery.Where("landing_featured = ?", true)
 	}
 	if len(filter.Tags) > 0 {
-		query = query.Where("tags @> ?", pq.Array(filter.Tags))
+		query = query.Where("scratch_projects.tags @> ?", pq.Array(filter.Tags))
 		countQuery = countQuery.Where("tags @> ?", pq.Array(filter.Tags))
 	}
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"
-		orParts := []string{"title ILIKE ?", "EXISTS (SELECT 1 FROM unnest(tags) AS t(tag) WHERE t.tag ILIKE ?)"}
+		orParts := []string{
+			"scratch_projects.title ILIKE ?",
+			"EXISTS (SELECT 1 FROM unnest(scratch_projects.tags) AS t(tag) WHERE t.tag ILIKE ?)",
+		}
 		orArgs := []interface{}{like, like}
 		if len(filter.AuthorUserIDs) > 0 {
-			orParts = append(orParts, "owner_user_id IN ?")
+			orParts = append(orParts, "scratch_projects.owner_user_id IN ?")
 			orArgs = append(orArgs, filter.AuthorUserIDs)
 		}
 		orClause := "(" + strings.Join(orParts, " OR ") + ")"
 		query = query.Where(orClause, orArgs...)
-		countQuery = countQuery.Where(orClause, orArgs...)
+		countOrParts := []string{"title ILIKE ?", "EXISTS (SELECT 1 FROM unnest(tags) AS t(tag) WHERE t.tag ILIKE ?)"}
+		countOrArgs := []interface{}{like, like}
+		if len(filter.AuthorUserIDs) > 0 {
+			countOrParts = append(countOrParts, "owner_user_id IN ?")
+			countOrArgs = append(countOrArgs, filter.AuthorUserIDs)
+		}
+		countQuery = countQuery.Where("("+strings.Join(countOrParts, " OR ")+")", countOrArgs...)
 	}
 
-	var rows []models.ScratchProjectDB
-	orderClause := "updated_at DESC"
+	orderClause := "scratch_projects.updated_at DESC"
 	if filter.LandingFeaturedOnly {
-		orderClause = "landing_sort_order ASC, updated_at DESC"
+		orderClause = "scratch_projects.landing_sort_order ASC, scratch_projects.updated_at DESC"
+	} else if filter.Sort == "popular" {
+		orderClause = "reaction_count DESC, scratch_projects.updated_at DESC"
 	}
+
+	var rows []publicListRow
 	err = query.Order(orderClause).Limit(pageSize).Offset(offset).Find(&rows).Error
 	if err != nil {
 		return nil, 0, err
 	}
 	countQuery.Count(&countRows)
 	for i := range rows {
-		core := toProjectPageCore(&rows[i])
+		core := toProjectPageCore(&rows[i].ScratchProjectDB)
+		core.ReactionCount = rows[i].ReactionCount
 		projectPages = append(projectPages, core)
 	}
 	return projectPages, countRows, nil
@@ -328,6 +354,13 @@ func (r *ProjectPageGatewayImpl) GetPreviewImage(projectPageId string) (data []b
 		return nil, "", err
 	}
 	if len(row.PreviewImage) == 0 || strings.TrimSpace(row.PreviewMime) == "" {
+		archive, aerr := r.GetLatestSb3Archive(projectPageId)
+		if aerr == nil {
+			if derived, derivedMime, ok := previewFromSb3Archive(archive); ok {
+				_ = r.SavePreviewImage(projectPageId, derived, derivedMime)
+				return derived, derivedMime, nil
+			}
+		}
 		return nil, "", projectPage.ErrPageNotFound
 	}
 	return row.PreviewImage, row.PreviewMime, nil

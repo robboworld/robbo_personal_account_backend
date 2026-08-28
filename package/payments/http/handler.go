@@ -221,7 +221,7 @@ func writePaymentsError(c *gin.Context, err error) {
 }
 
 func productToJSON(p *models.ProductCore) gin.H {
-	return gin.H{
+	out := gin.H{
 		"id":           p.ID,
 		"sku":          p.SKU,
 		"title":        p.Title,
@@ -233,8 +233,13 @@ func productToJSON(p *models.ProductCore) gin.H {
 		"cloudQuotaMb": p.CloudQuotaMB,
 		"sessionLimit": p.SessionLimit,
 		"durationDays": p.DurationDays,
+		"kind":         p.Kind,
 		"isActive":     p.IsActive,
 	}
+	if p.PricingConfig != nil {
+		out["pricingConfig"] = p.PricingConfig
+	}
+	return out
 }
 
 func orderToJSON(o *models.OrderCore) gin.H {
@@ -253,6 +258,15 @@ func orderToJSON(o *models.OrderCore) gin.H {
 	}
 	if o.PaidAt != nil {
 		out["paidAt"] = o.PaidAt.Format(time.RFC3339)
+	}
+	if o.CloudQuotaMB > 0 {
+		out["cloudQuotaMb"] = o.CloudQuotaMB
+	}
+	if o.SeatLimit > 0 {
+		out["seatLimit"] = o.SeatLimit
+	}
+	if o.SessionLimit > 0 {
+		out["sessionLimit"] = o.SessionLimit
 	}
 	return out
 }

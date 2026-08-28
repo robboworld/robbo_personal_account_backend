@@ -307,6 +307,11 @@ func (a *AuthUseCaseImpl) issueTokensWithSession(
 		if ttl <= 0 {
 			ttl = 7 * 24 * time.Hour
 		}
+		if client.KickOtherSessions {
+			if kickErr := licensing.KickOtherSessions(a.sessions, user.Id); kickErr != nil {
+				return "", "", kickErr
+			}
+		}
 		sess, createErr := licensing.AcquireLoginSession(
 			a.sessions, user.Id, authMode, client.UserAgent, client.IPAddress, ttl, user.Role,
 		)

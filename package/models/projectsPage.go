@@ -22,6 +22,7 @@ type ProjectPageCore struct {
 	AuthorName       string
 	AuthorAvatarId   string
 	IsOwner          bool
+	ReactionCount    int64
 }
 
 type ProjectPageDB struct {
@@ -40,7 +41,7 @@ type ProjectPageDB struct {
 func (em *ProjectPageDB) ToCore() *ProjectPageCore {
 	return &ProjectPageCore{
 		ProjectPageId: strconv.FormatUint(uint64(em.ID), 10),
-		LastModified:  em.UpdatedAt.String(),
+		LastModified:  RFC3339UTC(em.UpdatedAt),
 		Title:         em.Title,
 		ProjectId:     em.ProjectId,
 		Instruction:   em.Instruction,
@@ -81,6 +82,7 @@ func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 		AuthorName:       ht.AuthorName,
 		AuthorAvatarId:   ht.AuthorAvatarID,
 		IsOwner:          ht.IsOwner,
+		ReactionCount:    ht.ReactionCount,
 	}
 }
 
@@ -105,4 +107,5 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.AuthorName = projectPage.AuthorName
 	ht.AuthorAvatarID = projectPage.AuthorAvatarId
 	ht.IsOwner = projectPage.IsOwner
+	ht.ReactionCount = projectPage.ReactionCount
 }
