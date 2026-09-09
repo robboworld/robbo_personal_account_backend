@@ -6,6 +6,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/docker_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/logger"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/skinnykaen/robbo_student_personal_account.git/server"
 	"go.uber.org/fx"
 	"log"
@@ -14,6 +15,9 @@ import (
 func InvokeWith(options ...fx.Option) *fx.App {
 	if err := config.Init(); err != nil {
 		log.Fatalf("%s", err.Error())
+	}
+	if err := oidc.InitSharedStoreFromConfig(); err != nil {
+		log.Printf("[oidc] PKCE store fallback to memory: %v", err)
 	}
 	var di = []fx.Option{
 		fx.Provide(logger.NewLogger),

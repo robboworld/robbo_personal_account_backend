@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"github.com/lib/pq"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -47,6 +48,7 @@ func (r *ProjectsGatewayImpl) CreateProject(project *models.ProjectCore) (id str
 	projectDB := models.ScratchProjectDB{
 		OwnerUserID: project.AuthorId,
 		Title:       project.Name,
+		Tags:        pq.StringArray{},
 	}
 	if projectDB.Title == "" {
 		projectDB.Title = "Untitled"

@@ -1,10 +1,12 @@
 package lmsdb
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	_ "github.com/go-sql-driver/mysql"
@@ -161,7 +163,9 @@ func (r *Reader) IsUserActive(userID int64) (bool, error) {
 	}
 	const q = `SELECT is_active FROM auth_user WHERE id = ? LIMIT 1`
 	var isActive int
-	err := r.db.QueryRow(q, userID).Scan(&isActive)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	err := r.db.QueryRowContext(ctx, q, userID).Scan(&isActive)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}

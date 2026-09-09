@@ -24,6 +24,8 @@ func (c *Config) ExchangeCode(code, codeVerifier string) (*TokenResponse, error)
 	form.Set("client_id", c.ClientID)
 	form.Set("redirect_uri", c.RedirectURI)
 	form.Set("code_verifier", codeVerifier)
+	// Open edX oauth_dispatch returns a signed JWT in access_token when token_type=jwt.
+	form.Set("token_type", "jwt")
 
 	req, err := http.NewRequest(http.MethodPost, c.TokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -43,6 +45,10 @@ func (c *Config) ExchangeCode(code, codeVerifier string) (*TokenResponse, error)
 	var tr TokenResponse
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, err
+	}
+	// Open edX does not emit OIDC id_token; the JWT is the access_token.
+	if tr.IDToken == "" && tr.AccessToken != "" {
+		tr.IDToken = tr.AccessToken
 	}
 	return &tr, nil
 }

@@ -1,5 +1,4 @@
 // rs3 paid-addon placeholder for local licensing tests.
-// Must match core contract: factory(registryHooks, licenseContext) registers premium auto-update.
 globalThis.__RS3_PAID_ADDON_FACTORY__ = function (registry, licenseContext) {
   if (!registry || typeof registry.registerPaidAutoUpdate !== 'function') {
     throw new Error('addon_registry_missing');

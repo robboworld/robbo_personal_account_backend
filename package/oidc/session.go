@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/dgrijalva/jwt-go/v4"
@@ -22,6 +23,9 @@ func SessionTTLSeconds() int {
 }
 
 func IssueSessionToken(sub, edxUserID, email string, role uint, sid string) (string, error) {
+	if strings.TrimSpace(sid) == "" {
+		return "", errors.New("session sid is required")
+	}
 	claims := models.OidcSessionClaims{
 		Sub:       sub,
 		EdxUserID: edxUserID,

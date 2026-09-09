@@ -72,6 +72,8 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 		gin.Logger(),
 		GinContextToContextMiddleware(),
 		TokenAuthMiddleware(handlers.LicensingGateway),
+		CookieCSRFMiddleware(),
+		AuthLoginRateLimit(),
 	)
 	handlers.AuthHandler.InitAuthRoutes(router)
 	if handlers.OIDCHandler != nil {

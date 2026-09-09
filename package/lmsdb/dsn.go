@@ -21,5 +21,14 @@ func ensureParseTimeDSN(dsn string) string {
 	if !strings.Contains(dsn, "collation=") {
 		dsn += "&collation=utf8mb4_unicode_ci"
 	}
+	if !strings.Contains(dsn, "timeout=") {
+		dsn += "&timeout=5s"
+	}
+	if !strings.Contains(dsn, "readTimeout=") {
+		dsn += "&readTimeout=5s"
+	}
+	if !strings.Contains(dsn, "writeTimeout=") {
+		dsn += "&writeTimeout=5s"
+	}
 	return dsn
 }

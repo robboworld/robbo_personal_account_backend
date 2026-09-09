@@ -41,10 +41,12 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	}
 	// Signature only; aud checked manually below.
 	// jwt-go v4: if aud claim is present, Parse fails unless WithAudience or WithoutAudienceValidation.
+	// Open edX JWT_SIGNING_ALGORITHM is RS512 for asymmetric (restricted) apps; RS256 also OK.
 	parser := jwt.NewParser(jwt.WithoutAudienceValidation())
 	token, err := parser.Parse(idToken, func(token *jwt.Token) (interface{}, error) {
-		if token.Method.Alg() != jwt.SigningMethodRS256.Alg() {
-			return nil, fmt.Errorf("unexpected alg %s", token.Method.Alg())
+		alg := token.Method.Alg()
+		if alg != jwt.SigningMethodRS256.Alg() && alg != jwt.SigningMethodRS512.Alg() {
+			return nil, fmt.Errorf("unexpected alg %s", alg)
 		}
 		return key, nil
 	})
@@ -67,13 +69,16 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	if !issuerMatches(claims.Iss, c.Issuer) {
 		return nil, errors.New("oidc: invalid_issuer")
 	}
-	if !audienceMatches(claims.Aud, c.ClientID) && !localMockAudienceAccept(claims.Iss, claims.Aud) {
+	if !audienceMatches(claims.Aud, c.ClientID) &&
+		!(c.Audience != "" && audienceMatches(claims.Aud, c.Audience)) &&
+		!localMockAudienceAccept(claims.Iss, claims.Aud) {
 		return nil, errors.New("oidc: invalid_audience")
 	}
 	if claims.Exp > 0 && time.Now().Unix() >= claims.Exp {
 		return nil, errors.New("oidc: token_expired")
 	}
-	if expectedNonce != "" && claims.Nonce != expectedNonce {
+	// Open edX JWT access tokens omit nonce even when authorize sent one.
+	if expectedNonce != "" && claims.Nonce != "" && claims.Nonce != expectedNonce {
 		return nil, errors.New("oidc: invalid_nonce")
 	}
 	if claims.Sub == "" {
@@ -183,6 +188,7 @@ type Config struct {
 	TokenEndpoint         string
 	JWKSURI               string
 	ClientID              string
+	Audience              string // optional; Open edX uses aud=openedx
 	RedirectURI           string
 	Scopes                string
 	jwks                  *jwksCache
@@ -195,6 +201,7 @@ func LoadConfig() (*Config, error) {
 		TokenEndpoint:         viper.GetString("oidc.tokenEndpoint"),
 		JWKSURI:               viper.GetString("oidc.jwksUri"),
 		ClientID:              viper.GetString("oidc.clientId"),
+		Audience:              viper.GetString("oidc.audience"),
 		RedirectURI:           viper.GetString("oidc.redirectUri"),
 		Scopes:                viper.GetString("oidc.scopes"),
 	}

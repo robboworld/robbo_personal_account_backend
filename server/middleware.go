@@ -17,14 +17,12 @@ import (
 )
 
 func clearBFFSessionCookie(c *gin.Context) {
-	secure := viper.GetBool("auth.refresh_cookie_secure")
-	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
+	oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
 }
 
 func sessionStillActive(sessions licensing.Gateway, sid string) bool {
 	if sid == "" || sessions == nil {
-		// No sid / no sessions store: cannot enforce; allow for backward compat.
-		return true
+		return false
 	}
 	sess, err := sessions.GetActiveSession(sid)
 	return err == nil && sess != nil
@@ -52,7 +50,7 @@ func abortIfUserInactive(c *gin.Context, userID string) bool {
 func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
 		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sub != "" {
-			if claims.Sid != "" && !sessionStillActive(sessions, claims.Sid) {
+			if claims.Sid == "" || !sessionStillActive(sessions, claims.Sid) {
 				clearBFFSessionCookie(c)
 				return false
 			}
@@ -71,8 +69,7 @@ func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 		parts := strings.Split(header, " ")
 		if len(parts) == 2 {
 			if claims, err := oidc.ParseSessionToken(parts[1]); err == nil && claims.Sub != "" {
-				// Password JWT uses Id not Sub — only treat as BFF when typ/sub present.
-				if claims.Sid != "" && !sessionStillActive(sessions, claims.Sid) {
+				if claims.Sid == "" || !sessionStillActive(sessions, claims.Sid) {
 					return false
 				}
 				userID := claims.EdxUserID
@@ -195,7 +192,7 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if claims.Sid != "" && !sessionStillActive(sessions, claims.Sid) {
+		if claims.Sid == "" || !sessionStillActive(sessions, claims.Sid) {
 			c.AbortWithStatusJSON(401, gin.H{"error": "SESSION_NOT_FOUND", "code": "SESSION_NOT_FOUND"})
 			return
 		}

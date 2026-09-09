@@ -155,11 +155,14 @@ func (h *Handler) Refresh(c *gin.Context) {
 		return
 	}
 
-	newAccessToken, err := h.delegate.RefreshToken(refreshToken)
+	newAccessToken, newRefreshToken, err := h.delegate.RefreshToken(refreshToken)
 	if err != nil {
 		fmt.Println(err)
 		ErrorHandling(err, c)
 		return
+	}
+	if newRefreshToken != "" {
+		setRefreshToken(newRefreshToken, c)
 	}
 
 	c.JSON(http.StatusOK, signInResponse{
@@ -298,9 +301,8 @@ func (h *Handler) RevokeSession(c *gin.Context) {
 		return
 	}
 	if isCurrent {
-		secure := viper.GetBool("auth.refresh_cookie_secure")
-		c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
-		c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
+		oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
+		oidc.ClearHTTPOnlyCookie(c, "refresh_token")
 		c.JSON(http.StatusOK, gin.H{"revoked": true, "wasCurrent": true})
 		return
 	}
@@ -341,10 +343,8 @@ func ErrorHandling(err error, c *gin.Context) {
 		})
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):
 		c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": err.Error()})
-	case errors.Is(err, auth.ErrUserNotFound):
-		c.AbortWithStatusJSON(http.StatusNotFound, gin.H{"error": err.Error()})
-	case errors.Is(err, auth.ErrInvalidCredentials):
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+	case errors.Is(err, auth.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid_credentials"})
 	case errors.Is(err, auth.ErrUserInactive):
 		body := gin.H{"error": err.Error(), "code": "USER_INACTIVE"}
 		if inactive, ok := auth.AsAccountInactive(err); ok && inactive.HasBan {
@@ -378,15 +378,12 @@ func getRefreshToken(c *gin.Context) (refreshToken string, err error) {
 }
 
 func setRefreshToken(value string, c *gin.Context) {
-	c.SetCookie(
-		"refresh_token",
-		value,
-		60*60*24*7,
-		"/",
-		"",
-		viper.GetBool("auth.refresh_cookie_secure"),
-		true,
-	)
+	maxAge := 60 * 60 * 24 * 7
+	if value == "" {
+		oidc.ClearHTTPOnlyCookie(c, "refresh_token")
+		return
+	}
+	oidc.SetHTTPOnlyCookie(c, "refresh_token", value, maxAge)
 }
 
 func currentSessionKey(c *gin.Context) string {

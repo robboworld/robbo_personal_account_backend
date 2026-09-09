@@ -45,7 +45,7 @@ func (s *AuthDelegateImpl) SignUpCore(userCore *models.UserCore, client auth.Cli
 	return s.UseCase.SignUp(userCore, client)
 }
 
-func (s *AuthDelegateImpl) RefreshToken(refreshToken string) (newAccessToken string, err error) {
+func (s *AuthDelegateImpl) RefreshToken(refreshToken string) (newAccessToken string, newRefreshToken string, err error) {
 	return s.UseCase.RefreshToken(refreshToken)
 }
 

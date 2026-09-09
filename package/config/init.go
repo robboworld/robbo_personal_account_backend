@@ -69,6 +69,12 @@ func Init() error {
 	if os.Getenv("OIDC_CLIENT_ID") != "" {
 		viper.Set("oidc.clientId", os.Getenv("OIDC_CLIENT_ID"))
 	}
+	if os.Getenv("OIDC_AUDIENCE") != "" {
+		viper.Set("oidc.audience", os.Getenv("OIDC_AUDIENCE"))
+	}
+	if os.Getenv("OIDC_SCOPES") != "" {
+		viper.Set("oidc.scopes", os.Getenv("OIDC_SCOPES"))
+	}
 	if os.Getenv("OIDC_REDIRECT_URI") != "" {
 		viper.Set("oidc.redirectUri", os.Getenv("OIDC_REDIRECT_URI"))
 	}

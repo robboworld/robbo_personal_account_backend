@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -84,7 +85,7 @@ func (r *mutationResolver) Refresh(ctx context.Context) (models.SignInResult, er
 		}
 	}
 
-	newAccessToken, err := r.authDelegate.RefreshToken(refreshToken)
+	newAccessToken, newRefreshToken, err := r.authDelegate.RefreshToken(refreshToken)
 	if err != nil {
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
@@ -93,6 +94,9 @@ func (r *mutationResolver) Refresh(ctx context.Context) (models.SignInResult, er
 				"code": "500",
 			},
 		}
+	}
+	if newRefreshToken != "" {
+		setRefreshToken(newRefreshToken, ginContext)
 	}
 	return &models.SingInResponse{
 		AccessToken: newAccessToken,
@@ -107,9 +111,7 @@ func (r *mutationResolver) Refresh(ctx context.Context) (models.SignInResult, er
 //  - You have helper methods in this file. Move them out to keep these resolver files clean.
 func signInErrorCode(err error) string {
 	switch {
-	case errors.Is(err, auth.ErrUserNotFound):
-		return "404"
-	case errors.Is(err, auth.ErrInvalidCredentials):
+	case errors.Is(err, auth.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
 		return "401"
 	case errors.Is(err, auth.ErrUserInactive):
 		return "403"
@@ -130,13 +132,9 @@ func getRefreshToken(c *gin.Context) (refreshToken string, err error) {
 	return
 }
 func setRefreshToken(value string, c *gin.Context) {
-	c.SetCookie(
-		"refresh_token",
-		value,
-		60*60*24*7,
-		"/",
-		"0.0.0.0",
-		false,
-		false,
-	)
+	if value == "" {
+		oidc.ClearHTTPOnlyCookie(c, "refresh_token")
+		return
+	}
+	oidc.SetHTTPOnlyCookie(c, "refresh_token", value, 60*60*24*7)
 }

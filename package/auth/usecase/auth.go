@@ -210,31 +210,32 @@ func (a *AuthUseCaseImpl) ParseToken(token string, key []byte) (claims *models.U
 	return
 }
 
-func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, err error) {
+func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, newRefreshToken string, err error) {
 	claims, err := a.ParseToken(token, a.refreshSigningKey)
 	if err != nil {
 		fmt.Println(err)
-		return "", err
+		return "", "", err
 	}
 
-	if claims.Sid != "" && a.sessions != nil {
-		sess, sessErr := a.sessions.GetActiveSession(claims.Sid)
-		if sessErr != nil || sess == nil {
-			if sessErr != nil && !errors.Is(sessErr, gorm.ErrRecordNotFound) {
-				log.Printf("auth refresh: get session: %v", sessErr)
-			}
-			return "", auth.ErrSessionNotFound
+	if claims.Sid == "" || a.sessions == nil {
+		return "", "", auth.ErrSessionNotFound
+	}
+	sess, sessErr := a.sessions.GetActiveSession(claims.Sid)
+	if sessErr != nil || sess == nil {
+		if sessErr != nil && !errors.Is(sessErr, gorm.ErrRecordNotFound) {
+			log.Printf("auth refresh: get session: %v", sessErr)
 		}
-		if err := a.sessions.TouchSession(claims.Sid, time.Now().UTC()); err != nil {
-			log.Printf("auth refresh: touch session: %v", err)
-		}
+		return "", "", auth.ErrSessionNotFound
+	}
+	if err := a.sessions.TouchSession(claims.Sid, time.Now().UTC()); err != nil {
+		log.Printf("auth refresh: touch session: %v", err)
 	}
 
 	if claims.Id != "" && !lmsdb.IsUserActiveCached(claims.Id) {
 		if ban := moderation.LookupPublicBanInfo(claims.Id); ban != nil {
-			return "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
+			return "", "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
 		}
-		return "", auth.NewAccountInactiveError("", nil, false)
+		return "", "", auth.NewAccountInactiveError("", nil, false)
 	}
 
 	user := &models.UserCore{
@@ -244,7 +245,11 @@ func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, err
 
 	newAccessToken, err = a.GenerateToken(user, claims.Sid, a.accessExpireDuration, a.accessSigningKey)
 	if err != nil {
-		return "", err
+		return "", "", err
+	}
+	newRefreshToken, err = a.GenerateToken(user, claims.Sid, a.refreshExpireDuration, a.refreshSigningKey)
+	if err != nil {
+		return "", "", err
 	}
 
 	return

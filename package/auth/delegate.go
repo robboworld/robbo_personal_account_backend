@@ -13,7 +13,7 @@ type Delegate interface {
 	SignUpCore(userCore *models.UserCore, client ClientInfo) (accessToken string, refreshToken string, err error)
 	UserIdentity(c *gin.Context) (id string, role models.Role, err error)
 	UserAccess(currentRole models.Role, roles []models.Role, ctx context.Context) (err error)
-	RefreshToken(refreshToken string) (newAccessToken string, err error)
+	RefreshToken(refreshToken string) (newAccessToken string, newRefreshToken string, err error)
 	SignOut(refreshToken string) error
 	ListSessions(lmsUserID string) ([]*models.UserSessionCore, error)
 	RevokeSessionByID(lmsUserID, sessionID string) error

@@ -17,7 +17,7 @@ import (
 // FreeCloudQuotaMB is the max size of a single .sb3 project (not a total storage quota).
 const (
 	FreeCloudQuotaMB = 10
-	FreeSessionLimit = 1
+	FreeSessionLimit = 2
 	FreeSeatLimit    = 1
 	FreeMaxProjects  = 20
 )

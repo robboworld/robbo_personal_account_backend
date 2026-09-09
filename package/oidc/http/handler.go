@@ -54,10 +54,6 @@ func browserAuthorizationEndpoint(endpoint string, c *gin.Context) string {
 	if err != nil {
 		return endpoint
 	}
-	port := parsed.Port()
-	if port == "" {
-		port = "8081"
-	}
 	browserHost := parsed.Hostname()
 	if browserHost == "host.docker.internal" {
 		browserHost = "localhost"
@@ -69,6 +65,19 @@ func browserAuthorizationEndpoint(endpoint string, c *gin.Context) string {
 			}
 		}
 	}
+
+	port := parsed.Port()
+	if port == "" {
+		// Local mock IdP lives on :8081 when the authorize URL omits an explicit port.
+		// Tutor / real IdPs use scheme defaults (:80 / :443) — do not force 8081.
+		switch strings.ToLower(browserHost) {
+		case "localhost", "127.0.0.1", "::1":
+			port = "8081"
+		default:
+			parsed.Host = browserHost
+			return parsed.String()
+		}
+	}
 	parsed.Host = net.JoinHostPort(browserHost, port)
 	return parsed.String()
 }
@@ -78,7 +87,7 @@ func browserAuthorizationEndpoint(endpoint string, c *gin.Context) string {
 // the callback returns login_required; the frontend or next redirect should call
 // /auth/oidc/start?prompt=login to show the IdP login page.
 func (h Handler) Start(c *gin.Context) {
-	returnTo := c.DefaultQuery("return_to", "/home")
+	returnTo := oidc.SanitizeReturnTo(c.DefaultQuery("return_to", "/home"))
 	prompt := c.DefaultQuery("prompt", "none")
 	if prompt != "none" && prompt != "login" && prompt != "consent" {
 		prompt = "none"
@@ -112,13 +121,15 @@ func (h Handler) Start(c *gin.Context) {
 func (h Handler) Status(c *gin.Context) {
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
 		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sub != "" {
-			if claims.Sid != "" && h.sessions != nil {
-				if sess, sErr := h.sessions.GetActiveSession(claims.Sid); sErr != nil || sess == nil {
-					secure := viper.GetBool("auth.refresh_cookie_secure")
-					c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
-					c.JSON(http.StatusOK, authStatusPayload(false, "", "", "", 0))
-					return
-				}
+			if claims.Sid == "" || h.sessions == nil {
+				oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
+				c.JSON(http.StatusOK, authStatusPayload(false, "", "", "", 0))
+				return
+			}
+			if sess, sErr := h.sessions.GetActiveSession(claims.Sid); sErr != nil || sess == nil {
+				oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
+				c.JSON(http.StatusOK, authStatusPayload(false, "", "", "", 0))
+				return
 			}
 			c.JSON(http.StatusOK, authStatusPayload(true, claims.Sub, claims.Email, claims.EdxUserID, claims.Role))
 			return
@@ -233,13 +244,9 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "session_issue_failed"})
 		return
 	}
-	secure := viper.GetBool("auth.refresh_cookie_secure")
-	c.SetCookie(oidc.SessionCookieName, session, oidc.SessionTTLSeconds(), "/", "", secure, true)
+	oidc.SetHTTPOnlyCookie(c, oidc.SessionCookieName, session, oidc.SessionTTLSeconds())
 
-	returnTo := strings.TrimSpace(body.ReturnTo)
-	if returnTo == "" {
-		returnTo = "/home"
-	}
+	returnTo := oidc.SanitizeReturnTo(body.ReturnTo)
 	c.JSON(http.StatusOK, gin.H{
 		"ok":        true,
 		"email":     u.Email,
@@ -276,7 +283,7 @@ func lookupLMSUserForPasswordLogin(c *gin.Context) (*lmsdb.AuthUserLogin, string
 		return nil, "lms_unavailable", http.StatusServiceUnavailable
 	}
 	if u == nil {
-		return nil, "user_not_found", http.StatusUnauthorized
+		return nil, "invalid_credentials", http.StatusUnauthorized
 	}
 	if !u.IsActive {
 		return nil, "user_inactive", http.StatusForbidden
@@ -305,30 +312,32 @@ func authStatusPayload(authenticated bool, sub, email, edxUserID string, role ui
 // resolveLogoutTarget builds a post-logout redirect when IdP end_session is not used.
 func resolveLogoutTarget(frontend, returnTo string) string {
 	frontend = strings.TrimRight(frontend, "/")
-	if returnTo == "" {
+	if strings.TrimSpace(returnTo) == "" {
 		return frontend + "/"
 	}
+	returnTo = oidc.SanitizeReturnTo(returnTo)
 	if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
 		return returnTo
 	}
 	if strings.HasPrefix(returnTo, "/") {
 		return frontend + returnTo
 	}
-	return frontend + "/" + returnTo
+	return frontend + "/"
 }
 
 // Logout clears the BFF session cookie and redirects to the IdP end_session endpoint.
 func (h Handler) Logout(c *gin.Context) {
-	returnTo := c.DefaultQuery("return_to", "")
-	secure := viper.GetBool("auth.refresh_cookie_secure")
+	returnTo := strings.TrimSpace(c.DefaultQuery("return_to", ""))
+	if returnTo != "" {
+		returnTo = oidc.SanitizeReturnTo(returnTo)
+	}
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" && h.sessions != nil {
 		if claims, parseErr := oidc.ParseSessionToken(cookie); parseErr == nil && claims.Sid != "" {
 			_ = h.sessions.RevokeSession(claims.Sid)
 		}
 	}
-	// clear BFF + password-fallback refresh cookies so PublicAuthGate cannot revive the session
-	c.SetCookie(oidc.SessionCookieName, "", -1, "/", "", secure, true)
-	c.SetCookie("refresh_token", "", -1, "/", "", secure, true)
+	oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
+	oidc.ClearHTTPOnlyCookie(c, "refresh_token")
 
 	logoutEndpoint := viper.GetString("oidc.logoutEndpoint")
 	frontend := viper.GetString("oidc.frontendBaseUrl")
@@ -347,11 +356,7 @@ func (h Handler) Logout(c *gin.Context) {
 	}
 	postLogout := viper.GetString("oidc.postLogoutRedirectUri")
 	if returnTo != "" {
-		if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
-			postLogout = returnTo
-		} else {
-			postLogout = resolveLogoutTarget(frontend, returnTo)
-		}
+		postLogout = resolveLogoutTarget(frontend, returnTo)
 	}
 	if postLogout == "" {
 		postLogout = resolveLogoutTarget(frontend, returnTo)
@@ -374,7 +379,7 @@ func (h Handler) Callback(c *gin.Context) {
 			returnTo := "/home"
 			prompt := "login"
 			if entry, ok := oidc.ConsumePKCE(state); ok {
-				returnTo = entry.ReturnTo
+				returnTo = oidc.SanitizeReturnTo(entry.ReturnTo)
 				if entry.Prompt != "" {
 					prompt = entry.Prompt
 				}
@@ -386,6 +391,8 @@ func (h Handler) Callback(c *gin.Context) {
 				}
 				q := url.Values{}
 				q.Set("return_to", returnTo)
+				// Prevent login page from immediately re-trying silent SSO (loop).
+				q.Set("sso_attempted", "1")
 				redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
 				c.Redirect(http.StatusFound, redirectURL)
 				return
@@ -407,25 +414,25 @@ func (h Handler) Callback(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing_code_or_state"})
 		return
 	}
-	// Peek first so a failed token/issuer validation does not burn state into invalid_state on retry.
-	entry, ok := oidc.PeekPKCE(state)
+	// Consume PKCE before token exchange so concurrent/duplicate callbacks cannot
+	// reuse the same verifier, and a burned auth code cannot be retried via refresh.
+	// (IdP authorization codes are single-use: exchange then failed validate left users
+	// on invalid_grant when refreshing the callback URL.)
+	entry, ok := oidc.ConsumePKCE(state)
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_state"})
+		redirectOIDCLoginError(c, "/home", "auth_retry")
 		return
 	}
 	tr, err := h.cfg.ExchangeCode(code, entry.CodeVerifier)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "token_exchange_failed", "details": err.Error()})
+		log.Printf("oidc: token exchange failed: %v", err)
+		redirectOIDCLoginError(c, entry.ReturnTo, "auth_retry")
 		return
 	}
 	claims, err := h.cfg.ValidateIDToken(tr.IDToken, entry.Nonce)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-	if _, ok := oidc.ConsumePKCE(state); !ok {
-		// Race: another concurrent callback already consumed — treat as success path only if we still have claims.
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_state"})
+		log.Printf("oidc: token validate failed: %v", err)
+		redirectOIDCLoginError(c, entry.ReturnTo, "token_invalid")
 		return
 	}
 	edxUserID := ""
@@ -523,13 +530,9 @@ func (h Handler) Callback(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "session_issue_failed"})
 		return
 	}
-	secure := viper.GetBool("auth.refresh_cookie_secure")
-	c.SetCookie(oidc.SessionCookieName, session, oidc.SessionTTLSeconds(), "/", "", secure, true)
-	target := entry.ReturnTo
-	if target == "" {
-		target = "/home"
-	}
-	if strings.HasPrefix(target, "http") {
+	oidc.SetHTTPOnlyCookie(c, oidc.SessionCookieName, session, oidc.SessionTTLSeconds())
+	target := oidc.SanitizeReturnTo(entry.ReturnTo)
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		c.Redirect(http.StatusFound, target)
 		return
 	}
@@ -538,6 +541,22 @@ func (h Handler) Callback(c *gin.Context) {
 		frontend = "http://localhost:3030"
 	}
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s%s", strings.TrimRight(frontend, "/"), target))
+}
+
+// redirectOIDCLoginError sends the browser back to LK /login to start a fresh SSO attempt.
+// Prefer redirect over JSON: browsers land on callback URLs and users refresh them.
+func redirectOIDCLoginError(c *gin.Context, returnTo, errCode string) {
+	frontend := viper.GetString("oidc.frontendBaseUrl")
+	if frontend == "" {
+		frontend = "http://localhost:3030"
+	}
+	q := url.Values{}
+	q.Set("err", errCode)
+	q.Set("sso_attempted", "1")
+	if returnTo != "" {
+		q.Set("return_to", oidc.SanitizeReturnTo(returnTo))
+	}
+	c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode()))
 }
 
 func oidcClientIP(c *gin.Context) string {

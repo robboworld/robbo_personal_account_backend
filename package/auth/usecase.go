@@ -17,7 +17,7 @@ type UseCase interface {
 	SignIn(email, password string, role uint, client ClientInfo) (accessToken string, refreshToken string, err error)
 	SignUp(userCore *models.UserCore, client ClientInfo) (accessToken string, refreshToken string, err error)
 	ParseToken(token string, key []byte) (claims *models.UserClaims, err error)
-	RefreshToken(refreshToken string) (newAccessToken string, err error)
+	RefreshToken(refreshToken string) (newAccessToken string, newRefreshToken string, err error)
 	GenerateToken(user *models.UserCore, sid string, duration time.Duration, signingKey []byte) (token string, err error)
 	// SignOut best-effort revokes the session tied to refreshToken (no-op on parse errors).
 	SignOut(refreshToken string) error

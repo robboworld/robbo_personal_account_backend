@@ -4,7 +4,6 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"sync"
 	"time"
 )
 
@@ -17,15 +16,6 @@ type PKCEEntry struct {
 	Prompt            string
 	KickOtherSessions bool
 	ExpiresAt         time.Time
-}
-
-type pkceEntry = PKCEEntry
-
-var pkceStore = struct {
-	mu    sync.Mutex
-	items map[string]pkceEntry
-}{
-	items: map[string]pkceEntry{},
 }
 
 func randomURLSafe(n int) (string, error) {
@@ -41,37 +31,16 @@ func codeChallengeS256(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func savePKCE(state string, entry pkceEntry) {
-	pkceStore.mu.Lock()
-	defer pkceStore.mu.Unlock()
-	entry.ExpiresAt = time.Now().Add(10 * time.Minute)
-	pkceStore.items[state] = entry
-	for k, v := range pkceStore.items {
-		if time.Now().After(v.ExpiresAt) {
-			delete(pkceStore.items, k)
-		}
-	}
+func savePKCE(state string, entry PKCEEntry) {
+	_ = currentStore().Save(state, entry)
 }
 
-func peekPKCE(state string) (pkceEntry, bool) {
-	pkceStore.mu.Lock()
-	defer pkceStore.mu.Unlock()
-	e, ok := pkceStore.items[state]
-	if !ok || time.Now().After(e.ExpiresAt) {
-		return pkceEntry{}, false
-	}
-	return e, true
+func peekPKCE(state string) (PKCEEntry, bool) {
+	return currentStore().Peek(state)
 }
 
-func loadPKCE(state string) (pkceEntry, bool) {
-	pkceStore.mu.Lock()
-	defer pkceStore.mu.Unlock()
-	e, ok := pkceStore.items[state]
-	if !ok || time.Now().After(e.ExpiresAt) {
-		return pkceEntry{}, false
-	}
-	delete(pkceStore.items, state)
-	return e, true
+func loadPKCE(state string) (PKCEEntry, bool) {
+	return currentStore().Consume(state)
 }
 
 func NewPKCEForReturn(returnTo string) (PKCEEntry, error) {
@@ -100,11 +69,13 @@ func NewPKCEForReturnWithPromptAndKick(returnTo, prompt string, kickOtherSession
 		Nonce:             nonce,
 		CodeVerifier:      verifier,
 		CodeChallenge:     codeChallengeS256(verifier),
-		ReturnTo:          returnTo,
+		ReturnTo:          SanitizeReturnTo(returnTo),
 		Prompt:            prompt,
 		KickOtherSessions: kickOtherSessions,
 	}
-	savePKCE(state, entry)
+	if err := currentStore().Save(state, entry); err != nil {
+		return PKCEEntry{}, err
+	}
 	return entry, nil
 }
 

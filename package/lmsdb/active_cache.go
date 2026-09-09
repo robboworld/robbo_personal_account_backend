@@ -28,12 +28,12 @@ func InvalidateActiveCache(userID int64) {
 }
 
 // IsUserActiveCached returns LMS is_active with a short in-memory TTL cache.
-// On LMS misconfiguration or lookup errors it returns true (fail-open) so a
-// transient MySQL blip does not lock out the whole LK.
+// Lookup or MySQL errors fail closed (inactive) so banned users are not
+// admitted when LMS is unreachable.
 func IsUserActiveCached(userIDStr string) bool {
 	id, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil || id <= 0 {
-		return true
+		return false
 	}
 	now := time.Now()
 	activeCacheMu.RLock()
@@ -45,12 +45,12 @@ func IsUserActiveCached(userIDStr string) bool {
 
 	reader, err := NewReaderFromConfig()
 	if err != nil {
-		return true
+		return false
 	}
 	defer reader.Close()
 	active, err := reader.IsUserActive(id)
 	if err != nil {
-		return true
+		return false
 	}
 	activeCacheMu.Lock()
 	activeCache[id] = activeCacheEntry{active: active, expiresAt: now.Add(activeCacheTTL)}
