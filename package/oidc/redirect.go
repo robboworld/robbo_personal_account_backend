@@ -10,9 +10,27 @@ import (
 
 const defaultSafeReturnTo = "/home"
 
+// Aliases avoid nested query strings in LMS redirect_url (& → &amp; breaks return_to).
+func resolveReturnToAlias(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "lms", "lms_landing", "openedx":
+		lms := strings.TrimSpace(os.Getenv("LMS_URL"))
+		if lms == "" {
+			lms = strings.TrimSpace(viper.GetString("lms.url"))
+		}
+		if lms == "" {
+			return defaultSafeReturnTo
+		}
+		return strings.TrimRight(lms, "/") + "/"
+	default:
+		return raw
+	}
+}
+
 // SanitizeReturnTo accepts a relative path or an absolute URL whose origin is
 // on the allowlist (LK frontend, LMS, Scratch editor, extra env origins).
 func SanitizeReturnTo(raw string) string {
+	raw = resolveReturnToAlias(raw)
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return defaultSafeReturnTo
@@ -89,4 +107,24 @@ func returnToOrigins() []string {
 		add(part)
 	}
 	return out
+}
+
+// ProductLanding is the post-logout URL for a product (no query string — safe as LMS redirect_url).
+func ProductLanding(product string) string {
+	switch strings.ToLower(strings.TrimSpace(product)) {
+	case "lms", "openedx":
+		return resolveReturnToAlias("lms")
+	case "rs", "scratch":
+		rs := strings.TrimSpace(os.Getenv("ROBBO_RS_URL"))
+		if rs == "" {
+			rs = "http://localhost:8601"
+		}
+		return strings.TrimRight(rs, "/") + "/"
+	default:
+		frontend := strings.TrimSpace(viper.GetString("oidc.frontendBaseUrl"))
+		if frontend == "" {
+			frontend = "http://localhost:3030"
+		}
+		return strings.TrimRight(frontend, "/") + "/"
+	}
 }

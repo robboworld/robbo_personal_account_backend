@@ -43,6 +43,10 @@ func (h Handler) InitRoutes(router *gin.Engine) {
 		g.GET("/start", h.Start)
 		g.GET("/callback", h.Callback)
 		g.GET("/logout", h.Logout)
+		g.GET("/logout/lk", h.LogoutFromLK)
+		g.GET("/logout/rs", h.LogoutFromRS)
+		g.GET("/logout/lms", h.LogoutFromLMS)
+		g.GET("/logout/clear", h.LogoutClear)
 		g.GET("/status", h.Status)
 		g.POST("/verify-credentials", h.VerifyCredentials)
 		g.POST("/password-login", h.PasswordLogin)
@@ -325,12 +329,50 @@ func resolveLogoutTarget(frontend, returnTo string) string {
 	return frontend + "/"
 }
 
-// Logout clears the BFF session cookie and redirects to the IdP end_session endpoint.
+// LogoutFromLK: clear BFF, then LMS logout, land on LK.
+func (h Handler) LogoutFromLK(c *gin.Context) {
+	h.finishLogout(c, false, oidc.ProductLanding("lk"))
+}
+
+// LogoutFromRS: clear BFF, then LMS logout, land on RS.
+func (h Handler) LogoutFromRS(c *gin.Context) {
+	h.finishLogout(c, false, oidc.ProductLanding("rs"))
+}
+
+// LogoutFromLMS: LMS already logged out; clear BFF and return to LMS landing.
+func (h Handler) LogoutFromLMS(c *gin.Context) {
+	h.finishLogout(c, true, oidc.ProductLanding("lms"))
+}
+
+// LogoutClear drops the BFF cookie and returns 200 HTML (Open edX IDA logout iframe).
+func (h Handler) LogoutClear(c *gin.Context) {
+	h.revokeBFFSession(c)
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, "<!doctype html><title>signed out</title>")
+}
+
+// Logout keeps query-param API for callers that still pass return_to / skip_idp.
 func (h Handler) Logout(c *gin.Context) {
+	fixAmpInQuery(c)
 	returnTo := strings.TrimSpace(c.DefaultQuery("return_to", ""))
 	if returnTo != "" {
 		returnTo = oidc.SanitizeReturnTo(returnTo)
 	}
+	skipIdP := strings.EqualFold(strings.TrimSpace(c.Query("skip_idp")), "1") ||
+		strings.EqualFold(strings.TrimSpace(c.Query("local_only")), "1")
+	h.finishLogout(c, skipIdP, returnTo)
+}
+
+func fixAmpInQuery(c *gin.Context) {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return
+	}
+	if strings.Contains(c.Request.URL.RawQuery, "&amp;") {
+		c.Request.URL.RawQuery = strings.ReplaceAll(c.Request.URL.RawQuery, "&amp;", "&")
+	}
+}
+
+func (h Handler) revokeBFFSession(c *gin.Context) {
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" && h.sessions != nil {
 		if claims, parseErr := oidc.ParseSessionToken(cookie); parseErr == nil && claims.Sid != "" {
 			_ = h.sessions.RevokeSession(claims.Sid)
@@ -338,6 +380,10 @@ func (h Handler) Logout(c *gin.Context) {
 	}
 	oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
 	oidc.ClearHTTPOnlyCookie(c, "refresh_token")
+}
+
+func (h Handler) finishLogout(c *gin.Context, skipIdP bool, returnTo string) {
+	h.revokeBFFSession(c)
 
 	logoutEndpoint := viper.GetString("oidc.logoutEndpoint")
 	frontend := viper.GetString("oidc.frontendBaseUrl")
@@ -345,7 +391,7 @@ func (h Handler) Logout(c *gin.Context) {
 		frontend = "http://localhost:3030"
 	}
 
-	if logoutEndpoint == "" {
+	if skipIdP || logoutEndpoint == "" {
 		c.Redirect(http.StatusFound, resolveLogoutTarget(frontend, returnTo))
 		return
 	}
@@ -354,15 +400,12 @@ func (h Handler) Logout(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid_logout_endpoint"})
 		return
 	}
-	postLogout := viper.GetString("oidc.postLogoutRedirectUri")
-	if returnTo != "" {
-		postLogout = resolveLogoutTarget(frontend, returnTo)
-	}
-	if postLogout == "" {
-		postLogout = resolveLogoutTarget(frontend, returnTo)
-	}
+	postLogout := resolveLogoutTarget(frontend, returnTo)
 	if postLogout != "" {
 		q := logoutURL.Query()
+		// Open edX /logout reads redirect_url. Nested query strings in that value
+		// get HTML-escaped (& → &amp;) — product landings must not contain '&'.
+		q.Set("redirect_url", postLogout)
 		q.Set("post_logout_redirect_uri", postLogout)
 		logoutURL.RawQuery = q.Encode()
 	}
@@ -385,13 +428,17 @@ func (h Handler) Callback(c *gin.Context) {
 				}
 			}
 			if prompt == "none" {
+				// Stay on the originating product (RS / LMS / LK), do not dump onto LK /login.
+				if strings.HasPrefix(returnTo, "http://") || strings.HasPrefix(returnTo, "https://") {
+					c.Redirect(http.StatusFound, returnTo)
+					return
+				}
 				frontend := viper.GetString("oidc.frontendBaseUrl")
 				if frontend == "" {
 					frontend = "http://localhost:3030"
 				}
 				q := url.Values{}
 				q.Set("return_to", returnTo)
-				// Prevent login page from immediately re-trying silent SSO (loop).
 				q.Set("sso_attempted", "1")
 				redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
 				c.Redirect(http.StatusFound, redirectURL)

@@ -21,3 +21,24 @@ func TestSanitizeReturnTo(t *testing.T) {
 		}
 	}
 }
+
+func TestSanitizeReturnToLmsAlias(t *testing.T) {
+	t.Setenv("LMS_URL", "http://local.overhang.io")
+	if got := SanitizeReturnTo("lms"); got != "http://local.overhang.io/" {
+		t.Fatalf("SanitizeReturnTo(lms)=%q want http://local.overhang.io/", got)
+	}
+}
+
+func TestProductLanding(t *testing.T) {
+	t.Setenv("LMS_URL", "http://local.overhang.io")
+	t.Setenv("ROBBO_RS_URL", "http://localhost:8601")
+	if got := ProductLanding("lms"); got != "http://local.overhang.io/" {
+		t.Fatalf("ProductLanding(lms)=%q", got)
+	}
+	if got := ProductLanding("rs"); got != "http://localhost:8601/" {
+		t.Fatalf("ProductLanding(rs)=%q", got)
+	}
+	if got := ProductLanding("lk"); got != "http://localhost:3030/" {
+		t.Fatalf("ProductLanding(lk)=%q", got)
+	}
+}
