@@ -31,7 +31,7 @@ oidc:
   jwksUri: "http://localhost:8081/default/jwks"
   clientId: "lk-web"
   redirectUri: "http://localhost:8080/auth/oidc/callback"
-  scopes: "openid profile email"
+  scopes: "email profile user_id"
   frontendBaseUrl: "http://localhost:3030"
   logoutEndpoint: "http://localhost:8081/default/endsession"
   postLogoutRedirectUri: "http://localhost:3030/"

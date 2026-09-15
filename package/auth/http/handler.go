@@ -139,6 +139,14 @@ func (h *Handler) SignUp(c *gin.Context) {
 		return
 	}
 
+	if auth.IsOidcBffMode() && !auth.LmsPasswordFallbackEnabled() {
+		c.JSON(http.StatusOK, gin.H{
+			"ok":   true,
+			"next": "oidc",
+		})
+		return
+	}
+
 	setRefreshToken(refreshToken, c)
 
 	c.JSON(http.StatusOK, signInResponse{
