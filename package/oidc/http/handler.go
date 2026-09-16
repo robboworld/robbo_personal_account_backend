@@ -334,9 +334,9 @@ func (h Handler) LogoutFromLK(c *gin.Context) {
 	h.finishLogout(c, false, oidc.ProductLanding("lk"))
 }
 
-// LogoutFromRS: clear BFF, then LMS logout, land on RS.
+// LogoutFromRS: clear BFF only, stay on Scratch (no IdP SLO).
 func (h Handler) LogoutFromRS(c *gin.Context) {
-	h.finishLogout(c, false, oidc.ProductLanding("rs"))
+	h.finishLogout(c, true, oidc.ProductLanding("rs"))
 }
 
 // LogoutFromLMS: LMS already logged out; clear BFF and return to LMS landing.

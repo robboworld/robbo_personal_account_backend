@@ -11,7 +11,7 @@ func TestParseAvatarIDFromMeta(t *testing.T) {
 		{"{}", ""},
 		{`{"lk_avatar_id":"ava2"}`, "ava2"},
 		{`{"lk_avatar_id":"ava99"}`, ""},
-		{`{"marketing_emails_opt_in":true,"lk_avatar_id":"ava3"}`, "ava3"},
+		{`{"marketing_emails_opt_in":true,"lk_avatar_id":"ava2"}`, "ava2"},
 		{"not-json", ""},
 	}
 	for _, tc := range cases {

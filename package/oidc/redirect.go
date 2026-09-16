@@ -19,6 +19,9 @@ func resolveReturnToAlias(raw string) string {
 			lms = strings.TrimSpace(viper.GetString("lms.url"))
 		}
 		if lms == "" {
+			lms = strings.TrimSpace(viper.GetString("lms.publicUrl"))
+		}
+		if lms == "" {
 			return defaultSafeReturnTo
 		}
 		return strings.TrimRight(lms, "/") + "/"
@@ -90,6 +93,8 @@ func returnToOrigins() []string {
 	add(viper.GetString("oidc.frontendBaseUrl"))
 	add(viper.GetString("oidc.postLogoutRedirectUri"))
 	add(os.Getenv("LMS_URL"))
+	add(os.Getenv("LMS_PUBLIC_URL"))
+	add(os.Getenv("ROBBO_RS_URL"))
 	add(os.Getenv("OIDC_FRONTEND_BASE_URL"))
 	add("http://localhost:3030")
 	add("http://127.0.0.1:3030")
