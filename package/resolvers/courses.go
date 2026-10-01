@@ -628,7 +628,7 @@ func (r *queryResolver) GetAccessCourseRelationsByStudentID(ctx context.Context,
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsByTeacherID(ctx context.Context, teacherID string) (models.CourseRelationsResult, error) {
@@ -649,7 +649,7 @@ func (r *queryResolver) GetAccessCourseRelationsByTeacherID(ctx context.Context,
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsByUnitAdminID(ctx context.Context, unitAdminID string) (models.CourseRelationsResult, error) {
@@ -670,7 +670,7 @@ func (r *queryResolver) GetAccessCourseRelationsByUnitAdminID(ctx context.Contex
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsRobboUnits(ctx context.Context) (models.CourseRelationsResult, error) {
@@ -691,7 +691,7 @@ func (r *queryResolver) GetAccessCourseRelationsRobboUnits(ctx context.Context) 
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsRobboGroups(ctx context.Context) (models.CourseRelationsResult, error) {
@@ -712,7 +712,7 @@ func (r *queryResolver) GetAccessCourseRelationsRobboGroups(ctx context.Context)
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsStudents(ctx context.Context) (models.CourseRelationsResult, error) {
@@ -733,7 +733,7 @@ func (r *queryResolver) GetAccessCourseRelationsStudents(ctx context.Context) (m
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsTeachers(ctx context.Context) (models.CourseRelationsResult, error) {
@@ -754,7 +754,7 @@ func (r *queryResolver) GetAccessCourseRelationsTeachers(ctx context.Context) (m
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }
 func (r *queryResolver) GetAccessCourseRelationsUnitAdmins(ctx context.Context) (models.CourseRelationsResult, error) {
@@ -775,6 +775,6 @@ func (r *queryResolver) GetAccessCourseRelationsUnitAdmins(ctx context.Context) 
 		return &models.Error{Message: err.Error()}, err
 	}
 	return &models.CourseRelationHTTPList{
-		courseRelations,
+		CourseRelations: courseRelations,
 	}, nil
 }

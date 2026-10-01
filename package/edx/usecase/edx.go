@@ -335,6 +335,10 @@ func (p *EdxApiUseCaseImpl) PostRegistration(registrationMessage edx.Registratio
 	client.Jar = jar
 
 	resp, err := client.Get(viper.GetString("api_urls.getRegistration"))
+	if err != nil {
+		return nil, err
+	}
+	resp.Body.Close()
 	token, flag := handleCookies(resp.Cookies())
 	if flag == false {
 		return nil, errors.New("csrf token not found")
@@ -350,10 +354,16 @@ func (p *EdxApiUseCaseImpl) PostRegistration(registrationMessage edx.Registratio
 	buffer.WriteString(params.Encode())
 
 	request, err := http.NewRequest("POST", urlAddr, buffer)
+	if err != nil {
+		return nil, err
+	}
 	request.Header.Add("x-csrftoken", token)
 	request.Header.Add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 	request.Header.Add("Referer", "https://edx-test.ru/login?next=%2F'")
 	resp, err = client.Do(request)
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
@@ -377,6 +387,10 @@ func (p *EdxApiUseCaseImpl) Login(email, password string) (respBody []byte, err 
 	client.Jar = jar
 
 	resp, err := client.Get(viper.GetString("api_urls.getLogin"))
+	if err != nil {
+		return nil, err
+	}
+	resp.Body.Close()
 	token, flag := handleCookies(resp.Cookies())
 	if flag == false {
 		return nil, errors.New("csrf token not found")
@@ -389,11 +403,16 @@ func (p *EdxApiUseCaseImpl) Login(email, password string) (respBody []byte, err 
 	buffer.WriteString(params.Encode())
 
 	request, err := http.NewRequest("POST", urlAddr, buffer)
+	if err != nil {
+		return nil, err
+	}
 	request.Header.Add("x-csrftoken", token)
 	request.Header.Add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
 	request.Header.Add("Referer", "https://edx-test.ru/login?next=%2F'")
 	resp, err = client.Do(request)
-
+	if err != nil {
+		return nil, err
+	}
 	defer resp.Body.Close()
 
 	body, err := ioutil.ReadAll(resp.Body)
