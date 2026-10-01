@@ -114,8 +114,15 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if path == "/projectPage/public" ||
-			(c.Request.Method == "GET" && strings.HasSuffix(path, "/preview") && strings.HasPrefix(path, "/projectPage/")) {
+		if path == "/projectPage/public" {
+			c.Next()
+			return
+		}
+		if c.Request.Method == "GET" && strings.HasSuffix(path, "/preview") && strings.HasPrefix(path, "/projectPage/") {
+			// Public for shared projects, but a signed-in owner must also get a private
+			// project's preview (an <img> sends only the session cookie): identify the
+			// viewer when a session is present, never reject.
+			applyOidcSession(c, sessions)
 			c.Next()
 			return
 		}

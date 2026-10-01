@@ -55,3 +55,34 @@ func TestApplyOidcSessionRejectsBorrowedSid(t *testing.T) {
 		t.Fatal("session with another user's sid accepted")
 	}
 }
+
+func TestPreviewPathIdentifiesSessionViewerWithoutRequiringIt(t *testing.T) {
+	viper.Set("auth.access_signing_key", "0123456789abcdef0123456789abcdef")
+	t.Cleanup(func() { viper.Set("auth.access_signing_key", "") })
+	sessions := fakeSessions{owners: map[string]string{"sid-alice": "1"}}
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.Use(TokenAuthMiddleware(sessions))
+	engine.GET("/projectPage/:id/preview", func(c *gin.Context) {
+		id, _ := c.Get("user_id")
+		c.String(http.StatusOK, "%v", id)
+	})
+
+	tok, err := oidc.IssueSessionToken("alice", "1", "a@example.com", uint(models.Student), "sid-alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/projectPage/p1/preview", nil)
+	req.AddCookie(&http.Cookie{Name: oidc.SessionCookieName, Value: tok})
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, req)
+	if w.Code != http.StatusOK || w.Body.String() != "1" {
+		t.Fatalf("with session: status=%d viewer=%q want 200 and 1", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/projectPage/p1/preview", nil))
+	if w.Code != http.StatusOK || w.Body.String() != "<nil>" {
+		t.Fatalf("anonymous: status=%d viewer=%q want 200 and no viewer", w.Code, w.Body.String())
+	}
+}
