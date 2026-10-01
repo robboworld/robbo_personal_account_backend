@@ -5,13 +5,13 @@ package integration_tests
 
 import (
 	"context"
-	"github.com/skinnykaen/robbo_student_personal_account.git/app"
+	"github.com/skinnykaen/robbo_student_personal_account.git/app/apptest"
 	"os"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
-	app, cleanerContainer := app.TestApp()
+	app, cleanerContainer := apptest.TestApp()
 	ctx := context.Background()
 	app.Start(ctx)
 	code := m.Run()

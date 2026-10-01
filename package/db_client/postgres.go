@@ -1,7 +1,6 @@
 package db_client
 
 import (
-	"github.com/ory/dockertest/v3"
 	"log"
 	"os"
 	"time"
@@ -70,28 +69,9 @@ func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err 
 	return
 }
 
-func NewTestPostgresClient(_logger *log.Logger, testDockerClient dockertest.Pool) (testPostgresClient PostgresClient, err error) {
-	var gdb *gorm.DB
-	if err = testDockerClient.Retry(func() error {
-		gdb, err = OpenByDSN(viper.GetString("postgres.postgresDsn"))
-		if err != nil {
-			log.Println("Test database not ready yet (it is booting up, wait for a few tries)...")
-			return err
-		}
-		db, sqlErr := gdb.DB()
-		if sqlErr != nil {
-			return sqlErr
-		}
-		return db.Ping()
-	}); err != nil {
-		log.Fatalf("Could not connect to docker: %s", err)
-	}
-	testPostgresClient = PostgresClient{
-		Db:     gdb,
-		logger: _logger,
-	}
-	err = testPostgresClient.Migrate()
-	return
+// WrapDB wraps an already opened handle (test containers) without migrating it.
+func WrapDB(db *gorm.DB, _logger *log.Logger) PostgresClient {
+	return PostgresClient{Db: db, logger: _logger}
 }
 
 func (c *PostgresClient) Migrate() (err error) {
