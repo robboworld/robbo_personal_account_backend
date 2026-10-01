@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -160,7 +159,8 @@ func viperWriteDSN() string {
 
 // Writer provides write access to openedx.auth_user and auth_userprofile.
 type Writer struct {
-	db *sql.DB
+	db     *sql.DB
+	shared bool // process-wide pool from sharedDB: Close is a no-op
 }
 
 func NewWriterFromConfig() (*Writer, error) {
@@ -168,19 +168,15 @@ func NewWriterFromConfig() (*Writer, error) {
 	if dsn == "" {
 		return nil, errors.New("lmsMysql.writeDsn or LMS_MYSQL_WRITE_DSN is not configured")
 	}
-	db, err := sql.Open("mysql", ensureParseTimeDSN(dsn))
+	db, err := sharedDB(dsn, "lms mysql write")
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("lms mysql write ping: %w", err)
-	}
-	return &Writer{db: db}, nil
+	return &Writer{db: db, shared: true}, nil
 }
 
 func (w *Writer) Close() error {
-	if w == nil || w.db == nil {
+	if w == nil || w.db == nil || w.shared {
 		return nil
 	}
 	return w.db.Close()

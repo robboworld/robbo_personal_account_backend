@@ -16,7 +16,8 @@ import (
 // Reader provides read-only SQL access to Open edX MySQL (auth_user, enrollments).
 // Use only from workers/scripts — not from HTTP GraphQL handlers.
 type Reader struct {
-	db *sql.DB
+	db     *sql.DB
+	shared bool // process-wide pool from sharedDB: Close is a no-op
 }
 
 func NewReaderFromConfig() (*Reader, error) {
@@ -27,19 +28,15 @@ func NewReaderFromConfig() (*Reader, error) {
 	if dsn == "" {
 		return nil, errors.New("lmsMysql.dsn or LMS_MYSQL_DSN is not configured")
 	}
-	db, err := sql.Open("mysql", ensureParseTimeDSN(dsn))
+	db, err := sharedDB(dsn, "lms mysql")
 	if err != nil {
 		return nil, err
 	}
-	if err := db.Ping(); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("lms mysql ping: %w", err)
-	}
-	return &Reader{db: db}, nil
+	return &Reader{db: db, shared: true}, nil
 }
 
 func (r *Reader) Close() error {
-	if r == nil || r.db == nil {
+	if r == nil || r.db == nil || r.shared {
 		return nil
 	}
 	return r.db.Close()

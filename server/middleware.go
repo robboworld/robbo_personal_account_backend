@@ -37,7 +37,16 @@ func abortIfUserInactive(c *gin.Context, userID string) bool {
 	if userID == "" || userID == "0" {
 		return false
 	}
-	if lmsdb.IsUserActiveCached(userID) {
+	active, err := lmsdb.IsUserActiveCached(userID)
+	if err != nil {
+		// Fail closed without logging the user out: LMS is unreachable, not the account disabled.
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
+			"error": "lms_unavailable",
+			"code":  "LMS_UNAVAILABLE",
+		})
+		return true
+	}
+	if active {
 		return false
 	}
 	clearBFFSessionCookie(c)

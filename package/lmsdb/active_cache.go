@@ -27,33 +27,40 @@ func InvalidateActiveCache(userID int64) {
 	activeCacheMu.Unlock()
 }
 
+// lookupUserActive reads auth_user.is_active (replaced in tests).
+var lookupUserActive = func(id int64) (bool, error) {
+	reader, err := NewReaderFromConfig()
+	if err != nil {
+		return false, err
+	}
+	defer reader.Close()
+	return reader.IsUserActive(id)
+}
+
 // IsUserActiveCached returns LMS is_active with a short in-memory TTL cache.
-// Lookup or MySQL errors fail closed (inactive) so banned users are not
-// admitted when LMS is unreachable.
-func IsUserActiveCached(userIDStr string) bool {
+// A lookup error is returned as an error, not as "inactive": callers must still deny the
+// request (fail closed, so banned users are not admitted while LMS is unreachable) but must
+// not end the session or tell an active user that the account is disabled.
+// Errors are not cached. A non-numeric or empty id is inactive.
+func IsUserActiveCached(userIDStr string) (bool, error) {
 	id, err := strconv.ParseInt(userIDStr, 10, 64)
 	if err != nil || id <= 0 {
-		return false
+		return false, nil
 	}
 	now := time.Now()
 	activeCacheMu.RLock()
 	if e, ok := activeCache[id]; ok && now.Before(e.expiresAt) {
 		activeCacheMu.RUnlock()
-		return e.active
+		return e.active, nil
 	}
 	activeCacheMu.RUnlock()
 
-	reader, err := NewReaderFromConfig()
+	active, err := lookupUserActive(id)
 	if err != nil {
-		return false
-	}
-	defer reader.Close()
-	active, err := reader.IsUserActive(id)
-	if err != nil {
-		return false
+		return false, err
 	}
 	activeCacheMu.Lock()
 	activeCache[id] = activeCacheEntry{active: active, expiresAt: now.Add(activeCacheTTL)}
 	activeCacheMu.Unlock()
-	return active
+	return active, nil
 }

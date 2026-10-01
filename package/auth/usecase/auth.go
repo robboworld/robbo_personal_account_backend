@@ -231,11 +231,17 @@ func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, new
 		log.Printf("auth refresh: touch session: %v", err)
 	}
 
-	if claims.Id != "" && !lmsdb.IsUserActiveCached(claims.Id) {
-		if ban := moderation.LookupPublicBanInfo(claims.Id); ban != nil {
-			return "", "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
+	if claims.Id != "" {
+		active, activeErr := lmsdb.IsUserActiveCached(claims.Id)
+		if activeErr != nil {
+			return "", "", fmt.Errorf("auth refresh: lms unavailable: %w", activeErr)
 		}
-		return "", "", auth.NewAccountInactiveError("", nil, false)
+		if !active {
+			if ban := moderation.LookupPublicBanInfo(claims.Id); ban != nil {
+				return "", "", auth.NewAccountInactiveError(ban.Reason, ban.ExpiresAt, true)
+			}
+			return "", "", auth.NewAccountInactiveError("", nil, false)
+		}
 	}
 
 	user := &models.UserCore{
