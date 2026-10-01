@@ -1,0 +1,32 @@
+# Linux override: reach the local DB / ES containers by Docker DNS instead of
+# host.docker.internal (host-gateway connections to host ports fail on many Linux setups).
+# Usage (setup.sh adds it automatically on Linux):
+#   docker compose -f docker-compose.yml -f docker-compose.linux.yml up -d app
+services:
+  app:
+    environment:
+      - PROJECTS_POSTGRES_DSN=${PROJECTS_POSTGRES_DSN_LINUX:-host=robbo_projects_postgres port=5432 user=robbo_projects password=robbo_projects_change_me dbname=robbo_projects sslmode=disable}
+      - LICENSING_POSTGRES_DSN=${LICENSING_POSTGRES_DSN_LINUX:-host=robbo_licensing_postgres port=5432 user=robbo_licensing password=robbo_licensing_change_me dbname=robbo_licensing sslmode=disable}
+      - LMS_MYSQL_DSN=${LMS_MYSQL_DSN:-lk_readonly:lk_readonly_change_me@tcp(lms_mysql_local:3306)/openedx}
+      - LMS_MYSQL_WRITE_DSN=${LMS_MYSQL_WRITE_DSN:-lk_write:lk_write_change_me@tcp(lms_mysql_local:3306)/openedx}
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+    networks:
+      - lk
+      - projects_db
+      - licensing_db
+      - lms_mysql
+      - es
+
+networks:
+  projects_db:
+    external: true
+    name: robbo_projects_db_default
+  licensing_db:
+    external: true
+    name: robbo_licensing_db_default
+  lms_mysql:
+    external: true
+    name: lms_mysql_local_default
+  es:
+    external: true
+    name: rpa2-es_default

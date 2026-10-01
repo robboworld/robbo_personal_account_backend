@@ -1,0 +1,18 @@
+# Tutor Open edX as IdP (local.openedx.io): join Tutor's network so the backend reaches
+# lms:8000 (token / JWKS) and mysql:3306 by service name. Needs Tutor running.
+# Usage (setup.sh adds it when the tutor_local_default network exists):
+#   docker compose -f docker-compose.yml [-f docker-compose.linux.yml] -f docker-compose.tutor.yml up -d app
+services:
+  app:
+    environment:
+      - OIDC_AUDIENCE=${OIDC_AUDIENCE:-openedx}
+      - OIDC_SCOPES=${OIDC_SCOPES:-email profile user_id}
+      # Tutor issuer is a real IdP: never accept a missing aud.
+      - OIDC_ALLOW_MOCK_AUDIENCE=false
+    networks:
+      - tutor_local
+
+networks:
+  tutor_local:
+    external: true
+    name: tutor_local_default
