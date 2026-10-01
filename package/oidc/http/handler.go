@@ -117,6 +117,9 @@ func (h Handler) Start(c *gin.Context) {
 	q.Set("code_challenge", entry.CodeChallenge)
 	q.Set("code_challenge_method", "S256")
 	q.Set("prompt", prompt)
+	if prompt == "login" {
+		q.Set("max_age", "0")
+	}
 	authURL.RawQuery = q.Encode()
 	c.Redirect(http.StatusFound, authURL.String())
 }
@@ -334,9 +337,21 @@ func (h Handler) LogoutFromLK(c *gin.Context) {
 	h.finishLogout(c, false, oidc.ProductLanding("lk"))
 }
 
-// LogoutFromRS: clear BFF only, stay on Scratch (no IdP SLO).
+// LogoutFromRS: clear BFF and IdP session, return to Scratch editor.
+// Top-level redirect only (no popup bridge): RS must not open extra browser windows.
 func (h Handler) LogoutFromRS(c *gin.Context) {
-	h.finishLogout(c, true, oidc.ProductLanding("rs"))
+	h.finishLogoutTopLevel(c, rsLogoutReturnTo(c.Query("return_to")))
+}
+
+// rsLogoutReturnTo keeps an allowlisted absolute return_to (e.g. a Scratch editor URL);
+// anything else, including relative LK paths, falls back to the RS landing.
+func rsLogoutReturnTo(raw string) string {
+	if raw = strings.TrimSpace(raw); raw != "" {
+		if safe := oidc.SanitizeReturnTo(raw); strings.HasPrefix(safe, "http://") || strings.HasPrefix(safe, "https://") {
+			return safe
+		}
+	}
+	return oidc.ProductLanding("rs")
 }
 
 // LogoutFromLMS: LMS already logged out; clear BFF and return to LMS landing.
@@ -382,6 +397,29 @@ func (h Handler) revokeBFFSession(c *gin.Context) {
 	oidc.ClearHTTPOnlyCookie(c, "refresh_token")
 }
 
+// idpLogoutURLWithRedirect builds the IdP /logout URL that returns the browser to redirectTarget.
+// Open edX /logout reads redirect_url; nested query strings in that value get HTML-escaped
+// (& → &amp;), so product landings must not contain '&'.
+func idpLogoutURLWithRedirect(logoutEndpoint, redirectTarget string) (string, error) {
+	logoutURL, err := url.Parse(logoutEndpoint)
+	if err != nil {
+		return "", err
+	}
+	q := logoutURL.Query()
+	q.Set("redirect_url", redirectTarget)
+	q.Set("post_logout_redirect_uri", redirectTarget)
+	logoutURL.RawQuery = q.Encode()
+	return logoutURL.String(), nil
+}
+
+// finishLogoutTopLevel clears BFF then redirects the same browser tab through IdP /logout.
+func (h Handler) finishLogoutTopLevel(c *gin.Context, returnTo string) {
+	h.finishLogout(c, false, returnTo)
+}
+
+// finishLogout clears the BFF session and redirects the same tab: through IdP /logout
+// (which then returns to the product landing) unless skipIdP or no logout endpoint is set.
+// No popup bridge: popups are blocked or detached (noopener) and LMS forbids framing /logout.
 func (h Handler) finishLogout(c *gin.Context, skipIdP bool, returnTo string) {
 	h.revokeBFFSession(c)
 
@@ -391,25 +429,17 @@ func (h Handler) finishLogout(c *gin.Context, skipIdP bool, returnTo string) {
 		frontend = "http://localhost:3030"
 	}
 
+	postLogout := resolveLogoutTarget(frontend, returnTo)
 	if skipIdP || logoutEndpoint == "" {
-		c.Redirect(http.StatusFound, resolveLogoutTarget(frontend, returnTo))
+		c.Redirect(http.StatusFound, postLogout)
 		return
 	}
-	logoutURL, err := url.Parse(logoutEndpoint)
+	idpLogoutURL, err := idpLogoutURLWithRedirect(logoutEndpoint, postLogout)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid_logout_endpoint"})
 		return
 	}
-	postLogout := resolveLogoutTarget(frontend, returnTo)
-	if postLogout != "" {
-		q := logoutURL.Query()
-		// Open edX /logout reads redirect_url. Nested query strings in that value
-		// get HTML-escaped (& → &amp;) — product landings must not contain '&'.
-		q.Set("redirect_url", postLogout)
-		q.Set("post_logout_redirect_uri", postLogout)
-		logoutURL.RawQuery = q.Encode()
-	}
-	c.Redirect(http.StatusFound, logoutURL.String())
+	c.Redirect(http.StatusFound, idpLogoutURL)
 }
 
 func (h Handler) Callback(c *gin.Context) {
