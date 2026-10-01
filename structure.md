@@ -86,7 +86,6 @@ childrenOfParent.go, studentsOfTeacher.go, teacher'sRobboGroups.go, unitadmin'sR
    → Извлекает user_id и role в контекст
 5.2 Конфигурация (package/config/config.yml)
 auth:
-  hash_salt: "hash_salt"
   access_signing_key: "access_signing_key"
   refresh_signing_key: "refresh_signing_key"
   access_token_ttl: 300        # 5 минут

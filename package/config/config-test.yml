@@ -21,7 +21,6 @@ graphqlServer:
   port: "8081"
 
 auth:
-  hash_salt: "test_hash_salt"
   access_signing_key: "test_access_signing_key"
   refresh_signing_key: "test_refresh_signing_key"
   access_token_ttl: 900 # 15 min

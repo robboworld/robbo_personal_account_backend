@@ -1,12 +1,9 @@
 package usecase
 
 import (
-	"crypto/sha1"
-	"fmt"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
-	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -164,22 +161,7 @@ func (p *UsersUseCaseImpl) GetStudentByParentId(parentId string) (students []*mo
 }
 
 func (p *UsersUseCaseImpl) CreateStudent(student *models.StudentCore, parentId string) (newStudent *models.StudentCore, err error) {
-	pwd := sha1.New()
-	pwd.Write([]byte(student.Password))
-	pwd.Write([]byte(viper.GetString("auth.hash_salt")))
-	passwordHash := fmt.Sprintf("%x", pwd.Sum(nil))
-	student.Password = passwordHash
-	newStudent, err = p.usersGateway.CreateStudent(student)
-	if err != nil {
-		return
-	}
-	relation := &models.ChildrenOfParentCore{
-		ChildId:  newStudent.Id,
-		ParentId: parentId,
-	}
-	if parentId != "" {
-		err = p.usersGateway.CreateStudentParentRelation(relation)
-	}
+	err = users.ErrPasswordAccountsRemoved
 	return
 }
 
@@ -254,12 +236,8 @@ func (p *UsersUseCaseImpl) UpdateTeacher(teacher *models.TeacherCore) (teacherUp
 }
 
 func (p *UsersUseCaseImpl) CreateTeacher(teacher *models.TeacherCore) (newTeacher models.TeacherCore, err error) {
-	pwd := sha1.New()
-	pwd.Write([]byte(teacher.Password))
-	pwd.Write([]byte(viper.GetString("auth.hash_salt")))
-	passwordHash := fmt.Sprintf("%x", pwd.Sum(nil))
-	teacher.Password = passwordHash
-	return p.usersGateway.CreateTeacher(teacher)
+	err = users.ErrPasswordAccountsRemoved
+	return
 }
 
 func (p *UsersUseCaseImpl) DeleteTeacher(teacherId string) (err error) {
@@ -290,12 +268,8 @@ func (p *UsersUseCaseImpl) GetAllParent(page, pageSize int) (parents []*models.P
 }
 
 func (p *UsersUseCaseImpl) CreateParent(parent *models.ParentCore) (newParent *models.ParentCore, err error) {
-	pwd := sha1.New()
-	pwd.Write([]byte(parent.Password))
-	pwd.Write([]byte(viper.GetString("auth.hash_salt")))
-	passwordHash := fmt.Sprintf("%x", pwd.Sum(nil))
-	parent.Password = passwordHash
-	return p.usersGateway.CreateParent(parent)
+	err = users.ErrPasswordAccountsRemoved
+	return
 }
 
 func (p *UsersUseCaseImpl) DeleteParent(parentId string) (err error) {
@@ -330,7 +304,8 @@ func (p *UsersUseCaseImpl) GetFreeListenerById(freeListenerId string) (freeListe
 }
 
 func (p *UsersUseCaseImpl) CreateFreeListener(freeListener *models.FreeListenerCore) (newFreeListener *models.FreeListenerCore, err error) {
-	return p.usersGateway.CreateFreeListener(freeListener)
+	err = users.ErrPasswordAccountsRemoved
+	return
 }
 
 func (p *UsersUseCaseImpl) DeleteFreeListener(freeListenerId string) (err error) {
@@ -358,12 +333,8 @@ func (p *UsersUseCaseImpl) UpdateUnitAdmin(unitAdmin *models.UnitAdminCore) (uni
 }
 
 func (p *UsersUseCaseImpl) CreateUnitAdmin(unitAdmin *models.UnitAdminCore) (newUnitAdmin *models.UnitAdminCore, err error) {
-	pwd := sha1.New()
-	pwd.Write([]byte(unitAdmin.Password))
-	pwd.Write([]byte(viper.GetString("auth.hash_salt")))
-	passwordHash := fmt.Sprintf("%x", pwd.Sum(nil))
-	unitAdmin.Password = passwordHash
-	return p.usersGateway.CreateUnitAdmin(unitAdmin)
+	err = users.ErrPasswordAccountsRemoved
+	return
 }
 
 func (p *UsersUseCaseImpl) DeleteUnitAdmin(unitAdminId string) (err error) {

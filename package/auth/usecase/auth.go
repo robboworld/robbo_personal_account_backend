@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"crypto/sha1"
 	"errors"
 	"fmt"
 	"log"
@@ -26,7 +25,6 @@ type AuthUseCaseImpl struct {
 	portal                portalgateway.Gateway
 	sessions              licensing.Gateway
 	streak                streak.UseCase
-	hashSalt              string
 	accessSigningKey      []byte
 	refreshSigningKey     []byte
 	accessExpireDuration  time.Duration
@@ -44,7 +42,6 @@ func SetupAuthUseCase(
 	sessions licensing.Gateway,
 	streakUC streak.UseCase,
 ) AuthUseCaseModule {
-	hashSalt := viper.GetString("auth.hash_salt")
 	accessSigningKey := []byte(viper.GetString("auth.access_signing_key"))
 	refreshSigningKey := []byte(viper.GetString("auth.refresh_signing_key"))
 	accessTokenTTLTime := viper.GetDuration("auth.access_token_ttl")
@@ -56,7 +53,6 @@ func SetupAuthUseCase(
 			portal:                portal,
 			sessions:              sessions,
 			streak:                streakUC,
-			hashSalt:              hashSalt,
 			accessSigningKey:      accessSigningKey,
 			refreshSigningKey:     refreshSigningKey,
 			accessExpireDuration:  accessTokenTTLTime,
@@ -65,132 +61,18 @@ func SetupAuthUseCase(
 	}
 }
 
+// SignIn checks email/password against LMS (lms_db mode or the LMS password fallback).
+// The SHA1 login against the legacy Postgres users tables was removed.
 func (a *AuthUseCaseImpl) SignIn(email, password string, role uint, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
-	if viper.GetBool("legacyPostgres.enabled") {
-		return a.signInLegacy(email, password, role, client)
-	}
 	if auth.LmsPasswordFallbackEnabled() {
 		return a.signInLMS(email, password, client)
 	}
 	return "", "", auth.ErrLegacyAuthDisabled
 }
 
-func (a *AuthUseCaseImpl) signInLegacy(email, password string, role uint, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
-	pwd := sha1.New()
-	pwd.Write([]byte(password))
-	pwd.Write([]byte(a.hashSalt))
-	passwordHash := fmt.Sprintf("%x", pwd.Sum(nil))
-
-	var user = new(models.UserCore)
-	switch models.Role(role) {
-	case models.Student:
-		student, getStudentErr := a.Gateway.GetStudent(email, passwordHash)
-		if getStudentErr != nil {
-			return "", "", getStudentErr
-		}
-		user.Id = student.Id
-		user.Role = models.Student
-	case models.Teacher:
-		teacher, getTeacherErr := a.Gateway.GetTeacher(email, passwordHash)
-		if getTeacherErr != nil {
-			return "", "", getTeacherErr
-		}
-		user.Id = teacher.Id
-		user.Role = models.Teacher
-	case models.Parent:
-		parent, getParentErr := a.Gateway.GetParent(email, passwordHash)
-		if getParentErr != nil {
-			return "", "", getParentErr
-		}
-		user.Id = parent.Id
-		user.Role = models.Parent
-	case models.FreeListener:
-		freeListener, getFreeListenerErr := a.Gateway.GetFreeListener(email, passwordHash)
-		if getFreeListenerErr != nil {
-			return "", "", getFreeListenerErr
-		}
-		user.Id = freeListener.Id
-		user.Role = models.FreeListener
-	case models.UnitAdmin:
-		unitAdmin, getUnitAdminErr := a.Gateway.GetUnitAdmin(email, passwordHash)
-		if getUnitAdminErr != nil {
-			return "", "", getUnitAdminErr
-		}
-		user.Id = unitAdmin.Id
-		user.Role = models.UnitAdmin
-	case models.SuperAdmin:
-		superAdmin, getSuperAdminErr := a.Gateway.GetSuperAdmin(email, passwordHash)
-		if getSuperAdminErr != nil {
-			return "", "", getSuperAdminErr
-		}
-		user.Id = superAdmin.Id
-		user.Role = models.SuperAdmin
-	default:
-		err = auth.ErrUserNotFound
-	}
-
-	if err != nil {
-		return "", "", err
-	}
-
-	return a.issueTokensWithSession(user, "legacy_jwt", client)
-}
-
+// SignUp registers the account in LMS; the legacy Postgres sign-up was removed.
 func (a *AuthUseCaseImpl) SignUp(userCore *models.UserCore, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
-	if !viper.GetBool("legacyPostgres.enabled") {
-		return a.signUpLMS(userCore, client)
-	}
-	pwd := sha1.New()
-	pwd.Write([]byte(userCore.Password))
-	pwd.Write([]byte(a.hashSalt))
-	userCore.Password = fmt.Sprintf("%x", pwd.Sum(nil))
-
-	switch userCore.Role {
-	case models.Student:
-		student := &models.StudentCore{
-			UserCore: *userCore,
-		}
-		newStudent, createStudentErr := a.Gateway.CreateStudent(student)
-		if createStudentErr != nil {
-			return "", "", createStudentErr
-		}
-		userCore.Id = newStudent.Id
-	case models.Teacher:
-		teacher := &models.TeacherCore{
-			UserCore: *userCore,
-		}
-		newTeacher, createTeacherErr := a.Gateway.CreateTeacher(teacher)
-		if createTeacherErr != nil {
-			return "", "", createTeacherErr
-		}
-		userCore.Id = newTeacher.Id
-	case models.Parent:
-		parent := &models.ParentCore{
-			UserCore: *userCore,
-		}
-		newParent, createParentErr := a.Gateway.CreateParent(parent)
-		if createParentErr != nil {
-			return "", "", createParentErr
-		}
-		userCore.Id = newParent.Id
-	case models.FreeListener:
-		freeListener := &models.FreeListenerCore{
-			UserCore: *userCore,
-		}
-		newFreeListener, createFreeListenerErr := a.Gateway.CreateFreeListener(freeListener)
-		if createFreeListenerErr != nil {
-			return "", "", createFreeListenerErr
-		}
-		userCore.Id = newFreeListener.Id
-	default:
-		err = auth.ErrUserNotFound
-	}
-
-	if err != nil {
-		return "", "", err
-	}
-
-	return a.issueTokensWithSession(userCore, "legacy_jwt", client)
+	return a.signUpLMS(userCore, client)
 }
 
 func (a *AuthUseCaseImpl) ParseToken(token string, key []byte) (claims *models.UserClaims, err error) {

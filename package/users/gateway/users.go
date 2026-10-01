@@ -54,23 +54,6 @@ func (r *UsersGatewayImpl) AddStudentToRobboGroup(studentId, robboGroupId, robbo
 	return
 }
 
-func (r *UsersGatewayImpl) GetStudent(email, password string) (student *models.StudentCore, err error) {
-	if !legacyUsersEnabled() {
-		return nil, ErrLegacyUsersDisabled
-	}
-	var studentDb models.StudentDB
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Where("email = ? AND  password = ?", email, password).First(&studentDb).Error; err != nil {
-			err = auth.ErrUserNotFound
-			log.Println(err)
-			return
-		}
-		return
-	})
-	student = studentDb.ToCore()
-	return
-}
-
 func (r *UsersGatewayImpl) SearchStudentsByEmail(email string, page, pageSize int) (
 	students []*models.StudentCore,
 	countRows int64,
@@ -94,23 +77,6 @@ func (r *UsersGatewayImpl) SearchStudentsByEmail(email string, page, pageSize in
 	for _, studentDb := range studentsDb {
 		students = append(students, studentDb.ToCore())
 	}
-	return
-}
-
-func (r *UsersGatewayImpl) CreateStudent(student *models.StudentCore) (newStudent *models.StudentCore, err error) {
-	studentDb := models.StudentDB{}
-	studentDb.FromCore(student)
-
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		err = tx.Create(&studentDb).Error
-		var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-		if errors.As(err, &duplicateEntryError) {
-			return users.ErrAlreadyUsedEmail
-		}
-		return
-	})
-
-	newStudent = studentDb.ToCore()
 	return
 }
 
@@ -191,21 +157,6 @@ func (r *UsersGatewayImpl) UpdateStudent(student *models.StudentCore) (studentUp
 	return
 }
 
-func (r *UsersGatewayImpl) GetTeacher(email, password string) (teacher models.TeacherCore, err error) {
-	var teacherDb models.TeacherDB
-
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Where("email = ? AND  password = ?", email, password).First(&teacherDb).Error; err != nil {
-			err = auth.ErrUserNotFound
-			log.Println(err)
-			return
-		}
-		return
-	})
-	teacher = teacherDb.ToCore()
-	return teacher, err
-}
-
 func (r *UsersGatewayImpl) GetAllTeachers(page, pageSize int) (teachers []models.TeacherCore, countRows int64, err error) {
 	var teachersDB []*models.TeacherDB
 	offset := (page - 1) * pageSize
@@ -243,21 +194,6 @@ func (r *UsersGatewayImpl) GetTeacherById(userId string) (teacher models.Teacher
 	})
 	teacher = teacherDb.ToCore()
 	return teacher, err
-}
-
-func (r *UsersGatewayImpl) CreateTeacher(teacher *models.TeacherCore) (newTeacher models.TeacherCore, err error) {
-	teacherDb := models.TeacherDB{}
-	teacherDb.FromCore(teacher)
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		err = tx.Create(&teacherDb).Error
-		var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-		if errors.As(err, &duplicateEntryError) {
-			return users.ErrAlreadyUsedEmail
-		}
-		return
-	})
-	newTeacher = teacherDb.ToCore()
-	return
 }
 
 func (r *UsersGatewayImpl) DeleteTeacher(teacherId string) (err error) {
@@ -321,20 +257,6 @@ func (r *UsersGatewayImpl) SearchTeacherByEmail(email string, page, pageSize int
 	return
 }
 
-func (r *UsersGatewayImpl) GetParent(email, password string) (parent *models.ParentCore, err error) {
-	var parentDb models.ParentDB
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Where("email = ? AND  password = ?", email, password).First(&parentDb).Error; err != nil {
-			err = auth.ErrUserNotFound
-			log.Println(err)
-			return
-		}
-		return
-	})
-	parent = parentDb.ToCore()
-	return parent, err
-}
-
 func (r *UsersGatewayImpl) GetAllParent(page, pageSize int) (parents []*models.ParentCore, countRows int64, err error) {
 	var parentsDB []*models.ParentDB
 	offset := (page - 1) * pageSize
@@ -370,21 +292,6 @@ func (r *UsersGatewayImpl) GetParentById(parentId string) (parent *models.Parent
 		return
 	})
 	parent = parentDb.ToCore()
-	return
-}
-
-func (r *UsersGatewayImpl) CreateParent(parent *models.ParentCore) (newParent *models.ParentCore, err error) {
-	parentDb := models.ParentDB{}
-	parentDb.FromCore(parent)
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		err = tx.Create(&parentDb).Error
-		var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-		if errors.As(err, &duplicateEntryError) {
-			return users.ErrAlreadyUsedEmail
-		}
-		return
-	})
-	newParent = parentDb.ToCore()
 	return
 }
 
@@ -426,20 +333,6 @@ func (r *UsersGatewayImpl) UpdateParent(parent *models.ParentCore) (parentUpdate
 	return
 }
 
-func (r *UsersGatewayImpl) GetFreeListener(email, password string) (freeListener *models.FreeListenerCore, err error) {
-	var freeListenerDb models.FreeListenerDB
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Where("email = ? AND  password = ?", email, password).First(&freeListenerDb).Error; err != nil {
-			err = auth.ErrUserNotFound
-			log.Println(err)
-			return
-		}
-		return
-	})
-	freeListener = freeListenerDb.ToCore()
-	return
-}
-
 func (r *UsersGatewayImpl) GetFreeListenerById(freeListenerId string) (freeListener *models.FreeListenerCore, err error) {
 	if !legacyUsersEnabled() {
 		core, pErr := r.lmsUserCoreByID(freeListenerId)
@@ -458,23 +351,6 @@ func (r *UsersGatewayImpl) GetFreeListenerById(freeListenerId string) (freeListe
 		return
 	})
 	freeListener = freeListenerDb.ToCore()
-	return
-}
-
-func (r *UsersGatewayImpl) CreateFreeListener(freeListener *models.FreeListenerCore) (newFreeListener *models.FreeListenerCore, err error) {
-	freeListenerDb := models.FreeListenerDB{}
-	freeListenerDb.FromCore(freeListener)
-
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		err = tx.Create(&freeListenerDb).Error
-		var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-		if errors.As(err, &duplicateEntryError) {
-			return users.ErrAlreadyUsedEmail
-		}
-		return
-	})
-
-	newFreeListener = freeListenerDb.ToCore()
 	return
 }
 
@@ -518,20 +394,6 @@ func (r *UsersGatewayImpl) UpdateFreeListener(freeListener *models.FreeListenerC
 	return
 }
 
-func (r *UsersGatewayImpl) GetUnitAdmin(email, password string) (unitAdmin *models.UnitAdminCore, err error) {
-	var unitAdminDb models.UnitAdminDB
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Where("email = ? AND  password = ?", email, password).First(&unitAdminDb).Error; err != nil {
-			err = auth.ErrUserNotFound
-			log.Println(err)
-			return
-		}
-		return
-	})
-	unitAdmin = unitAdminDb.ToCore()
-	return
-}
-
 func (r *UsersGatewayImpl) GetUnitAdminById(unitAdminId string) (unitAdmin *models.UnitAdminCore, err error) {
 	if !legacyUsersEnabled() {
 		core, pErr := r.lmsUserCoreByID(unitAdminId)
@@ -567,22 +429,6 @@ func (r *UsersGatewayImpl) GetAllUnitAdmins(page, pageSize int) (unitAdmins []*m
 	for _, unitAdminDb := range unitAdminsDB {
 		unitAdmins = append(unitAdmins, unitAdminDb.ToCore())
 	}
-	return
-}
-
-func (r *UsersGatewayImpl) CreateUnitAdmin(unitAdmin *models.UnitAdminCore) (newUnitAdmin *models.UnitAdminCore, err error) {
-	unitAdminDb := models.UnitAdminDB{}
-	unitAdminDb.FromCore(unitAdmin)
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		err = tx.Create(&unitAdminDb).Error
-		var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-		if errors.As(err, &duplicateEntryError) {
-			return users.ErrAlreadyUsedEmail
-		}
-		return
-	})
-
-	newUnitAdmin = unitAdminDb.ToCore()
 	return
 }
 
@@ -659,19 +505,6 @@ func (r *UsersGatewayImpl) GetSuperAdminById(superAdminId string) (superAdmin *m
 		if err = tx.Where("id = ?", superAdminId).First(&superAdminDb).Error; err != nil {
 			err = auth.ErrUserNotFound
 			log.Println(err)
-			return
-		}
-		return
-	})
-	superAdmin = superAdminDb.ToCore()
-	return
-}
-
-func (r *UsersGatewayImpl) GetSuperAdmin(email, password string) (superAdmin *models.SuperAdminCore, err error) {
-	var superAdminDb models.SuperAdminDB
-	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
-		if err = tx.Where("email = ? AND  password = ?", email, password).First(&superAdminDb).Error; err != nil {
-			err = auth.ErrUserNotFound
 			return
 		}
 		return
