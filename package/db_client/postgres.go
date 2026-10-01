@@ -1,9 +1,11 @@
 package db_client
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -36,8 +38,47 @@ func NewLogger() logger.Interface {
 	)
 }
 
-func OpenByDSN(dsn string) (db *gorm.DB, err error) {
-	return gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewLogger()})
+var (
+	sharedMu  sync.Mutex
+	sharedDBs = map[string]*gorm.DB{}
+)
+
+// OpenByDSN returns one gorm handle, and so one connection pool, per DSN for the process.
+// Gateways on the same database (projects: 4, licensing: 3) each opened their own pool
+// with no connection limit. A failed open is not cached, so the next call retries.
+func OpenByDSN(dsn string) (*gorm.DB, error) {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	if db := sharedDBs[dsn]; db != nil {
+		return db, nil
+	}
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewLogger()})
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, err
+	}
+	sqlDB.SetMaxOpenConns(25)
+	sqlDB.SetMaxIdleConns(5)
+	sqlDB.SetConnMaxLifetime(30 * time.Minute)
+	sharedDBs[dsn] = db
+	return db, nil
+}
+
+// CloseAll closes the shared pools on shutdown.
+func CloseAll(context.Context) error {
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+	var errs []error
+	for dsn, db := range sharedDBs {
+		if sqlDB, err := db.DB(); err == nil {
+			errs = append(errs, sqlDB.Close())
+		}
+		delete(sharedDBs, dsn)
+	}
+	return errors.Join(errs...)
 }
 
 func postgresDSN() (string, error) {

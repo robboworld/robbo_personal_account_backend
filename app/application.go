@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/config"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -29,7 +31,11 @@ func InvokeWith(options ...fx.Option) *fx.App {
 	var di = []fx.Option{
 		// Stop hooks run in reverse: the HTTP server drains first, LMS pools close last.
 		fx.StopTimeout(StopTimeout),
-		fx.Invoke(func(lc fx.Lifecycle) { lc.Append(fx.Hook{OnStop: lmsdb.CloseAll}) }),
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{OnStop: func(ctx context.Context) error {
+				return errors.Join(lmsdb.CloseAll(ctx), db_client.CloseAll(ctx))
+			}})
+		}),
 		fx.Provide(logger.NewLogger),
 		fx.Provide(db_client.NewPostgresClient),
 		fx.Provide(modules.SetupGateway),
