@@ -1,3 +1,6 @@
+//go:build external
+
+// Calls the live edx test API; run with: go test -tags external ./package/edx/...
 package usecase
 
 import (

@@ -1,3 +1,6 @@
+//go:build integration
+
+// Needs Docker (dockertest Postgres); run with: go test -tags integration ./tests/...
 package integration_tests
 
 import (

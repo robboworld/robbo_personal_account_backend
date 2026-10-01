@@ -64,7 +64,7 @@ func (s *stubCommentGateway) GetProjectPageById(string) (*models.ProjectPageCore
 func (s *stubCommentGateway) GetProjectPageByProjectId(string) (*models.ProjectPageCore, error) {
 	panic("unused")
 }
-func (s *stubCommentGateway) GetPublicProjectPages(int, int, bool) ([]*models.ProjectPageCore, int64, error) {
+func (s *stubCommentGateway) GetPublicProjectPages(int, int, projectPage.PublicListFilter) ([]*models.ProjectPageCore, int64, error) {
 	panic("unused")
 }
 func (s *stubCommentGateway) GetPreviewImage(string) ([]byte, string, error) { panic("unused") }
@@ -87,6 +87,10 @@ func (s *stubCommentGateway) SetLandingFeatured(string, bool, int) (*models.Proj
 	panic("unused")
 }
 func (s *stubCommentGateway) ReorderLandingFeatured([]projectPage.LandingFeaturedOrderItem) error {
+	panic("unused")
+}
+
+func (s *stubCommentGateway) CountProjectsByOwner(string) (int64, error) {
 	panic("unused")
 }
 

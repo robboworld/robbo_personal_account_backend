@@ -22,14 +22,14 @@ func TestValidateSb3Archive_rejectsEmptyTargets(t *testing.T) {
 		0x00, 0x00,
 	}
 	err := validateSb3Archive(empty)
-	if !errors.Is(err, projectPage.ErrBadRequest) {
-		t.Fatalf("expected ErrBadRequest, got %v", err)
+	if !errors.Is(err, projectPage.ErrInvalidProjectFile) {
+		t.Fatalf("expected ErrInvalidProjectFile, got %v", err)
 	}
 }
 
 func TestValidateSb3Archive_rejectsNonZip(t *testing.T) {
 	err := validateSb3Archive([]byte(`{"targets":[]}`))
-	if !errors.Is(err, projectPage.ErrBadRequest) {
-		t.Fatalf("expected ErrBadRequest, got %v", err)
+	if !errors.Is(err, projectPage.ErrInvalidProjectFile) {
+		t.Fatalf("expected ErrInvalidProjectFile, got %v", err)
 	}
 }
