@@ -280,6 +280,9 @@ type MediaHTTP struct {
 	URI string `json:"uri"`
 }
 
+type Mutation struct {
+}
+
 type NewAccessCourseRelationRobboGroup struct {
 	CourseID     string `json:"courseId"`
 	RobboGroupID string `json:"robboGroupId"`
@@ -387,34 +390,15 @@ type ParentHTTPList struct {
 
 func (ParentHTTPList) IsParentsResult() {}
 
-type ProjectPageHTTP struct {
-	ProjectPageID    string   `json:"projectPageId"`
-	LastModified     string   `json:"lastModified"`
-	ProjectID        string   `json:"projectId"`
-	Instruction      string   `json:"instruction"`
-	Notes            string   `json:"notes"`
-	Preview          string   `json:"preview"`
-	LinkScratch      string   `json:"linkScratch"`
-	Title            string   `json:"title"`
-	IsShared         bool     `json:"isShared"`
-	LandingFeatured  bool     `json:"landingFeatured"`
-	LandingSortOrder int      `json:"landingSortOrder"`
-	Tags             []string `json:"tags"`
-	AuthorUserID     string   `json:"authorUserId"`
-	AuthorName       string   `json:"authorName"`
-	AuthorAvatarID   string   `json:"authorAvatarId,omitempty"`
-	IsOwner          bool     `json:"isOwner"`
-	ReactionCount    int64    `json:"reactionCount"`
-}
-
-func (ProjectPageHTTP) IsProjectPageResult() {}
-
 type ProjectPageHTTPList struct {
 	ProjectPages []*ProjectPageHTTP `json:"projectPages"`
 	CountRows    int                `json:"countRows"`
 }
 
 func (ProjectPageHTTPList) IsProjectPagesResult() {}
+
+type Query struct {
+}
 
 type RobboGroupHTTP struct {
 	ID           string         `json:"id"`
@@ -535,12 +519,12 @@ type UpdateProfileInput struct {
 	Firstname        string  `json:"firstname"`
 	Lastname         string  `json:"lastname"`
 	Middlename       string  `json:"middlename"`
-	Bio              *string `json:"bio,omitempty"`
-	LevelOfEducation *string `json:"levelOfEducation,omitempty"`
-	Country          *string `json:"country,omitempty"`
-	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
-	Gender           *string `json:"gender,omitempty"`
-	Language         *string `json:"language,omitempty"`
+	Bio              *string `json:"bio"`
+	LevelOfEducation *string `json:"levelOfEducation"`
+	Country          *string `json:"country"`
+	YearOfBirth      *int    `json:"yearOfBirth"`
+	Gender           *string `json:"gender"`
+	Language         *string `json:"language"`
 }
 
 type UpdateProjectPage struct {
@@ -563,25 +547,4 @@ type UpdateRobboUnit struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	City string `json:"city"`
-}
-
-type UserHTTP struct {
-	ID               string  `json:"id"`
-	Email            string  `json:"email"`
-	Password         string  `json:"password"`
-	Role             int     `json:"role"`
-	Nickname         string  `json:"nickname"`
-	FullName         string  `json:"fullName"`
-	Firstname        string  `json:"firstname"`
-	Lastname         string  `json:"lastname"`
-	Middlename       string  `json:"middlename"`
-	Company          string  `json:"company,omitempty"`
-	Bio              *string `json:"bio,omitempty"`
-	LevelOfEducation *string `json:"levelOfEducation,omitempty"`
-	Country          *string `json:"country,omitempty"`
-	YearOfBirth      *int    `json:"yearOfBirth,omitempty"`
-	Gender           *string `json:"gender,omitempty"`
-	Language         *string `json:"language,omitempty"`
-	AvatarID         *string `json:"avatarId,omitempty"`
-	CreatedAt        string  `json:"createdAt"`
 }

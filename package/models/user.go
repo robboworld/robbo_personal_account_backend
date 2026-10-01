@@ -87,8 +87,8 @@ func (em *UserHTTP) ToCore() UserCore {
 	}
 }
 
-// FromCore maps a user for API output. Password is never exposed (the schema still declares
-// the field; it is always returned empty).
+// FromCore maps a user for API output. Password is never exposed: GraphQL UserHttp has no
+// such field and REST omits the empty value.
 func (em *UserHTTP) FromCore(user *UserCore) {
 	em.ID = user.Id
 	em.Email = user.Email

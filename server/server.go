@@ -16,6 +16,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
 	"github.com/skinnykaen/robbo_student_personal_account.git/graph/generated"
 	"github.com/spf13/viper"
+	"github.com/vektah/gqlparser/v2/ast"
 	"go.uber.org/fx"
 )
 
@@ -121,11 +122,11 @@ func newGraphQLServer(es graphql.ExecutableSchema) *handler.Server {
 	srv.AddTransport(transport.GET{})
 	srv.AddTransport(transport.POST{})
 	srv.AddTransport(transport.MultipartForm{})
-	srv.SetQueryCache(lru.New(1000))
+	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
 	if viper.GetBool("graphql.introspection") {
 		srv.Use(extension.Introspection{})
 	}
-	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New(100)})
+	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New[string](100)})
 	return srv
 }
 

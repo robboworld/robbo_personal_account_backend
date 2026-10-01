@@ -17,6 +17,9 @@ model:
   filename: package/models/graphqlModels_gen.go
   package: models
 
+# Keep REST JSON stable: nullable fields serialize as null, not omitted.
+enable_model_json_omitempty_tag: false
+
 # Where should the resolver implementations go?
 resolver:
   layout: follow-schema
@@ -62,3 +65,9 @@ models:
       - github.com/99designs/gqlgen/graphql.Int
       - github.com/99designs/gqlgen/graphql.Int64
       - github.com/99designs/gqlgen/graphql.Int32
+  UserHttp:
+    model:
+      - github.com/skinnykaen/robbo_student_personal_account.git/package/models.UserHTTP
+  ProjectPageHttp:
+    model:
+      - github.com/skinnykaen/robbo_student_personal_account.git/package/models.ProjectPageHTTP

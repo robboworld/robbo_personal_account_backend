@@ -23,3 +23,7 @@ jobs:
       # Unit tests only: external (live edx API) and integration (dockertest) are tagged out.
       - name: Test
         run: go test -short -race -count=1 ./...
+      - name: GraphQL code matches schema
+        run: |
+          go run github.com/99designs/gqlgen generate
+          git diff --exit-code -- graph package/models package/resolvers

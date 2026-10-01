@@ -1,7 +1,6 @@
 type UserHttp {
     id: String!
     email: String!
-    password: String!
     role: Int!
     nickname: String!
     fullName: String!

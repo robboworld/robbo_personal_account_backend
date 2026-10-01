@@ -5,7 +5,7 @@ GO ?= docker run --rm -v $(CURDIR):/src -w /src \
 	-v robbo-gomod:/go/pkg/mod -v robbo-gocache:/root/.cache/go-build \
 	-e GOFLAGS=-buildvcs=false $(GO_IMAGE) go
 
-.PHONY: build vet test check test-external test-integration
+.PHONY: build vet test check generate test-external test-integration
 
 build:
 	$(GO) build ./...
@@ -18,6 +18,10 @@ test:
 	$(GO) test -short -count=1 ./...
 
 check: build vet test
+
+# Regenerate GraphQL code from graph/*.graphqls (gqlgen.yml).
+generate:
+	$(GO) run github.com/99designs/gqlgen generate
 
 # Calls the live edx test API.
 test-external:
