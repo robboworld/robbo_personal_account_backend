@@ -1,6 +1,9 @@
 package server
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -55,5 +58,22 @@ func TestCorsOriginAllowed_scratchGuiOrigins(t *testing.T) {
 		if !corsOriginAllowed(origin) {
 			t.Fatalf("expected scratch iframe origin %q to be allowed", origin)
 		}
+	}
+}
+
+func TestCORSPreflightAllowsPatch(t *testing.T) {
+	t.Setenv("CORS_ALLOW_PRIVATE_NETWORK", "false")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	h := newCORS().Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	req := httptest.NewRequest(http.MethodOptions, "/api/teacher/classes/1", nil)
+	req.Header.Set("Origin", "http://localhost:3030")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPatch)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:3030" {
+		t.Fatalf("Access-Control-Allow-Origin=%q want http://localhost:3030", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPatch) {
+		t.Fatalf("Access-Control-Allow-Methods=%q want PATCH", got)
 	}
 }

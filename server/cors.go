@@ -2,10 +2,31 @@ package server
 
 import (
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
+
+	"github.com/rs/cors"
 )
+
+// newCORS is the API CORS policy: credentialed requests from allowlisted frontend origins.
+// PATCH is needed by the teacher classes API (PATCH /api/teacher/classes/:id).
+func newCORS() *cors.Cors {
+	return cors.New(cors.Options{
+		AllowOriginFunc:  corsOriginAllowed,
+		AllowCredentials: true,
+		AllowedMethods: []string{
+			http.MethodGet,
+			http.MethodPost,
+			http.MethodPut,
+			http.MethodPatch,
+			http.MethodDelete,
+			http.MethodOptions,
+		},
+		AllowedHeaders: []string{"*"},
+	})
+}
 
 var defaultCORSOrigins = []string{
 	"http://0.0.0.0:3030",

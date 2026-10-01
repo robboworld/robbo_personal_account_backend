@@ -9,7 +9,6 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gin-gonic/gin"
-	"github.com/rs/cors"
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
 	"github.com/skinnykaen/robbo_student_personal_account.git/graph/generated"
 	"github.com/spf13/viper"
@@ -29,22 +28,8 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 				})
 
 				server := &http.Server{
-					Addr: viper.GetString("server.address"),
-					Handler: cors.New(
-						cors.Options{
-							AllowOriginFunc:  corsOriginAllowed,
-							AllowCredentials: true,
-							AllowedMethods: []string{
-								http.MethodGet,
-								http.MethodPost,
-								http.MethodPut,
-								http.MethodDelete,
-								http.MethodOptions,
-								http.MethodOptions,
-							},
-							AllowedHeaders: []string{"*"},
-						},
-					).Handler(router),
+					Addr:    viper.GetString("server.address"),
+					Handler: newCORS().Handler(router),
 					// Larger write window so large .sb3 downloads complete (BYTEA payloads).
 					ReadTimeout:    120 * time.Second,
 					WriteTimeout:   20 * time.Minute,
