@@ -1,6 +1,8 @@
 package http
 
 import (
+	"crypto/subtle"
+	"log"
 	"net/http"
 	"strings"
 
@@ -40,7 +42,8 @@ func (h NotificationsHandler) LMSIngest(c *gin.Context) {
 	}
 	token := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")
 	token = strings.TrimSpace(token)
-	if token == "" || token != viper.GetString("lmsNotifications.ingestBearerToken") {
+	want := viper.GetString("lmsNotifications.ingestBearerToken")
+	if token == "" || want == "" || subtle.ConstantTimeCompare([]byte(token), []byte(want)) != 1 {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
@@ -87,7 +90,8 @@ func (h NotificationsHandler) LMSIngest(c *gin.Context) {
 	}
 	dup, err := h.portal.CreateNotification(n)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		log.Printf("lms ingest: create notification: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
 		return
 	}
 	if dup {

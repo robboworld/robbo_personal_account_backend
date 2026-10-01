@@ -18,12 +18,18 @@ type PostgresClient struct {
 	logger *log.Logger
 }
 
+// NewLogger logs slow queries and errors. Info level (every SQL statement with its bound
+// values: emails, session keys, license keys) only with DEBUG=true.
 func NewLogger() logger.Interface {
+	level := logger.Warn
+	if v := os.Getenv("DEBUG"); v == "true" || v == "1" {
+		level = logger.Info
+	}
 	return logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
 			SlowThreshold:             time.Second,
-			LogLevel:                  logger.Info,
+			LogLevel:                  level,
 			IgnoreRecordNotFoundError: false,
 			Colorful:                  true,
 		},
