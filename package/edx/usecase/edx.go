@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+// edxHTTPClient bounds every LMS API call: the zero http.Client has no timeout, so a hung
+// LMS used to hold request goroutines (and the outbox worker) forever.
+var edxHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
 func (p *EdxApiUseCaseImpl) GetWithAuth(url string) (respBody []byte, err error) {
 	err = p.RefreshToken()
 
@@ -32,7 +36,7 @@ func (p *EdxApiUseCaseImpl) GetWithAuth(url string) (respBody []byte, err error)
 
 	request.Header.Add("Authorization", bearer)
 
-	client := &http.Client{}
+	client := edxHTTPClient
 	response, err := client.Do(request)
 	if err != nil {
 		log.Println("Error on response.\n[ERROR] -", err)
@@ -77,7 +81,7 @@ func (p *EdxApiUseCaseImpl) PostWithAuth(url string, params map[string]interface
 	request.Header.Add("Authorization", bearer)
 	request.Header.Add("Content-Type", "application/json;charset=utf-8")
 
-	client := &http.Client{}
+	client := edxHTTPClient
 	response, err := client.Do(request)
 	if err != nil {
 		log.Println(err)
@@ -99,7 +103,7 @@ func (p *EdxApiUseCaseImpl) PostWithAuth(url string, params map[string]interface
 func (p *EdxApiUseCaseImpl) RefreshToken() (err error) {
 	if viper.GetInt64("api.token_expiration_time") < time.Now().Unix() {
 		urlAddr := viper.GetString("api_urls.refreshToken")
-		response, err := http.PostForm(urlAddr, url.Values{
+		response, err := edxHTTPClient.PostForm(urlAddr, url.Values{
 			"grant_type":    {"client_credentials"},
 			"client_id":     {viper.GetString("api.client_id")},
 			"client_secret": {viper.GetString("api.client_secret")},
@@ -159,7 +163,7 @@ func (p *EdxApiUseCaseImpl) AddStudent(username, courseId string, cohortId int) 
 	request.Header.Add("Authorization", bearer)
 	request.Header.Add("Content-Type", "application/json;charset=utf-8")
 
-	client := &http.Client{}
+	client := edxHTTPClient
 	response, err := client.Do(request)
 	if err != nil {
 		log.Println(err)
@@ -214,7 +218,7 @@ func (p *EdxApiUseCaseImpl) requestWithAuth(method, urlAddr string, params map[s
 	if params != nil {
 		request.Header.Add("Content-Type", "application/json;charset=utf-8")
 	}
-	client := &http.Client{}
+	client := edxHTTPClient
 	response, err := client.Do(request)
 	if err != nil {
 		return nil, edx.ErrOnResp
@@ -276,7 +280,7 @@ func (p *EdxApiUseCaseImpl) GetAllPublicCourses(pageNumber int) (respBody []byte
 	if pageNumber <= 0 || pageNumber >= 5000 {
 		return nil, edx.ErrOnReq
 	}
-	resp, err := http.Get(viper.GetString("api_urls.getAllPublicCourses") + strconv.Itoa(pageNumber) + "&page_size=5")
+	resp, err := edxHTTPClient.Get(viper.GetString("api_urls.getAllPublicCourses") + strconv.Itoa(pageNumber) + "&page_size=5")
 	if err != nil {
 		log.Println(err)
 		return nil, edx.ErrOnReq
@@ -293,7 +297,7 @@ func (p *EdxApiUseCaseImpl) GetAllPublicCourses(pageNumber int) (respBody []byte
 }
 
 func (p *EdxApiUseCaseImpl) GetCoursesByUser() (respBody []byte, err error) {
-	response, err := http.Get(viper.GetString("api_urls.getCourses"))
+	response, err := edxHTTPClient.Get(viper.GetString("api_urls.getCourses"))
 	if err != nil {
 		log.Println(err)
 		return nil, edx.ErrOnReq
@@ -328,7 +332,7 @@ func (p *EdxApiUseCaseImpl) PostRegistration(registrationMessage edx.Registratio
 
 	urlAddr := viper.GetString("api_urls.postRegistration")
 
-	client := &http.Client{}
+	client := edxHTTPClient
 	jar := &myjar{}
 	jar.jar = make(map[string][]*http.Cookie)
 	client.Jar = jar
@@ -380,7 +384,7 @@ func (p *EdxApiUseCaseImpl) PostRegistration(registrationMessage edx.Registratio
 func (p *EdxApiUseCaseImpl) Login(email, password string) (respBody []byte, err error) {
 
 	urlAddr := viper.GetString("api_urls.login")
-	client := &http.Client{}
+	client := edxHTTPClient
 	jar := &myjar{}
 	jar.jar = make(map[string][]*http.Cookie)
 	client.Jar = jar
