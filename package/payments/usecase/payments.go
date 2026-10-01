@@ -15,10 +15,17 @@ import (
 	"go.uber.org/fx"
 )
 
+// yookassaAPI is the part of the YooKassa client the use case needs (faked in tests).
+type yookassaAPI interface {
+	IsConfigured() bool
+	CreatePayment(req yookassa.CreatePaymentRequest) (*yookassa.CreatePaymentResult, error)
+	GetPayment(paymentID string) (*yookassa.PaymentInfo, error)
+}
+
 type PaymentsUseCaseImpl struct {
 	gateway   payments.Gateway
 	licensing licensing.UseCase
-	yk        *yookassa.Client
+	yk        yookassaAPI
 }
 
 type PaymentsUseCaseModule struct {
@@ -264,6 +271,10 @@ func (u *PaymentsUseCaseImpl) HandleWebhook(rawBody []byte, sourceIP string) err
 
 	switch event {
 	case "payment.succeeded":
+		if err := u.verifyPaymentStatus(order, paymentID, "succeeded"); err != nil {
+			u.recordVerificationFailure(order.ID, event, paymentID, sourceIP, err)
+			return err
+		}
 		if err := u.fulfillOrder(order.ID); err != nil {
 			_, _ = u.gateway.CreatePaymentAttempt(&models.PaymentAttemptCore{
 				OrderID:   order.ID,
@@ -285,6 +296,10 @@ func (u *PaymentsUseCaseImpl) HandleWebhook(rawBody []byte, sourceIP string) err
 			Payload:   map[string]interface{}{"payment_id": paymentID},
 		})
 	case "payment.canceled":
+		if err := u.verifyPaymentStatus(order, paymentID, "canceled"); err != nil {
+			u.recordVerificationFailure(order.ID, event, paymentID, sourceIP, err)
+			return err
+		}
 		_ = u.gateway.WithOrderLock(order.ID, func(locked *models.OrderCore) error {
 			if locked.Status == models.OrderStatusPending {
 				locked.Status = models.OrderStatusCanceled
@@ -300,6 +315,50 @@ func (u *PaymentsUseCaseImpl) HandleWebhook(rawBody []byte, sourceIP string) err
 		})
 	}
 	return nil
+}
+
+// verifyPaymentStatus confirms through the YooKassa API that paymentID is the order's payment
+// and has the expected status. Webhook bodies are not signed, so their content is never
+// trusted on its own (a forged "payment.succeeded" must not issue a license).
+func (u *PaymentsUseCaseImpl) verifyPaymentStatus(order *models.OrderCore, paymentID, wantStatus string) error {
+	if order.YookassaPaymentID == "" || paymentID != order.YookassaPaymentID {
+		return payments.ErrBadRequest
+	}
+	if !u.yk.IsConfigured() {
+		return payments.ErrPaymentNotConfigured
+	}
+	info, err := u.yk.GetPayment(paymentID)
+	if err != nil {
+		return fmt.Errorf("%w: %v", payments.ErrPaymentVerificationUnavailable, err)
+	}
+	if info.ID != paymentID {
+		return payments.ErrBadRequest
+	}
+	if num := info.Metadata["order_number"]; num != "" && num != order.OrderNumber {
+		return payments.ErrBadRequest
+	}
+	if info.Status != wantStatus {
+		if info.Status == "succeeded" || info.Status == "canceled" {
+			// Final status contradicts the notification: ignore it.
+			return payments.ErrBadRequest
+		}
+		// pending / waiting_for_capture: let YooKassa retry the notification later.
+		return fmt.Errorf("%w: payment status %s", payments.ErrPaymentVerificationUnavailable, info.Status)
+	}
+	return nil
+}
+
+func (u *PaymentsUseCaseImpl) recordVerificationFailure(orderID, event, paymentID, sourceIP string, err error) {
+	_, _ = u.gateway.CreatePaymentAttempt(&models.PaymentAttemptCore{
+		OrderID:   orderID,
+		EventType: event,
+		Status:    models.PaymentAttemptError,
+		SourceIP:  sourceIP,
+		Payload: map[string]interface{}{
+			"payment_id": paymentID,
+			"error":      "verification: " + err.Error(),
+		},
+	})
 }
 
 func (u *PaymentsUseCaseImpl) fulfillOrder(orderID string) error {

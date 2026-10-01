@@ -87,7 +87,8 @@ licensing:
 payments:
   yookassaShopId: ""
   yookassaSecretKey: ""
-  webhookSkipIpCheck: true
+  # Keep false in production: webhooks are accepted only from YooKassa IPs (see TRUSTED_PROXIES).
+  webhookSkipIpCheck: false
   receiptVatCode: 1
   receiptPaymentSubject: "service"
   receiptPaymentMode: "full_payment"

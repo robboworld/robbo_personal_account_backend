@@ -162,6 +162,11 @@ func (h *Handler) YookassaWebhook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_payload"})
 		return
 	}
+	if errors.Is(err, payments.ErrPaymentVerificationUnavailable) || errors.Is(err, payments.ErrPaymentNotConfigured) {
+		// 5xx makes YooKassa retry the notification once the payment can be confirmed.
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "verification_unavailable"})
+		return
+	}
 	// Always 200 for recognized/handled events so YooKassa does not retry forever.
 	c.Status(http.StatusOK)
 }
