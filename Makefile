@@ -1,6 +1,6 @@
 # Go runs in Docker by default (no Go toolchain needed on the host).
 # Use a local toolchain instead: make test GO=go
-GO_IMAGE ?= golang:1.24
+GO_IMAGE ?= golang:1.26
 GO ?= docker run --rm -v $(CURDIR):/src -w /src \
 	-v robbo-gomod:/go/pkg/mod -v robbo-gocache:/root/.cache/go-build \
 	-e GOFLAGS=-buildvcs=false $(GO_IMAGE) go
