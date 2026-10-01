@@ -19,7 +19,7 @@ func profileSelfOrAdminAccess(
 	selfRole models.Role,
 	adminRoles []models.Role,
 ) error {
-	callerRole := ginCtx.Value("user_role").(models.Role)
+	callerRole := roleFromGin(ginCtx)
 	callerID, _ := ginCtx.Value("user_id").(string)
 	if callerRole == selfRole && strings.TrimSpace(targetUserID) == strings.TrimSpace(callerID) {
 		return nil

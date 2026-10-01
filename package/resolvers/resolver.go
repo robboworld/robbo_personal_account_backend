@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/courses"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits"
@@ -28,6 +29,15 @@ type Resolver struct {
 
 type MutationResolver struct{ *Resolver }
 type QueryResolver struct{ *Resolver }
+
+// roleFromGin returns the request role set by the auth middleware, or Anonymous when it is
+// missing (an unchecked type assertion here used to panic the resolver).
+func roleFromGin(c *gin.Context) models.Role {
+	if role, ok := c.Value("user_role").(models.Role); ok {
+		return role
+	}
+	return models.Anonymous
+}
 
 func GinContextFromContext(ctx context.Context) (*gin.Context, error) {
 	ginContext := ctx.Value("GinContextKey")

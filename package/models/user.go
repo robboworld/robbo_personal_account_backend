@@ -87,10 +87,12 @@ func (em *UserHTTP) ToCore() UserCore {
 	}
 }
 
+// FromCore maps a user for API output. Password is never exposed (the schema still declares
+// the field; it is always returned empty).
 func (em *UserHTTP) FromCore(user *UserCore) {
 	em.ID = user.Id
 	em.Email = user.Email
-	em.Password = user.Password
+	em.Password = ""
 	em.Role = int(user.Role)
 	em.Nickname = user.Nickname
 	em.FullName = user.FullName

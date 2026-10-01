@@ -6,7 +6,11 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
+	"github.com/99designs/gqlgen/graphql/handler/lru"
+	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
@@ -20,7 +24,9 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 		fx.Hook{
 			OnStart: func(ctx context.Context) (err error) {
 				router := SetupGinRouter(handlers)
-				router.GET("/", playgroundHandler())
+				if viper.GetBool("graphql.playground") {
+					router.GET("/", playgroundHandler())
+				}
 				router.POST("/query", graphqlHandler(graphQLModule))
 				router.Static("/frontend", "./frontend")
 				router.GET("/frontend", func(c *gin.Context) {
@@ -94,16 +100,32 @@ func playgroundHandler() gin.HandlerFunc {
 }
 
 func graphqlHandler(graphQLModule modules.GraphQLModule) gin.HandlerFunc {
-	h := handler.NewDefaultServer(
-		generated.NewExecutableSchema(
-			generated.Config{
-				Resolvers: &graphQLModule.UsersResolver,
-			},
-		))
+	h := newGraphQLServer(generated.NewExecutableSchema(
+		generated.Config{
+			Resolvers: &graphQLModule.UsersResolver,
+		},
+	))
 
 	return func(c *gin.Context) {
 		h.ServeHTTP(c.Writer, c.Request)
 	}
+}
+
+// newGraphQLServer mirrors handler.NewDefaultServer, except schema introspection is opt-in
+// (graphql.introspection / GRAPHQL_INTROSPECTION): in production it maps the whole API.
+func newGraphQLServer(es graphql.ExecutableSchema) *handler.Server {
+	srv := handler.New(es)
+	srv.AddTransport(transport.Websocket{KeepAlivePingInterval: 10 * time.Second})
+	srv.AddTransport(transport.Options{})
+	srv.AddTransport(transport.GET{})
+	srv.AddTransport(transport.POST{})
+	srv.AddTransport(transport.MultipartForm{})
+	srv.SetQueryCache(lru.New(1000))
+	if viper.GetBool("graphql.introspection") {
+		srv.Use(extension.Introspection{})
+	}
+	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New(100)})
+	return srv
 }
 
 func GinContextToContextMiddleware() gin.HandlerFunc {

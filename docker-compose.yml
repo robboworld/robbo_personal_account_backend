@@ -39,6 +39,9 @@ services:
       - OIDC_RETURN_TO_ORIGINS=${OIDC_RETURN_TO_ORIGINS:-}
       # Local mock IdP (:8081) omits aud; never enable for a real IdP.
       - OIDC_ALLOW_MOCK_AUDIENCE=${OIDC_ALLOW_MOCK_AUDIENCE:-true}
+      # GraphQL playground (GET /) and introspection: local dev only, off by default in code.
+      - GRAPHQL_PLAYGROUND=${GRAPHQL_PLAYGROUND:-true}
+      - GRAPHQL_INTROSPECTION=${GRAPHQL_INTROSPECTION:-true}
       - AUTH_HASH_SALT=${AUTH_HASH_SALT}
       - AUTH_ACCESS_SIGNING_KEY=${AUTH_ACCESS_SIGNING_KEY}
       - AUTH_REFRESH_SIGNING_KEY=${AUTH_REFRESH_SIGNING_KEY}

@@ -18,7 +18,7 @@ func (r *mutationResolver) CreateRobboGroup(ctx context.Context, input models.Ne
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -44,7 +44,7 @@ func (r *mutationResolver) UpdateRobboGroup(ctx context.Context, input models.Up
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
@@ -78,7 +78,7 @@ func (r *mutationResolver) DeleteRobboGroup(ctx context.Context, robboGroupID st
 		err := errors.New("internal server error")
 		return &models.DeletedRobboGroup{RobboGroupID: ""}, err
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -104,7 +104,7 @@ func (r *queryResolver) GetRobboGroupByID(ctx context.Context, id string) (model
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 
 	allowedRoles := []models.Role{models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
@@ -131,7 +131,7 @@ func (r *queryResolver) GetRobboGroupsByTeacherID(ctx context.Context, teacherID
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -161,7 +161,7 @@ func (r *queryResolver) GetRobboGroupsByRobboUnitID(ctx context.Context, robboUn
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -189,7 +189,7 @@ func (r *queryResolver) GetRobboGroupsByUnitAdminID(ctx context.Context, unitAdm
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -220,7 +220,7 @@ func (r *queryResolver) GetAllRobboGroupsForUnitAdmin(ctx context.Context, page 
 		return nil, getGinContextErr
 	}
 	userId := ginContext.Value("user_id").(string)
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -250,7 +250,7 @@ func (r *queryResolver) GetAllRobboGroups(ctx context.Context, page string, page
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -280,7 +280,7 @@ func (r *queryResolver) GetRobboGroupsByAccessToken(ctx context.Context, page st
 		return nil, getGinContextErr
 	}
 	userId := ginContext.Value("user_id").(string)
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.SuperAdmin, models.UnitAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -310,7 +310,7 @@ func (r *queryResolver) SearchGroupsByName(ctx context.Context, name string, pag
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {

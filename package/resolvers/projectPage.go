@@ -48,7 +48,7 @@ func (r *mutationResolver) CreateProjectPage(ctx context.Context) (models.Projec
 		return nil, getGinContextErr
 	}
 	userId := ginContext.Value("user_id").(string)
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	accessErr := r.authDelegate.UserAccess(userRole, projectCreateRoles(), ctx)
 	if accessErr != nil {
 		return nil, accessErr
@@ -81,7 +81,7 @@ func (r *mutationResolver) UpdateProjectPage(ctx context.Context, input models.U
 		return nil, getGinContextErr
 	}
 	userId := ginContext.Value("user_id").(string)
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	accessErr := r.authDelegate.UserAccess(userRole, projectCreateRoles(), ctx)
 	if accessErr != nil {
 		return nil, accessErr
@@ -133,7 +133,7 @@ func (r *mutationResolver) DeleteProjectPage(ctx context.Context, projectID stri
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	accessErr := r.authDelegate.UserAccess(userRole, projectCreateRoles(), ctx)
 	if accessErr != nil {
 		return nil, accessErr
@@ -169,7 +169,7 @@ func (r *queryResolver) GetProjectPageByID(ctx context.Context, projectPageID st
 		return nil, getGinContextErr
 	}
 	userId := ginContext.Value("user_id").(string)
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	if err := requireAuthenticated(ctx, userRole); err != nil {
 		return nil, err
 	}
@@ -207,7 +207,7 @@ func (r *queryResolver) GetAllProjectPagesByUserID(ctx context.Context, userID s
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	accessErr := r.authDelegate.UserAccess(userRole, projectCreateRoles(), ctx)
 	if accessErr != nil {
 		return nil, accessErr
@@ -237,7 +237,7 @@ func (r *queryResolver) GetAllProjectPagesByAccessToken(ctx context.Context, pag
 		return nil, getGinContextErr
 	}
 	userId := ginContext.Value("user_id").(string)
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	accessErr := r.authDelegate.UserAccess(userRole, projectCreateRoles(), ctx)
 	if accessErr != nil {
 		return nil, accessErr

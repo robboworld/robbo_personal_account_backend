@@ -18,7 +18,7 @@ func (r *mutationResolver) CreateStudent(ctx context.Context, input models.NewSt
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -94,7 +94,7 @@ func (r *mutationResolver) DeleteStudent(ctx context.Context, studentID string) 
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -120,7 +120,7 @@ func (r *mutationResolver) SetRobboGroupIDForStudent(ctx context.Context, studen
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -146,7 +146,7 @@ func (r *mutationResolver) CreateStudentTeacherRelation(ctx context.Context, stu
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -172,7 +172,7 @@ func (r *mutationResolver) DeleteStudentTeacherRelation(ctx context.Context, stu
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -198,7 +198,7 @@ func (r *queryResolver) GetStudentsByParentID(ctx context.Context, parentID stri
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin, models.Parent}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -226,7 +226,7 @@ func (r *queryResolver) GetStudentByID(ctx context.Context, studentID string) (m
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Parent, models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -252,7 +252,7 @@ func (r *queryResolver) GetStudentsByRobboGroup(ctx context.Context, robboGroupI
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin, models.Teacher}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -280,7 +280,7 @@ func (r *queryResolver) GetStudentsByRobboUnitID(ctx context.Context, robboUnitI
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -308,7 +308,7 @@ func (r *queryResolver) GetStudentsByTeacherID(ctx context.Context, teacherID st
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -336,7 +336,7 @@ func (r *queryResolver) GetIndividualStudentsByTeacherID(ctx context.Context, te
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.Teacher, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -364,7 +364,7 @@ func (r *queryResolver) SearchStudentsByEmail(ctx context.Context, email string,
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.UnitAdmin, models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {

@@ -54,7 +54,7 @@ func (r *queryResolver) GetSuperAdminByID(ctx context.Context, superAdminID stri
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
 	}
-	userRole := ginContext.Value("user_role").(models.Role)
+	userRole := roleFromGin(ginContext)
 	allowedRoles := []models.Role{models.SuperAdmin}
 	accessErr := r.authDelegate.UserAccess(userRole, allowedRoles, ctx)
 	if accessErr != nil {
@@ -82,7 +82,7 @@ func (r *queryResolver) GetUser(ctx context.Context, peekUserID *string, peekUse
 	}
 	var userId string
 	var userRole models.Role
-	callerRole := ginContext.Value("user_role").(models.Role)
+	callerRole := roleFromGin(ginContext)
 	if utils.UseString(peekUserID) == "" || peekUserID == nil {
 		userId = ginContext.Value("user_id").(string)
 		userRole = callerRole
@@ -199,7 +199,7 @@ func (r *mutationResolver) SetUserAvatar(ctx context.Context, avatarID *string) 
 		return nil, getGinContextErr
 	}
 	userID, ok := ginContext.Value("user_id").(string)
-	if !ok || userID == "" {
+	if !ok || userID == "" || userID == "0" {
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
 			Message: "unauthorized",
