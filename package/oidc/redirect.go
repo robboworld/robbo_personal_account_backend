@@ -38,10 +38,14 @@ func SanitizeReturnTo(raw string) string {
 	if raw == "" {
 		return defaultSafeReturnTo
 	}
-	if strings.ContainsAny(raw, "\r\n") {
+	if unsafeReturnTo(raw) {
 		return defaultSafeReturnTo
 	}
 	if strings.HasPrefix(raw, "/") && !strings.HasPrefix(raw, "//") {
+		// Must stay a same-origin path: no scheme or host after parsing.
+		if parsed, err := url.Parse(raw); err != nil || parsed.Scheme != "" || parsed.Host != "" {
+			return defaultSafeReturnTo
+		}
 		return raw
 	}
 	parsed, err := url.Parse(raw)
@@ -55,6 +59,19 @@ func SanitizeReturnTo(raw string) string {
 		return raw
 	}
 	return defaultSafeReturnTo
+}
+
+// unsafeReturnTo rejects control characters and backslashes (raw or percent-encoded):
+// browsers treat "/\\evil.com" like "//evil.com", turning a relative path into another origin.
+func unsafeReturnTo(raw string) bool {
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7f || r == '\\' {
+			return true
+		}
+	}
+	lower := strings.ToLower(raw)
+	return strings.Contains(lower, "%5c") || strings.Contains(lower, "%09") ||
+		strings.Contains(lower, "%0a") || strings.Contains(lower, "%0d")
 }
 
 func originAllowed(origin string) bool {
@@ -102,8 +119,6 @@ func returnToOrigins() []string {
 	add("http://127.0.0.1:8601")
 	add("http://localhost:5001")
 	add("http://127.0.0.1:5001")
-	add("https://scratch.example.com")
-	add("http://scratch.example.com")
 
 	for _, part := range strings.Split(os.Getenv("OIDC_RETURN_TO_ORIGINS"), ",") {
 		add(part)

@@ -14,6 +14,15 @@ func TestSanitizeReturnTo(t *testing.T) {
 		{"http://localhost:3030/home", "http://localhost:3030/home"},
 		{"http://localhost:8601/", "http://localhost:8601/"},
 		{"https://evil.example/steal", "/home"},
+		// Backslash / encoded tricks browsers normalise to //evil.com.
+		{"/\\evil.com", "/home"},
+		{"\\\\evil.com", "/home"},
+		{"/%5Cevil.com", "/home"},
+		{"/%5cevil.com", "/home"},
+		{"/\tevil.com", "/home"},
+		{"/projects/1?tab=info", "/projects/1?tab=info"},
+		{"http://localhost:3030@evil.example/", "/home"},
+		{"https://scratch.example.com/", "/home"},
 	}
 	for _, tc := range cases {
 		if got := SanitizeReturnTo(tc.in); got != tc.want {

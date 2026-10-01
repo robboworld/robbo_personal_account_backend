@@ -148,7 +148,16 @@ func (h Handler) Status(c *gin.Context) {
 // VerifyCredentials checks LMS MySQL email/username + password before starting OIDC.
 // Does not issue a session — used by the LK /login form to reject unknown users early.
 func (h Handler) VerifyCredentials(c *gin.Context) {
-	u, errCode, status := lookupLMSUserForPasswordLogin(c)
+	var body struct {
+		Email    string `json:"email"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid_body"})
+		return
+	}
+	u, errCode, status := verifyLMSCredentials(loginName(body.Email, body.Username), body.Password)
 	if errCode != "" {
 		c.JSON(status, gin.H{"ok": false, "error": errCode})
 		return
@@ -173,39 +182,9 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "invalid_body"})
 		return
 	}
-	// Re-bind into context for shared lookup — parse manually.
-	login := strings.TrimSpace(body.Email)
-	if login == "" {
-		login = strings.TrimSpace(body.Username)
-	}
-	password := body.Password
-	if login == "" || password == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "missing_credentials"})
-		return
-	}
-
-	reader, err := lmsdb.NewReaderFromConfig()
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "lms_unavailable"})
-		return
-	}
-	defer reader.Close()
-
-	u, err := reader.LookupAuthUserForLogin(login)
-	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"ok": false, "error": "lms_unavailable"})
-		return
-	}
-	if u == nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "error": "user_not_found"})
-		return
-	}
-	if !u.IsActive {
-		c.JSON(http.StatusForbidden, gin.H{"ok": false, "error": "user_inactive"})
-		return
-	}
-	if !lmsdb.VerifyDjangoPassword(password, u.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{"ok": false, "error": "invalid_credentials"})
+	u, errCode, status := verifyLMSCredentials(loginName(body.Email, body.Username), body.Password)
+	if errCode != "" {
+		c.JSON(status, gin.H{"ok": false, "error": errCode})
 		return
 	}
 
@@ -261,24 +240,23 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 	})
 }
 
-func lookupLMSUserForPasswordLogin(c *gin.Context) (*lmsdb.AuthUserLogin, string, int) {
-	var body struct {
-		Email    string `json:"email"`
-		Username string `json:"username"`
-		Password string `json:"password"`
+func loginName(email, username string) string {
+	if login := strings.TrimSpace(email); login != "" {
+		return login
 	}
-	if err := c.ShouldBindJSON(&body); err != nil {
-		return nil, "invalid_body", http.StatusBadRequest
-	}
-	login := strings.TrimSpace(body.Email)
-	if login == "" {
-		login = strings.TrimSpace(body.Username)
-	}
-	password := body.Password
+	return strings.TrimSpace(username)
+}
+
+// dummyPasswordHash keeps unknown-user logins as slow as real ones (no timing oracle).
+const dummyPasswordHash = "pbkdf2_sha256$870000$robbodummysalt$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+// verifyLMSCredentials checks login/password against LMS auth_user. Unknown users and wrong
+// passwords both return invalid_credentials, and an inactive account is reported only after
+// the password matched, so the endpoints do not reveal which accounts exist.
+func verifyLMSCredentials(login, password string) (*lmsdb.AuthUserLogin, string, int) {
 	if login == "" || password == "" {
 		return nil, "missing_credentials", http.StatusBadRequest
 	}
-
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
 		return nil, "lms_unavailable", http.StatusServiceUnavailable
@@ -290,13 +268,14 @@ func lookupLMSUserForPasswordLogin(c *gin.Context) (*lmsdb.AuthUserLogin, string
 		return nil, "lms_unavailable", http.StatusServiceUnavailable
 	}
 	if u == nil {
+		lmsdb.VerifyDjangoPassword(password, dummyPasswordHash)
+		return nil, "invalid_credentials", http.StatusUnauthorized
+	}
+	if !lmsdb.VerifyDjangoPassword(password, u.Password) {
 		return nil, "invalid_credentials", http.StatusUnauthorized
 	}
 	if !u.IsActive {
 		return nil, "user_inactive", http.StatusForbidden
-	}
-	if !lmsdb.VerifyDjangoPassword(password, u.Password) {
-		return nil, "invalid_credentials", http.StatusUnauthorized
 	}
 	return u, "", http.StatusOK
 }
@@ -514,7 +493,13 @@ func (h Handler) Callback(c *gin.Context) {
 	}
 	edxUserID := ""
 	role := models.Student
-	if profile, err := lookupLMSProfileByEmail(claims.Email); err == nil && profile != nil {
+	profile, lookupErr := lookupLMSProfileByEmail(claims.Email)
+	if lookupErr != nil {
+		log.Printf("oidc: LMS profile lookup failed: %v", lookupErr)
+		redirectOIDCLoginError(c, entry.ReturnTo, "auth_retry")
+		return
+	}
+	if profile != nil {
 		if !profile.IsActive {
 			frontend := viper.GetString("oidc.frontendBaseUrl")
 			if frontend == "" {
@@ -553,9 +538,6 @@ func (h Handler) Callback(c *gin.Context) {
 		}
 		q := url.Values{}
 		q.Set("err", "user_not_found")
-		if claims.Email != "" {
-			q.Set("email", claims.Email)
-		}
 		redirectURL := fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode())
 		c.Redirect(http.StatusFound, redirectURL)
 		return
