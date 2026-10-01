@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -16,16 +17,20 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
+var errInvalidTokenAlg = errors.New("unexpected token alg")
+
 func clearBFFSessionCookie(c *gin.Context) {
 	oidc.ClearHTTPOnlyCookie(c, oidc.SessionCookieName)
 }
 
-func sessionStillActive(sessions licensing.Gateway, sid string) bool {
-	if sid == "" || sessions == nil {
+// sessionOwnedBy reports whether sid is an active session of userID. Binding the token's
+// user to the session row stops a forged or cross-used token from borrowing another sid.
+func sessionOwnedBy(sessions licensing.Gateway, sid, userID string) bool {
+	if sid == "" || userID == "" || sessions == nil {
 		return false
 	}
 	sess, err := sessions.GetActiveSession(sid)
-	return err == nil && sess != nil
+	return err == nil && sess != nil && sess.LmsUserID == userID
 }
 
 func abortIfUserInactive(c *gin.Context, userID string) bool {
@@ -50,13 +55,13 @@ func abortIfUserInactive(c *gin.Context, userID string) bool {
 func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 	if cookie, err := c.Cookie(oidc.SessionCookieName); err == nil && cookie != "" {
 		if claims, err := oidc.ParseSessionToken(cookie); err == nil && claims.Sub != "" {
-			if claims.Sid == "" || !sessionStillActive(sessions, claims.Sid) {
-				clearBFFSessionCookie(c)
-				return false
-			}
 			userID := claims.EdxUserID
 			if userID == "" {
 				userID = claims.Sub
+			}
+			if !sessionOwnedBy(sessions, claims.Sid, userID) {
+				clearBFFSessionCookie(c)
+				return false
 			}
 			c.Set("user_id", userID)
 			c.Set("user_role", models.Role(claims.Role))
@@ -69,12 +74,12 @@ func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 		parts := strings.Split(header, " ")
 		if len(parts) == 2 {
 			if claims, err := oidc.ParseSessionToken(parts[1]); err == nil && claims.Sub != "" {
-				if claims.Sid == "" || !sessionStillActive(sessions, claims.Sid) {
-					return false
-				}
 				userID := claims.EdxUserID
 				if userID == "" {
 					userID = claims.Sub
+				}
+				if !sessionOwnedBy(sessions, claims.Sid, userID) {
+					return false
 				}
 				c.Set("user_id", userID)
 				c.Set("user_role", models.Role(claims.Role))
@@ -172,11 +177,15 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 		}
 		data, err := jwt.ParseWithClaims(headerParts[1], &models.UserClaims{},
 			func(token *jwt.Token) (interface{}, error) {
+				if token.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+					return nil, errInvalidTokenAlg
+				}
 				return []byte(viper.GetString("auth.access_signing_key")), nil
 			})
 
 		if err != nil {
-			c.AbortWithStatusJSON(401, err)
+			// Generic body: the parser error text is not for clients.
+			c.AbortWithStatusJSON(401, gin.H{"error": "INVALID_TOKEN", "code": "INVALID_TOKEN"})
 			return
 		}
 
@@ -192,7 +201,7 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		if claims.Sid == "" || !sessionStillActive(sessions, claims.Sid) {
+		if !sessionOwnedBy(sessions, claims.Sid, claims.Id) {
 			c.AbortWithStatusJSON(401, gin.H{"error": "SESSION_NOT_FOUND", "code": "SESSION_NOT_FOUND"})
 			return
 		}

@@ -71,10 +71,13 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	}
 	if !audienceMatches(claims.Aud, c.ClientID) &&
 		!(c.Audience != "" && audienceMatches(claims.Aud, c.Audience)) &&
-		!localMockAudienceAccept(claims.Iss, claims.Aud) {
+		!(allowMockAudience() && localMockAudienceAccept(claims.Iss, claims.Aud)) {
 		return nil, errors.New("oidc: invalid_audience")
 	}
-	if claims.Exp > 0 && time.Now().Unix() >= claims.Exp {
+	if claims.Exp <= 0 {
+		return nil, errors.New("oidc: missing_exp")
+	}
+	if time.Now().Unix() >= claims.Exp {
 		return nil, errors.New("oidc: token_expired")
 	}
 	// Open edX JWT access tokens omit nonce even when authorize sent one.
@@ -99,6 +102,12 @@ func audienceMatches(aud interface{}, clientID string) bool {
 		}
 	}
 	return false
+}
+
+// allowMockAudience enables the local mock IdP audience exception (OIDC_ALLOW_MOCK_AUDIENCE).
+// Off by default: an IdP on a private network address must still send the right aud.
+func allowMockAudience() bool {
+	return viper.GetBool("oidc.allowMockAudience")
 }
 
 // localMockAudienceAccept: navikt/mock-oauth2-server often omits aud or sends issuer id "default".

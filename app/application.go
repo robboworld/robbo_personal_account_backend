@@ -16,6 +16,9 @@ func InvokeWith(options ...fx.Option) *fx.App {
 	if err := config.Init(); err != nil {
 		log.Fatalf("%s", err.Error())
 	}
+	if err := config.ValidateSecrets(); err != nil {
+		log.Fatalf("config: %s", err.Error())
+	}
 	if err := oidc.InitSharedStoreFromConfig(); err != nil {
 		log.Printf("[oidc] PKCE store fallback to memory: %v", err)
 	}

@@ -41,13 +41,19 @@ func IssueSessionToken(sub, edxUserID, email string, role uint, sid string) (str
 		"role":        claims.Role,
 		"sid":         claims.Sid,
 		"exp":         time.Now().Add(time.Duration(ttl) * time.Second).Unix(),
-		"typ":         "lk_bff",
+		"typ":         sessionTokenType,
 	})
 	return token.SignedString([]byte(viper.GetString("auth.access_signing_key")))
 }
 
+// sessionTokenType marks BFF session JWTs; play tokens and legacy JWTs share the signing key.
+const sessionTokenType = "lk_bff"
+
 func ParseSessionToken(token string) (*models.OidcSessionClaims, error) {
 	parsed, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		if t.Method.Alg() != jwt.SigningMethodHS256.Alg() {
+			return nil, errors.New("unexpected session token alg")
+		}
 		return []byte(viper.GetString("auth.access_signing_key")), nil
 	})
 	if err != nil {
@@ -56,6 +62,9 @@ func ParseSessionToken(token string) (*models.OidcSessionClaims, error) {
 	raw, ok := parsed.Claims.(jwt.MapClaims)
 	if !ok {
 		return nil, errors.New("invalid session claims")
+	}
+	if asString(raw["typ"]) != sessionTokenType {
+		return nil, errors.New("not a session token")
 	}
 	return &models.OidcSessionClaims{
 		Sub:       asString(raw["sub"]),

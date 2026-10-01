@@ -12,6 +12,9 @@ import (
 	"time"
 )
 
+// idpHTTPClient bounds IdP token / JWKS calls (the JWKS fetch runs under the cache write lock).
+var idpHTTPClient = &http.Client{Timeout: 10 * time.Second}
+
 type jwksCache struct {
 	mu        sync.RWMutex
 	keys      map[string]*rsa.PublicKey
@@ -52,7 +55,7 @@ func (c *jwksCache) refresh(force bool) error {
 	if !force && time.Since(c.fetchedAt) < c.ttl && len(c.keys) > 0 {
 		return nil
 	}
-	resp, err := http.Get(c.jwksURI)
+	resp, err := idpHTTPClient.Get(c.jwksURI)
 	if err != nil {
 		return err
 	}

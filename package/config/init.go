@@ -69,6 +69,9 @@ func Init() error {
 	if os.Getenv("OIDC_CLIENT_ID") != "" {
 		viper.Set("oidc.clientId", os.Getenv("OIDC_CLIENT_ID"))
 	}
+	if v := os.Getenv("OIDC_ALLOW_MOCK_AUDIENCE"); v != "" {
+		viper.Set("oidc.allowMockAudience", strings.EqualFold(v, "true") || v == "1")
+	}
 	if os.Getenv("OIDC_AUDIENCE") != "" {
 		viper.Set("oidc.audience", os.Getenv("OIDC_AUDIENCE"))
 	}
