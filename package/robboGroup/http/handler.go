@@ -1,7 +1,6 @@
 package http
 
 import (
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -69,8 +68,6 @@ func (h *Handler) CreateRobboGroup(c *gin.Context) {
 		return
 	}
 
-	fmt.Println(robboGroupHttp)
-
 	robboGroupHttp.RobboUnitID = robboUnitId
 	robboGroup, err := h.robboGroupDelegate.CreateRobboGroup(&robboGroupHttp)
 	if err != nil {
@@ -85,7 +82,6 @@ func (h *Handler) CreateRobboGroup(c *gin.Context) {
 }
 
 func (h *Handler) GetAllRobboGroups(c *gin.Context) {
-	fmt.Println("Get all robboGroups")
 	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		log.Println(userIdentityErr)

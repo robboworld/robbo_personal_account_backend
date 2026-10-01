@@ -2,7 +2,6 @@ package gateway
 
 import (
 	"errors"
-	"fmt"
 	"github.com/jackc/pgconn"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -188,7 +187,6 @@ func (r *UsersGatewayImpl) UpdateStudent(student *models.StudentCore) (studentUp
 		}
 		return
 	})
-	fmt.Println(studentDb)
 	studentUpdated = studentDb.ToCore()
 	return
 }
@@ -347,7 +345,6 @@ func (r *UsersGatewayImpl) GetAllParent(page, pageSize int) (parents []*models.P
 		tx.Model(&models.ParentDB{}).Count(&countRows)
 		return
 	})
-	fmt.Println(parentsDB)
 
 	for _, parentDb := range parentsDB {
 		parents = append(parents, parentDb.ToCore())

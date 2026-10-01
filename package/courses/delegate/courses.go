@@ -2,7 +2,6 @@ package delegate
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/courses"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -31,7 +30,6 @@ func (p *CourseDelegateImpl) GetCoursesByRobboUnitId(
 			return nil, courses.ErrBadRequest
 		}
 		err = json.Unmarshal(body, &courseHTTP)
-		fmt.Println(courseHTTP)
 		if err != nil {
 			return nil, courses.ErrInternalServerLevel
 		}
@@ -59,7 +57,6 @@ func (p *CourseDelegateImpl) GetCoursesByRobboGroupId(robboGroupId string,
 			return nil, courses.ErrBadRequest
 		}
 		err = json.Unmarshal(body, &courseHTTP)
-		fmt.Println(courseHTTP)
 		if err != nil {
 			return nil, courses.ErrInternalServerLevel
 		}
@@ -411,7 +408,7 @@ func (p *CourseDelegateImpl) GetCoursesByUser(userId string, role models.Role, p
 	case models.SuperAdmin:
 		body, edxErr := p.EdxUseCase.GetCoursesByUser()
 		if edxErr != nil {
-			fmt.Println(edxErr)
+			log.Println(edxErr)
 			return nil, edxErr
 		}
 		err = json.Unmarshal(body, &coursesListHTTP)

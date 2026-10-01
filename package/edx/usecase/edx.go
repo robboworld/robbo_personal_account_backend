@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -420,7 +419,6 @@ func (p *EdxApiUseCaseImpl) Login(email, password string) (respBody []byte, err 
 		log.Println(err)
 		return nil, err
 	}
-	fmt.Println(string(body))
 	if resp.StatusCode != http.StatusOK {
 		return nil, edx.ErrIncorrectInputParam
 	}

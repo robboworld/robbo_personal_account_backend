@@ -2,7 +2,6 @@ package http
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -67,7 +66,6 @@ func clientInfoFromRequest(c *gin.Context) auth.ClientInfo {
 }
 
 func (h *Handler) SignIn(c *gin.Context) {
-	fmt.Println("SignIn")
 
 	signInInput := &signInput{}
 	if err := c.BindJSON(signInInput); err != nil {
@@ -81,7 +79,7 @@ func (h *Handler) SignIn(c *gin.Context) {
 		signInInput.Email, signInInput.Password, signInInput.Role, client,
 	)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		ErrorHandling(err, c)
 		return
 	}
@@ -101,7 +99,6 @@ type signUpBody struct {
 }
 
 func (h *Handler) SignUp(c *gin.Context) {
-	fmt.Println("SignUp")
 
 	body := &signUpBody{}
 
@@ -137,7 +134,6 @@ func (h *Handler) SignUp(c *gin.Context) {
 }
 
 func (h *Handler) Refresh(c *gin.Context) {
-	fmt.Println("Refresh")
 
 	refreshToken, err := getRefreshToken(c)
 	if err != nil {
@@ -147,7 +143,7 @@ func (h *Handler) Refresh(c *gin.Context) {
 
 	newAccessToken, newRefreshToken, err := h.delegate.RefreshToken(refreshToken)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		ErrorHandling(err, c)
 		return
 	}
@@ -161,7 +157,6 @@ func (h *Handler) Refresh(c *gin.Context) {
 }
 
 func (h *Handler) SignOut(c *gin.Context) {
-	fmt.Println("SignOut")
 	if refreshToken, err := getRefreshToken(c); err == nil {
 		_ = h.delegate.SignOut(refreshToken)
 	}
@@ -176,7 +171,6 @@ type userIdentity struct {
 }
 
 func (h *Handler) CheckAuth(c *gin.Context) {
-	fmt.Println("CheckAuth")
 	userId, role, err := h.delegate.UserIdentity(c)
 	if err != nil {
 		ErrorHandling(err, c)
@@ -360,7 +354,7 @@ func getRefreshToken(c *gin.Context) (refreshToken string, err error) {
 			err = http.ErrNoCookie
 		}
 		err = gerTokenErr
-		fmt.Println(err)
+		log.Println(err)
 		return "", err
 	}
 	refreshToken = cookie

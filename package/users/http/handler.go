@@ -1,7 +1,6 @@
 package http
 
 import (
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -855,7 +854,6 @@ type updateParentInput struct {
 }
 
 func (h *Handler) UpdateParent(c *gin.Context) {
-	fmt.Println("Update Parent")
 	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		log.Println(userIdentityErr)

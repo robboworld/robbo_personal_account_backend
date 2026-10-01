@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"fmt"
 	"log"
 	"strconv"
 
@@ -69,7 +68,6 @@ func (r CoursePacketGatewayImpl) DeleteCoursePacket(coursePacketId string) (id s
 func (r *CoursePacketGatewayImpl) UpdateCoursePacket(coursePacketCore *models.CoursePacketCore) (err error) {
 	coursePacketDb := models.CoursePacketDB{}
 	coursePacketDb.FromCore(coursePacketCore)
-	fmt.Println(coursePacketDb)
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		err = tx.Model(&coursePacketDb).Where("ID = ?", coursePacketDb.ID).First(&models.CoursePacketDB{}).Updates(coursePacketDb).Error
 		if err != nil {

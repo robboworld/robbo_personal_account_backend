@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/cohorts"
@@ -41,7 +40,6 @@ func (h *Handler) InitCohortRoutes(router *gin.Engine) {
 }
 
 func (h *Handler) CreateCohort(c *gin.Context) {
-	fmt.Println("Create Cohort")
 	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		log.Println(userIdentityErr)
@@ -65,7 +63,6 @@ func (h *Handler) CreateCohort(c *gin.Context) {
 		return
 	}
 	err = json.Unmarshal(body, &createCohortResponse)
-	fmt.Println(createCohortResponse)
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -75,7 +72,6 @@ func (h *Handler) CreateCohort(c *gin.Context) {
 
 	cohortId, err := h.cohortsDelegate.CreateCohort(&cohortHTTP, &createCohortResponse, courseId)
 
-	fmt.Println(cohortHTTP)
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -88,7 +84,6 @@ func (h *Handler) CreateCohort(c *gin.Context) {
 }
 
 func (h *Handler) AddStudent(c *gin.Context) {
-	fmt.Println("Add Student")
 	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		log.Println(userIdentityErr)

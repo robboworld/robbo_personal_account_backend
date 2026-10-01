@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -68,7 +67,6 @@ func (h *Handler) UpdateCoursePacket(c *gin.Context) {
 	}
 
 	err = json.Unmarshal(body, &coursePacketHTTP)
-	fmt.Println(coursePacketHTTP)
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -117,7 +115,6 @@ func (h *Handler) CreateCoursePacket(c *gin.Context) {
 }
 
 func (h *Handler) GetCoursePacketById(c *gin.Context) {
-	fmt.Println("Get CoursePacket By Id")
 	_, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
 		log.Println(userIdentityErr)

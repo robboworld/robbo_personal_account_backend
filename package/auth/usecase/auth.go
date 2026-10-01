@@ -213,7 +213,7 @@ func (a *AuthUseCaseImpl) ParseToken(token string, key []byte) (claims *models.U
 func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, newRefreshToken string, err error) {
 	claims, err := a.ParseToken(token, a.refreshSigningKey)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return "", "", err
 	}
 
@@ -273,7 +273,7 @@ func (a *AuthUseCaseImpl) GenerateToken(user *models.UserCore, sid string, durat
 	ss := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	token, err = ss.SignedString(signingKey)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 	return
 }
