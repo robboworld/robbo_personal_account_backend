@@ -95,3 +95,32 @@ func TestLogoutClearIsPlainPage(t *testing.T) {
 		t.Fatalf("unexpected body %q", body)
 	}
 }
+
+func TestLogoutRoutesRejectForeignSource(t *testing.T) {
+	setLogoutConfig(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	Handler{}.InitRoutes(router)
+	for _, tc := range []struct {
+		path, header, value string
+		want                int
+	}{
+		{"/auth/oidc/logout/lk", "Origin", "https://evil.example", http.StatusForbidden},
+		{"/auth/oidc/logout/lms", "Referer", "https://evil.example/x", http.StatusForbidden},
+		{"/auth/oidc/logout/clear", "Origin", "null", http.StatusForbidden},
+		{"/auth/oidc/logout/lk", "Referer", "http://lk.test/home", http.StatusFound},
+		{"/auth/oidc/logout/lms", "Referer", "http://apps.lms.test/learning", http.StatusFound},
+		{"/auth/oidc/logout/rs", "", "", http.StatusFound},
+		{"/auth/oidc/logout/clear", "", "", http.StatusOK},
+	} {
+		req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+		if tc.header != "" {
+			req.Header.Set(tc.header, tc.value)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != tc.want {
+			t.Errorf("%s %s=%q: status=%d want %d", tc.path, tc.header, tc.value, w.Code, tc.want)
+		}
+	}
+}

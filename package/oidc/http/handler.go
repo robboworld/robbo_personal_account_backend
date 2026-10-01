@@ -42,15 +42,28 @@ func (h Handler) InitRoutes(router *gin.Engine) {
 	{
 		g.GET("/start", h.Start)
 		g.GET("/callback", h.Callback)
-		g.GET("/logout", h.Logout)
-		g.GET("/logout/lk", h.LogoutFromLK)
-		g.GET("/logout/rs", h.LogoutFromRS)
-		g.GET("/logout/lms", h.LogoutFromLMS)
-		g.GET("/logout/clear", h.LogoutClear)
+		g.GET("/logout", logoutSourceGuard, h.Logout)
+		g.GET("/logout/lk", logoutSourceGuard, h.LogoutFromLK)
+		g.GET("/logout/rs", logoutSourceGuard, h.LogoutFromRS)
+		g.GET("/logout/lms", logoutSourceGuard, h.LogoutFromLMS)
+		g.GET("/logout/clear", logoutSourceGuard, h.LogoutClear)
 		g.GET("/status", h.Status)
 		g.POST("/verify-credentials", h.VerifyCredentials)
 		g.POST("/password-login", h.PasswordLogin)
 	}
+}
+
+// logoutSourceGuard rejects logout requests coming from foreign pages (see oidc.LogoutSourceAllowed).
+func logoutSourceGuard(c *gin.Context) {
+	scheme := "http"
+	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+		scheme = "https"
+	}
+	if !oidc.LogoutSourceAllowed(c.GetHeader("Origin"), c.GetHeader("Referer"), scheme+"://"+c.Request.Host) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "LOGOUT_FOREIGN_ORIGIN", "code": "LOGOUT_FOREIGN_ORIGIN"})
+		return
+	}
+	c.Next()
 }
 
 func browserAuthorizationEndpoint(endpoint string, c *gin.Context) string {
