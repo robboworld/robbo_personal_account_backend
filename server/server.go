@@ -86,13 +86,15 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 }
 
 func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
+	ginMode()
 	// gin.New: gin.Default already adds Logger + Recovery, which were added again below.
 	router := gin.New()
 	if err := applyTrustedProxies(router); err != nil {
 		log.Fatalf("invalid trusted proxies (server.trustedProxies / TRUSTED_PROXIES): %v", err)
 	}
 	router.Use(
-		gin.Logger(),
+		requestID(),
+		accessLog(),
 		gin.Recovery(),
 		GinContextToContextMiddleware(),
 		TokenAuthMiddleware(handlers.LicensingGateway),
