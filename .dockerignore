@@ -2,3 +2,12 @@
 .env
 package/config/config.yml
 keys/licensing/addon/paid-addon.local.js
+.env.*
+# Private keys are mounted at runtime (docker-compose volumes), never baked in
+keys/**/*.pem
+# LMS dump with password hashes / OAuth tokens: only for the local MySQL container
+lms_dump/
+.idea/
+.git/
+*.xlsx
+*.csv

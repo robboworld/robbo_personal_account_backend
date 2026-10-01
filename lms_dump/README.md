@@ -1,5 +1,9 @@
 # LMS MySQL dump for local LK
 
+`01-openedx-only.sql` is **not tracked in git** (it holds auth_user password hashes and OAuth
+tokens). Build it locally from an LMS dump as below; `.gitignore` keeps it out of commits and
+`.dockerignore` keeps it out of the backend image.
+
 1. Place full dump at workspace root as `dump.sql`, or copy slice here.
 2. Build `01-openedx-only.sql` (openedx only, FK checks off):
 

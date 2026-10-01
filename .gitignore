@@ -24,3 +24,7 @@ keys/licensing/addon/paid-addon.local.js
 
 # Local overrides (copy from config.yml.example). Secrets: PAYMENTS_YOOKASSA_* via env/.env
 package/config/config.yml
+
+# LMS MySQL slice for local LK: real auth_user / OAuth rows — never commit (see lms_dump/README.md)
+lms_dump/*.sql
+!lms_dump/00-preamble.sql
