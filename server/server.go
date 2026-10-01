@@ -153,11 +153,23 @@ func newGraphQLServer(es graphql.ExecutableSchema) *handler.Server {
 	srv.AddTransport(transport.POST{})
 	srv.AddTransport(transport.MultipartForm{})
 	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
+	// Bounds the work one request can ask for (aliases, nesting). The heaviest frontend
+	// operation (GetUser) scores ~106; graphql.complexity_limit / GRAPHQL_COMPLEXITY_LIMIT override.
+	srv.Use(extension.FixedComplexityLimit(graphQLComplexityLimit()))
 	if viper.GetBool("graphql.introspection") {
 		srv.Use(extension.Introspection{})
 	}
 	srv.Use(extension.AutomaticPersistedQuery{Cache: lru.New[string](100)})
 	return srv
+}
+
+const defaultGraphQLComplexityLimit = 500
+
+func graphQLComplexityLimit() int {
+	if v := viper.GetInt("graphql.complexity_limit"); v > 0 {
+		return v
+	}
+	return defaultGraphQLComplexityLimit
 }
 
 func GinContextToContextMiddleware() gin.HandlerFunc {
