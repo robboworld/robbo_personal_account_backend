@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -35,19 +36,19 @@ type GatewayModule struct {
 	Gateway
 }
 
-func SetupPortalGateway() GatewayModule {
+func SetupPortalGateway() (GatewayModule, error) {
 	if !viper.GetBool("legacyPostgres.enabled") {
-		return GatewayModule{Gateway: NoopGateway{}}
+		return GatewayModule{Gateway: NoopGateway{}}, nil
 	}
 	dsn := viper.GetString("postgres.postgresDsn")
 	if dsn == "" {
-		panic("postgres.postgresDsn required for portal gateway when legacyPostgres.enabled is true")
+		return GatewayModule{}, errors.New("postgres.postgresDsn required for portal gateway when legacyPostgres.enabled is true")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
-		panic(err)
+		return GatewayModule{}, fmt.Errorf("SetupPortalGateway: %w", err)
 	}
-	return GatewayModule{Gateway: &GatewayImpl{db: db}}
+	return GatewayModule{Gateway: &GatewayImpl{db: db}}, nil
 }
 
 func (g *GatewayImpl) UpsertUserLinkByOIDC(sub, email, name, edxUserID string) (*models.RobboPortalUserLinkDB, error) {

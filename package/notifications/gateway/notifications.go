@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -21,17 +23,17 @@ type Module struct {
 	notifications.Gateway
 }
 
-func SetupNotificationGateway(postgresClient db_client.PostgresClient) Module {
+func SetupNotificationGateway(postgresClient db_client.PostgresClient) (Module, error) {
 	_ = postgresClient
 	dsn := viper.GetString("projectsPostgres.postgresDsn")
 	if dsn == "" {
-		panic("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required")
+		return Module{}, errors.New("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
-		panic(err)
+		return Module{}, fmt.Errorf("SetupNotificationGateway: %w", err)
 	}
-	return Module{Gateway: &NotificationGateway{db: db}}
+	return Module{Gateway: &NotificationGateway{db: db}}, nil
 }
 
 func (g *NotificationGateway) CreateOrUpdateByDedupe(notification *models.UserNotificationDB) error {

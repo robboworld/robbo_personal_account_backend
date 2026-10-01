@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,17 +23,17 @@ type GatewayModule struct {
 	teacherclass.Gateway
 }
 
-func SetupTeacherClassGateway(postgresClient db_client.PostgresClient) GatewayModule {
+func SetupTeacherClassGateway(postgresClient db_client.PostgresClient) (GatewayModule, error) {
 	_ = postgresClient
 	dsn := viper.GetString("projectsPostgres.postgresDsn")
 	if dsn == "" {
-		panic("projectsPostgres.postgresDsn required for teacherclass")
+		return GatewayModule{}, errors.New("projectsPostgres.postgresDsn required for teacherclass")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
-		panic(err)
+		return GatewayModule{}, fmt.Errorf("SetupTeacherClassGateway: %w", err)
 	}
-	return GatewayModule{Gateway: &GatewayImpl{db: db}}
+	return GatewayModule{Gateway: &GatewayImpl{db: db}}, nil
 }
 
 func (g *GatewayImpl) CreateInvite(inv *models.ClassInviteDB) error {

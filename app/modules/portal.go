@@ -20,8 +20,11 @@ type PortalModule struct {
 	OIDCHandler                *oidchttp.Handler
 }
 
-func SetupPortalModule(gateway GatewayModule) PortalModule {
-	gw := portalgateway.SetupPortalGateway()
+func SetupPortalModule(gateway GatewayModule) (PortalModule, error) {
+	gw, err := portalgateway.SetupPortalGateway()
+	if err != nil {
+		return PortalModule{}, err
+	}
 	streakUC := streakusecase.SetupStreakUseCase(gateway.StreakGateway).UseCase
 	var oidcHandler *oidchttp.Handler
 	if h, err := oidchttp.NewHandler(gw.Gateway, gateway.LicensingGateway, streakUC); err != nil {
@@ -33,7 +36,7 @@ func SetupPortalModule(gateway GatewayModule) PortalModule {
 		Gateway:                    gw.Gateway,
 		PortalNotificationsHandler: portalhttp.NewNotificationsHandler(gw.Gateway),
 		OIDCHandler:                oidcHandler,
-	}
+	}, nil
 }
 
 func StartPortalOutboxWorker(portal portalgateway.Gateway, useCase UseCaseModule, lc fx.Lifecycle) {

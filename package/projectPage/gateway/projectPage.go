@@ -3,6 +3,7 @@ package gateway
 import (
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -25,20 +26,20 @@ type ProjectPageGatewayModule struct {
 	projectPage.Gateway
 }
 
-func SetupProjectPageGateway(postgresClient db_client.PostgresClient) ProjectPageGatewayModule {
+func SetupProjectPageGateway(postgresClient db_client.PostgresClient) (ProjectPageGatewayModule, error) {
 	_ = postgresClient
 	projectDSN := viper.GetString("projectsPostgres.postgresDsn")
 	if projectDSN == "" {
-		panic("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required; robbo_db fallback is disabled")
+		return ProjectPageGatewayModule{}, errors.New("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required; robbo_db fallback is disabled")
 	}
 	projectStorageDB, err := db_client.OpenByDSN(projectDSN)
 	if err != nil {
-		panic(err)
+		return ProjectPageGatewayModule{}, fmt.Errorf("SetupProjectPageGateway: %w", err)
 	}
 
 	return ProjectPageGatewayModule{
 		Gateway: &ProjectPageGatewayImpl{projectStorageDB: projectStorageDB},
-	}
+	}, nil
 }
 
 func (r *ProjectPageGatewayImpl) CreateProjectPage(page *models.ProjectPageCore) (newProjectPage *models.ProjectPageCore, err error) {
@@ -636,4 +637,3 @@ func (r *ProjectPageGatewayImpl) ReorderLandingFeatured(items []projectPage.Land
 		return nil
 	})
 }
-

@@ -3,15 +3,16 @@ package usecase
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	licrypto "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/crypto"
+	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -27,20 +28,20 @@ type LicensingUseCaseModule struct {
 	licensing.UseCase
 }
 
-func SetupLicensingUseCase(gateway licensing.Gateway) LicensingUseCaseModule {
+func SetupLicensingUseCase(gateway licensing.Gateway) (LicensingUseCaseModule, error) {
 	keyPath := viper.GetString("licensing.privateKeyPath")
 	kid := viper.GetString("licensing.jwtKid")
 	issuer := viper.GetString("licensing.jwtIssuer")
 	if keyPath == "" {
-		panic("licensing.privateKeyPath is required")
+		return LicensingUseCaseModule{}, errors.New("licensing.privateKeyPath is required")
 	}
 	signer, err := licrypto.LoadSigner(keyPath, kid, issuer)
 	if err != nil {
-		panic(err)
+		return LicensingUseCaseModule{}, fmt.Errorf("SetupLicensingUseCase: %w", err)
 	}
 	return LicensingUseCaseModule{
 		UseCase: &LicensingUseCaseImpl{gateway: gateway, signer: signer},
-	}
+	}, nil
 }
 
 func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*models.LicenseCore, error) {

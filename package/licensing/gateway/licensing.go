@@ -26,19 +26,19 @@ type LicensingGatewayModule struct {
 	licensing.Gateway
 }
 
-func SetupLicensingGateway(postgresClient db_client.PostgresClient) LicensingGatewayModule {
+func SetupLicensingGateway(postgresClient db_client.PostgresClient) (LicensingGatewayModule, error) {
 	_ = postgresClient
 	dsn := viper.GetString("licensingPostgres.postgresDsn")
 	if dsn == "" {
-		panic("licensingPostgres.postgresDsn (or env LICENSING_POSTGRES_DSN) is required")
+		return LicensingGatewayModule{}, errors.New("licensingPostgres.postgresDsn (or env LICENSING_POSTGRES_DSN) is required")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
-		panic(err)
+		return LicensingGatewayModule{}, fmt.Errorf("SetupLicensingGateway: %w", err)
 	}
 	return LicensingGatewayModule{
 		Gateway: &LicensingGatewayImpl{db: db},
-	}
+	}, nil
 }
 
 func (g *LicensingGatewayImpl) CreateLicense(license *models.LicenseCore) (*models.LicenseCore, error) {

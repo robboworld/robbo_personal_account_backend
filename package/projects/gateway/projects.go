@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"errors"
+	"fmt"
 	"github.com/lib/pq"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -20,20 +22,20 @@ type ProjectsGatewayModule struct {
 	projects.Gateway
 }
 
-func SetupProjectsGateway(postgresClient db_client.PostgresClient) ProjectsGatewayModule {
+func SetupProjectsGateway(postgresClient db_client.PostgresClient) (ProjectsGatewayModule, error) {
 	_ = postgresClient
 	projectDSN := viper.GetString("projectsPostgres.postgresDsn")
 	if projectDSN == "" {
-		panic("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required; robbo_db fallback is disabled")
+		return ProjectsGatewayModule{}, errors.New("projectsPostgres.postgresDsn (or env PROJECTS_POSTGRES_DSN) is required; robbo_db fallback is disabled")
 	}
 	projectStorageDB, err := db_client.OpenByDSN(projectDSN)
 	if err != nil {
-		panic(err)
+		return ProjectsGatewayModule{}, fmt.Errorf("SetupProjectsGateway: %w", err)
 	}
 
 	return ProjectsGatewayModule{
 		Gateway: &ProjectsGatewayImpl{projectStorageDB: projectStorageDB},
-	}
+	}, nil
 }
 
 func (r *ProjectsGatewayImpl) resolveStorageProjectID(tx *gorm.DB, rawID string) (string, error) {

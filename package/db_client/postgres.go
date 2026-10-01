@@ -1,6 +1,7 @@
 package db_client
 
 import (
+	"errors"
 	"log"
 	"os"
 	"time"
@@ -39,14 +40,11 @@ func OpenByDSN(dsn string) (db *gorm.DB, err error) {
 	return gorm.Open(postgres.Open(dsn), &gorm.Config{Logger: NewLogger()})
 }
 
-func postgresDSN() string {
-	if !viper.GetBool("legacyPostgres.enabled") {
-		return ""
-	}
+func postgresDSN() (string, error) {
 	if dsn := viper.GetString("postgres.postgresDsn"); dsn != "" {
-		return dsn
+		return dsn, nil
 	}
-	panic("postgres.postgresDsn required when legacyPostgres.enabled is true")
+	return "", errors.New("postgres.postgresDsn required when legacyPostgres.enabled is true")
 }
 
 func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err error) {
@@ -57,7 +55,11 @@ func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err 
 		}
 		return PostgresClient{Db: db, logger: _logger}, nil
 	}
-	db, err := OpenByDSN(postgresDSN())
+	dsn, err := postgresDSN()
+	if err != nil {
+		return
+	}
+	db, err := OpenByDSN(dsn)
 	if err != nil {
 		return
 	}

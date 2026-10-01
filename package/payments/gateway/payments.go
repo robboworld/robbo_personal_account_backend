@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/lib/pq"
@@ -24,19 +25,19 @@ type PaymentsGatewayModule struct {
 	payments.Gateway
 }
 
-func SetupPaymentsGateway(postgresClient db_client.PostgresClient) PaymentsGatewayModule {
+func SetupPaymentsGateway(postgresClient db_client.PostgresClient) (PaymentsGatewayModule, error) {
 	_ = postgresClient
 	dsn := viper.GetString("licensingPostgres.postgresDsn")
 	if dsn == "" {
-		panic("licensingPostgres.postgresDsn (or env LICENSING_POSTGRES_DSN) is required for payments")
+		return PaymentsGatewayModule{}, errors.New("licensingPostgres.postgresDsn (or env LICENSING_POSTGRES_DSN) is required for payments")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
-		panic(err)
+		return PaymentsGatewayModule{}, fmt.Errorf("SetupPaymentsGateway: %w", err)
 	}
 	return PaymentsGatewayModule{
 		Gateway: &PaymentsGatewayImpl{db: db},
-	}
+	}, nil
 }
 
 func (g *PaymentsGatewayImpl) ListActiveProducts() ([]*models.ProductCore, error) {

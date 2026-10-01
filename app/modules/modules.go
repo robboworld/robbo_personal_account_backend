@@ -105,8 +105,35 @@ type GatewayModule struct {
 	UsersGateway         users.Gateway
 }
 
-func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
-	tcGw := tcgateway.SetupTeacherClassGateway(postgresClient)
+func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error) {
+	tcGw, err := tcgateway.SetupTeacherClassGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	ppageGw, err := ppagegateway.SetupProjectPageGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	notificationGw, err := notificationgateway.SetupNotificationGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	projectsGw, err := prjgateway.SetupProjectsGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	licensingGw, err := licgateway.SetupLicensingGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	moderationGw, err := modgateway.SetupBansGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	paymentsGw, err := paygateway.SetupPaymentsGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
 	ppageaccess.CohortTeacherReader = func(teacherID, courseID, cohortID string) bool {
 		inv, err := tcGw.Gateway.GetInviteByCourseCohort(courseID, cohortID)
 		return err == nil && inv != nil && inv.OwnerTeacherID == teacherID && inv.ArchivedAt == nil
@@ -116,18 +143,18 @@ func SetupGateway(postgresClient db_client.PostgresClient) GatewayModule {
 		CohortsGateway:       chrtgateway.SetupCohortsGateway(postgresClient),
 		CoursePacketGateway:  coursePacketgateway.SetupCoursePacketGateway(postgresClient),
 		CoursesGateway:       crsgateway.SetupCoursesGateway(postgresClient),
-		ProjectPageGateway:   ppagegateway.SetupProjectPageGateway(postgresClient),
-		NotificationsGateway: notificationgateway.SetupNotificationGateway(postgresClient),
-		ProjectsGateway:      prjgateway.SetupProjectsGateway(postgresClient),
-		LicensingGateway:     licgateway.SetupLicensingGateway(postgresClient),
-		ModerationGateway:    modgateway.SetupBansGateway(postgresClient),
-		PaymentsGateway:      paygateway.SetupPaymentsGateway(postgresClient),
+		ProjectPageGateway:   ppageGw,
+		NotificationsGateway: notificationGw,
+		ProjectsGateway:      projectsGw,
+		LicensingGateway:     licensingGw,
+		ModerationGateway:    moderationGw,
+		PaymentsGateway:      paymentsGw,
 		StreakGateway:        streakgateway.SetupStreakGateway(postgresClient).Gateway,
 		TeacherClassGateway:  tcGw.Gateway,
 		RobboGroupGateway:    robboGroupgateway.SetupRobboGroupGateway(postgresClient),
 		RobboUnitsGateway:    robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
 		UsersGateway:         usersgateway.SetupUsersGateway(postgresClient),
-	}
+	}, nil
 }
 
 type UseCaseModule struct {
@@ -149,8 +176,11 @@ type UseCaseModule struct {
 	UsersUseCase         users.UseCase
 }
 
-func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, userSearch *usersearch.Service) UseCaseModule {
-	licensingUC := licusecase.SetupLicensingUseCase(gateway.LicensingGateway)
+func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, userSearch *usersearch.Service) (UseCaseModule, error) {
+	licensingUC, err := licusecase.SetupLicensingUseCase(gateway.LicensingGateway)
+	if err != nil {
+		return UseCaseModule{}, err
+	}
 	streakUC := streakusecase.SetupStreakUseCase(gateway.StreakGateway)
 	edxMod := edxusecase.SetupEdxApiUseCase()
 	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase)
@@ -184,7 +214,7 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 		RobboGroupUseCase:   robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
 		RobboUnitsUseCase:   robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
 		UsersUseCase:        usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
-	}
+	}, nil
 }
 
 type DelegateModule struct {

@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -24,18 +26,18 @@ type BansGatewayModule struct {
 }
 
 // SetupBansGateway opens Licensing Postgres (same DSN as licensing gateway).
-func SetupBansGateway(_ db_client.PostgresClient) BansGatewayModule {
+func SetupBansGateway(_ db_client.PostgresClient) (BansGatewayModule, error) {
 	dsn := viper.GetString("licensingPostgres.postgresDsn")
 	if dsn == "" {
-		panic("licensingPostgres.postgresDsn (or env LICENSING_POSTGRES_DSN) is required for moderation")
+		return BansGatewayModule{}, errors.New("licensingPostgres.postgresDsn (or env LICENSING_POSTGRES_DSN) is required for moderation")
 	}
 	db, err := db_client.OpenByDSN(dsn)
 	if err != nil {
-		panic(err)
+		return BansGatewayModule{}, fmt.Errorf("SetupBansGateway: %w", err)
 	}
 	return BansGatewayModule{
 		Gateway: &BansGatewayImpl{db: db},
-	}
+	}, nil
 }
 
 func (g *BansGatewayImpl) CreateBan(ban *models.UserBanCore) (*models.UserBanCore, error) {
@@ -116,7 +118,7 @@ func (g *BansGatewayImpl) ListBanHistory(lmsUserID string, limit int) ([]*models
 func (g *BansGatewayImpl) CloseBan(banID, unbannedBy, unbanReason string) (*models.UserBanCore, error) {
 	now := time.Now().UTC()
 	updates := map[string]interface{}{
-		"unbanned_at":            now,
+		"unbanned_at":             now,
 		"unbanned_by_lms_user_id": unbannedBy,
 	}
 	if strings.TrimSpace(unbanReason) != "" {
