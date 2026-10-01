@@ -4,12 +4,17 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/config"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/logger"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/skinnykaen/robbo_student_personal_account.git/server"
 	"go.uber.org/fx"
 	"log"
+	"time"
 )
+
+// StopTimeout covers HTTP draining (server.shutdownTimeout) plus closing pools.
+const StopTimeout = 28 * time.Second
 
 func InvokeWith(options ...fx.Option) *fx.App {
 	if err := config.Init(); err != nil {
@@ -22,6 +27,9 @@ func InvokeWith(options ...fx.Option) *fx.App {
 		log.Printf("[oidc] PKCE store fallback to memory: %v", err)
 	}
 	var di = []fx.Option{
+		// Stop hooks run in reverse: the HTTP server drains first, LMS pools close last.
+		fx.StopTimeout(StopTimeout),
+		fx.Invoke(func(lc fx.Lifecycle) { lc.Append(fx.Hook{OnStop: lmsdb.CloseAll}) }),
 		fx.Provide(logger.NewLogger),
 		fx.Provide(db_client.NewPostgresClient),
 		fx.Provide(modules.SetupGateway),

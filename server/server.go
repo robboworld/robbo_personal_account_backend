@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
+	"net"
 	"net/http"
 	"time"
 
@@ -20,10 +22,15 @@ import (
 	"go.uber.org/fx"
 )
 
+// shutdownTimeout bounds draining in-flight requests on stop; app.StopTimeout and the
+// compose stop_grace_period leave headroom above it.
+const shutdownTimeout = 25 * time.Second
+
 func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, handlers modules.HandlerModule) {
+	var server *http.Server
 	lifecycle.Append(
 		fx.Hook{
-			OnStart: func(ctx context.Context) (err error) {
+			OnStart: func(ctx context.Context) error {
 				router := SetupGinRouter(handlers)
 				if viper.GetBool("graphql.playground") {
 					router.GET("/", playgroundHandler())
@@ -34,7 +41,7 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 					c.File("./frontend/index.html")
 				})
 
-				server := &http.Server{
+				server = &http.Server{
 					Addr:    viper.GetString("server.address"),
 					Handler: newCORS().Handler(router),
 					// Larger write window so large .sb3 downloads complete (BYTEA payloads).
@@ -42,16 +49,32 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 					WriteTimeout:   20 * time.Minute,
 					MaxHeaderBytes: 1 << 20,
 				}
+				// Listen synchronously so a busy port fails startup instead of exiting later.
+				ln, err := net.Listen("tcp", server.Addr)
+				if err != nil {
+					return err
+				}
 
 				log.Printf("connect to http://localhost:%s/ for GraphQL playground", viper.GetString("graphqlServer.port"))
 				go func() {
-					if err = server.ListenAndServe(); err != nil {
+					if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 						log.Fatalf("Failed to listen and serve: %s", err)
 					}
 				}()
-				return
+				return nil
 			},
-			OnStop: func(context.Context) error {
+			OnStop: func(ctx context.Context) error {
+				if server == nil {
+					return nil
+				}
+				log.Println("http: shutting down, draining requests")
+				ctx, cancel := context.WithTimeout(ctx, shutdownTimeout)
+				defer cancel()
+				if err := server.Shutdown(ctx); err != nil {
+					log.Printf("http: shutdown: %v", err)
+					return err
+				}
+				log.Println("http: stopped")
 				return nil
 			},
 		})

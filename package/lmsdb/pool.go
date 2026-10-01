@@ -1,7 +1,9 @@
 package lmsdb
 
 import (
+	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -34,4 +36,16 @@ func sharedDB(dsn, label string) (*sql.DB, error) {
 	}
 	pools[dsn] = db
 	return db, nil
+}
+
+// CloseAll closes the shared pools on shutdown.
+func CloseAll(context.Context) error {
+	poolsMu.Lock()
+	defer poolsMu.Unlock()
+	var errs []error
+	for dsn, db := range pools {
+		errs = append(errs, db.Close())
+		delete(pools, dsn)
+	}
+	return errors.Join(errs...)
 }

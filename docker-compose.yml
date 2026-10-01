@@ -6,6 +6,8 @@ name: rpa2
 services:
   app:
     restart: unless-stopped
+    # Above app.StopTimeout (28s): in-flight requests drain before SIGKILL.
+    stop_grace_period: 30s
     build:
       context: .
       network: host
