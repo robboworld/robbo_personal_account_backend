@@ -67,6 +67,9 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 
 func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 	router := gin.Default()
+	if err := applyTrustedProxies(router); err != nil {
+		log.Fatalf("invalid trusted proxies (server.trustedProxies / TRUSTED_PROXIES): %v", err)
+	}
 	router.Use(
 		gin.Recovery(),
 		gin.Logger(),

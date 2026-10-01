@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -63,25 +62,8 @@ type signInResponse struct {
 func clientInfoFromRequest(c *gin.Context) auth.ClientInfo {
 	return auth.ClientInfo{
 		UserAgent: c.Request.UserAgent(),
-		IPAddress: clientIP(c),
+		IPAddress: c.ClientIP(),
 	}
-}
-
-func clientIP(c *gin.Context) string {
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	if xri := c.GetHeader("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return c.Request.RemoteAddr
 }
 
 func (h *Handler) SignIn(c *gin.Context) {

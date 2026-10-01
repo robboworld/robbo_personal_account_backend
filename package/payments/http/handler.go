@@ -3,7 +3,6 @@ package http
 import (
 	"errors"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -138,7 +137,7 @@ func (h *Handler) GetOrder(c *gin.Context) {
 		return
 	}
 	orderNumber := c.Param("orderNumber")
-	sourceIP := clientIP(c)
+	sourceIP := c.ClientIP()
 	order, err := h.paymentsDelegate.SyncOrder(userID, orderNumber, sourceIP)
 	if err != nil {
 		writePaymentsError(c, err)
@@ -153,7 +152,7 @@ func (h *Handler) YookassaWebhook(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
 		return
 	}
-	err = h.paymentsDelegate.HandleWebhook(body, clientIP(c))
+	err = h.paymentsDelegate.HandleWebhook(body, c.ClientIP())
 	if errors.Is(err, payments.ErrUntrustedWebhookSource) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "untrusted_source"})
 		return
@@ -188,22 +187,6 @@ func (h *Handler) sessionIdentity(c *gin.Context) (userID string, role models.Ro
 		}
 	}
 	return h.authDelegate.UserIdentity(c)
-}
-
-func clientIP(c *gin.Context) string {
-	xff := c.GetHeader("X-Forwarded-For")
-	if xff != "" {
-		parts := strings.Split(xff, ",")
-		ip := strings.TrimSpace(parts[0])
-		if net.ParseIP(ip) != nil {
-			return ip
-		}
-	}
-	ip, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err == nil {
-		return ip
-	}
-	return c.ClientIP()
 }
 
 func writePaymentsError(c *gin.Context, err error) {

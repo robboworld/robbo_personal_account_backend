@@ -221,7 +221,7 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 	sid := ""
 	if h.sessions != nil {
 		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
-		ip := oidcClientIP(c)
+		ip := c.ClientIP()
 		if body.KickOtherSessions {
 			if kickErr := licensing.KickOtherSessions(h.sessions, edxUserID); kickErr != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "session_create_failed"})
@@ -564,7 +564,7 @@ func (h Handler) Callback(c *gin.Context) {
 	sid := ""
 	if edxUserID != "" && h.sessions != nil {
 		ttl := time.Duration(oidc.SessionTTLSeconds()) * time.Second
-		ip := oidcClientIP(c)
+		ip := c.ClientIP()
 		if entry.KickOtherSessions {
 			if kickErr := licensing.KickOtherSessions(h.sessions, edxUserID); kickErr != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "session_create_failed"})
@@ -634,23 +634,6 @@ func redirectOIDCLoginError(c *gin.Context, returnTo, errCode string) {
 		q.Set("return_to", oidc.SanitizeReturnTo(returnTo))
 	}
 	c.Redirect(http.StatusFound, fmt.Sprintf("%s/login?%s", strings.TrimRight(frontend, "/"), q.Encode()))
-}
-
-func oidcClientIP(c *gin.Context) string {
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
-		}
-	}
-	if xri := c.GetHeader("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return c.Request.RemoteAddr
 }
 
 func lookupLMSProfileByEmail(email string) (*lmsdb.AuthUserProfile, error) {

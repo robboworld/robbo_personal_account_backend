@@ -1,9 +1,7 @@
 package server
 
 import (
-	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -15,10 +13,11 @@ type rateBucket struct {
 }
 
 type ipRateLimiter struct {
-	mu      sync.Mutex
-	buckets map[string]*rateBucket
-	limit   int
-	window  time.Duration
+	mu        sync.Mutex
+	buckets   map[string]*rateBucket
+	limit     int
+	window    time.Duration
+	lastSweep time.Time
 }
 
 func newIPRateLimiter(limit int, window time.Duration) *ipRateLimiter {
@@ -34,6 +33,10 @@ func (l *ipRateLimiter) allow(key string) bool {
 	cutoff := now.Add(-l.window)
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if now.Sub(l.lastSweep) > l.window {
+		l.sweep(cutoff)
+		l.lastSweep = now
+	}
 	b := l.buckets[key]
 	if b == nil {
 		b = &rateBucket{}
@@ -53,21 +56,14 @@ func (l *ipRateLimiter) allow(key string) bool {
 	return true
 }
 
-func requestIP(c *gin.Context) string {
-	if xff := c.GetHeader("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
+// sweep drops buckets whose newest hit is older than cutoff so the map does not grow
+// with every client IP ever seen. Caller holds l.mu.
+func (l *ipRateLimiter) sweep(cutoff time.Time) {
+	for key, b := range l.buckets {
+		if len(b.times) == 0 || !b.times[len(b.times)-1].After(cutoff) {
+			delete(l.buckets, key)
 		}
 	}
-	if xri := c.GetHeader("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
-	}
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return c.Request.RemoteAddr
 }
 
 func isAuthAbusePath(path string) bool {
@@ -88,7 +84,7 @@ func AuthLoginRateLimit() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if !limiter.allow(requestIP(c)) {
+		if !limiter.allow(c.ClientIP()) {
 			c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
 				"error": "too_many_requests",
 			})
