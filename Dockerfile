@@ -27,5 +27,8 @@ COPY keys/licensing/addon /app/keys/licensing/addon
 
 USER app
 EXPOSE 8080
+# Liveness only; /readyz (databases) is for load balancers and deploy checks.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1
 
 CMD [ "/app/robbo_server" ]

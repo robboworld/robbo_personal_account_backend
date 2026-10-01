@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -318,4 +319,13 @@ func NewLicenseKey() (string, error) {
 	}
 	hexStr := strings.ToUpper(hex.EncodeToString(b))
 	return fmt.Sprintf("RS3-%s-%s-%s", hexStr[0:4], hexStr[4:8], hexStr[8:12]), nil
+}
+
+// Ping checks the licensing Postgres connection (readiness probe).
+func (r *LicensingGatewayImpl) Ping(ctx context.Context) error {
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.PingContext(ctx)
 }

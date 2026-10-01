@@ -146,7 +146,7 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 		ProjectPageGateway:   ppageGw,
 		NotificationsGateway: notificationGw,
 		ProjectsGateway:      projectsGw,
-		LicensingGateway:     licensingGw,
+		LicensingGateway:     licensingGw.Gateway,
 		ModerationGateway:    moderationGw,
 		PaymentsGateway:      paymentsGw,
 		StreakGateway:        streakgateway.SetupStreakGateway(postgresClient).Gateway,

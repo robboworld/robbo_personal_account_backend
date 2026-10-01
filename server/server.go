@@ -17,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
 	"github.com/skinnykaen/robbo_student_personal_account.git/graph/generated"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/spf13/viper"
 	"github.com/vektah/gqlparser/v2/ast"
 	"go.uber.org/fx"
@@ -41,9 +42,13 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 					c.File("./frontend/index.html")
 				})
 
+				checks := []readinessCheck{{name: "lms_mysql", ping: lmsdb.Ping}}
+				if p, ok := handlers.LicensingGateway.(pinger); ok {
+					checks = append(checks, readinessCheck{name: "licensing_db", ping: p.Ping})
+				}
 				server = &http.Server{
 					Addr:    viper.GetString("server.address"),
-					Handler: newCORS().Handler(router),
+					Handler: healthMux(newCORS().Handler(router), checks),
 					// Larger write window so large .sb3 downloads complete (BYTEA payloads).
 					ReadTimeout:    120 * time.Second,
 					WriteTimeout:   20 * time.Minute,

@@ -49,3 +49,12 @@ func CloseAll(context.Context) error {
 	}
 	return errors.Join(errs...)
 }
+
+// Ping checks the configured LMS MySQL (readiness probe).
+func Ping(ctx context.Context) error {
+	r, err := NewReaderFromConfig()
+	if err != nil {
+		return err
+	}
+	return r.db.PingContext(ctx)
+}
