@@ -70,31 +70,45 @@ func NewFromConfig() *Service {
 	}
 	s.es = es
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := s.ping(ctx); err != nil {
-		log.Printf("usersearch: elasticsearch unreachable at %s: %v; MySQL fallback only", url, err)
-		close(s.stoppedCh)
-		return s
-	}
-
-	s.setReady(true)
-	if err := s.EnsureIndex(context.Background()); err != nil {
-		log.Printf("usersearch: ensure index: %v", err)
-	}
-	if n, err := s.ReindexAll(context.Background()); err != nil {
-		log.Printf("usersearch: initial reindex: %v", err)
-	} else {
-		log.Printf("usersearch: initial reindex ok, documents=%d", n)
-	}
-
-	intervalMin := viper.GetInt("elasticsearch.reindexIntervalMinutes")
-	if intervalMin > 0 {
-		go s.loopReindex(time.Duration(intervalMin) * time.Minute)
-	} else {
-		close(s.stoppedCh)
-	}
+	// Connect and reindex in the background: a slow or unreachable Elasticsearch must not
+	// delay startup. Search uses the MySQL fallback until ready() is true.
+	interval := time.Duration(viper.GetInt("elasticsearch.reindexIntervalMinutes")) * time.Minute
+	go s.run(url, interval)
 	return s
+}
+
+// run does the initial sync, then the periodic reindex; Stop cancels both.
+func (s *Service) run(url string, interval time.Duration) {
+	defer close(s.stoppedCh)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		select {
+		case <-s.stopCh:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+
+	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
+	err := s.ping(pingCtx)
+	pingCancel()
+	if err != nil {
+		log.Printf("usersearch: elasticsearch unreachable at %s: %v; MySQL fallback until it is", url, err)
+	} else {
+		s.setReady(true)
+		if err := s.EnsureIndex(ctx); err != nil {
+			log.Printf("usersearch: ensure index: %v", err)
+		}
+		if n, err := s.ReindexAll(ctx); err != nil {
+			log.Printf("usersearch: initial reindex: %v", err)
+		} else {
+			log.Printf("usersearch: initial reindex ok, documents=%d", n)
+		}
+	}
+	if interval > 0 {
+		s.loopReindex(ctx, interval)
+	}
 }
 
 func (s *Service) setReady(v bool) {
@@ -121,26 +135,25 @@ func (s *Service) ping(ctx context.Context) error {
 	return nil
 }
 
-func (s *Service) loopReindex(interval time.Duration) {
-	defer close(s.stoppedCh)
+func (s *Service) loopReindex(ctx context.Context, interval time.Duration) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
 	for {
 		select {
-		case <-s.stopCh:
+		case <-ctx.Done():
 			return
 		case <-t.C:
 			if !s.ready() {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				err := s.ping(ctx)
+				pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				err := s.ping(pingCtx)
 				cancel()
 				if err != nil {
 					continue
 				}
 				s.setReady(true)
-				_ = s.EnsureIndex(context.Background())
+				_ = s.EnsureIndex(ctx)
 			}
-			if n, err := s.ReindexAll(context.Background()); err != nil {
+			if n, err := s.ReindexAll(ctx); err != nil {
 				log.Printf("usersearch: periodic reindex: %v", err)
 			} else {
 				log.Printf("usersearch: periodic reindex ok, documents=%d", n)
