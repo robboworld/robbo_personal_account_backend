@@ -46,7 +46,11 @@ func postgresDSN() string {
 
 func NewPostgresClient(_logger *log.Logger) (postgresClient PostgresClient, err error) {
 	if !viper.GetBool("legacyPostgres.enabled") {
-		return PostgresClient{Db: nil, logger: _logger}, nil
+		db, disabledErr := newDisabledDB()
+		if disabledErr != nil {
+			return PostgresClient{}, disabledErr
+		}
+		return PostgresClient{Db: db, logger: _logger}, nil
 	}
 	db, err := OpenByDSN(postgresDSN())
 	if err != nil {

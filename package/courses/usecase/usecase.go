@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"errors"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/courses"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
@@ -122,8 +123,7 @@ func (p *CourseUseCaseImpl) GetStudentsAdmittedToTheCourse(courseId string, page
 }
 
 func (p *CourseUseCaseImpl) GetAccessCourseRelations(courseId string, parameterId string, parameter string) (courseRelations []*models.CourseRelationCore, err error) {
-	//TODO implement me
-	panic("implement me")
+	return nil, errors.New("GetAccessCourseRelations is not implemented")
 }
 
 type CourseUseCaseModule struct {
