@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/spf13/viper"
 )

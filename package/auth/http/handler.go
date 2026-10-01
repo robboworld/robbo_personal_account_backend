@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
@@ -415,7 +415,7 @@ func parseUserClaims(token string, key []byte) (*models.UserClaims, error) {
 	data, err := jwt.ParseWithClaims(token, &models.UserClaims{},
 		func(t *jwt.Token) (interface{}, error) {
 			return key, nil
-		})
+		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		return nil, err
 	}

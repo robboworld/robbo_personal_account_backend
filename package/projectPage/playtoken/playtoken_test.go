@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/spf13/viper"
 )
 
@@ -51,9 +51,9 @@ func TestParse_rejectsWrongScope(t *testing.T) {
 
 	expiresAt := time.Now().Add(5 * time.Minute)
 	claims := Claims{
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: jwt.At(expiresAt),
-			IssuedAt:  jwt.At(time.Now()),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		Scope:         "other.scope",
 		ProjectPageID: "1",

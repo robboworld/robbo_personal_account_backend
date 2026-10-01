@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/spf13/viper"
 )
 
@@ -12,7 +12,7 @@ const scopePlay = "scratch.play"
 
 // Claims for short-lived project play/download URLs.
 type Claims struct {
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 	Scope         string `json:"scope"`
 	ProjectPageID string `json:"ppid"`
 	ProjectID     string `json:"pid"`
@@ -39,9 +39,9 @@ func ttl() time.Duration {
 func Issue(projectPageID, projectID string) (token string, expiresAt time.Time, err error) {
 	expiresAt = time.Now().Add(ttl())
 	claims := Claims{
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: jwt.At(expiresAt),
-			IssuedAt:  jwt.At(time.Now()),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 		Scope:         scopePlay,
 		ProjectPageID: projectPageID,
@@ -57,7 +57,7 @@ func Parse(tokenString string) (*Claims, error) {
 	claims := &Claims{}
 	t, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
 		return signingKey(), nil
-	})
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil || !t.Valid {
 		return nil, ErrInvalidToken
 	}

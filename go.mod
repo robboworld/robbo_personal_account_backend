@@ -4,18 +4,17 @@ go 1.24.0
 
 require (
 	github.com/99designs/gqlgen v0.17.16
-	github.com/dgrijalva/jwt-go/v4 v4.0.0-preview1
 	github.com/elastic/go-elasticsearch/v8 v8.15.0
 	github.com/gin-gonic/gin v1.7.7
 	github.com/go-playground/assert/v2 v2.0.1
 	github.com/go-sql-driver/mysql v1.10.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/hasura/go-graphql-client v0.8.1
 	github.com/jackc/pgconn v1.12.0
 	github.com/lib/pq v1.10.2
 	github.com/ory/dockertest/v3 v3.9.1
 	github.com/rs/cors v1.8.2
 	github.com/spf13/viper v1.11.0
-	github.com/stretchr/testify v1.9.0
 	github.com/vektah/gqlparser/v2 v2.5.0
 	go.uber.org/fx v1.17.1
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
@@ -32,7 +31,6 @@ require (
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/containerd/continuity v0.3.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/docker/cli v20.10.14+incompatible // indirect
 	github.com/docker/docker v20.10.7+incompatible // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
@@ -77,14 +75,12 @@ require (
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.0-beta.8 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spf13/afero v1.8.2 // indirect
 	github.com/spf13/cast v1.4.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
 	github.com/urfave/cli/v2 v2.8.1 // indirect

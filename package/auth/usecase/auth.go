@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
@@ -197,7 +197,7 @@ func (a *AuthUseCaseImpl) ParseToken(token string, key []byte) (claims *models.U
 	data, err := jwt.ParseWithClaims(token, &models.UserClaims{},
 		func(token *jwt.Token) (interface{}, error) {
 			return []byte(key), nil
-		})
+		}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 
 	if err != nil {
 		return &models.UserClaims{}, err
@@ -263,8 +263,8 @@ func (a *AuthUseCaseImpl) RefreshToken(token string) (newAccessToken string, new
 
 func (a *AuthUseCaseImpl) GenerateToken(user *models.UserCore, sid string, duration time.Duration, signingKey []byte) (token string, err error) {
 	claims := models.UserClaims{
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: jwt.At(time.Now().Add(duration * time.Second)),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration * time.Second)),
 		},
 		Id:   user.Id,
 		Role: user.Role,

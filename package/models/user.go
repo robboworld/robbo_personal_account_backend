@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 	"strconv"
 )
@@ -20,7 +20,7 @@ const (
 )
 
 type UserClaims struct {
-	jwt.StandardClaims
+	jwt.RegisteredClaims
 	Id   string
 	Role Role
 	// Sid is the concurrent-session tracking key (lk_user_sessions.session_key).

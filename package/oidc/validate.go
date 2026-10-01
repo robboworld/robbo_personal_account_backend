@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go/v4"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/spf13/viper"
 )
 
@@ -39,10 +39,9 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 	if err != nil {
 		return nil, err
 	}
-	// Signature only; aud checked manually below.
-	// jwt-go v4: if aud claim is present, Parse fails unless WithAudience or WithoutAudienceValidation.
+	// Signature only; aud checked manually below (jwt v5 checks aud only with WithAudience).
 	// Open edX JWT_SIGNING_ALGORITHM is RS512 for asymmetric (restricted) apps; RS256 also OK.
-	parser := jwt.NewParser(jwt.WithoutAudienceValidation())
+	parser := jwt.NewParser(jwt.WithValidMethods([]string{jwt.SigningMethodRS256.Alg(), jwt.SigningMethodRS512.Alg()}))
 	token, err := parser.Parse(idToken, func(token *jwt.Token) (interface{}, error) {
 		alg := token.Method.Alg()
 		if alg != jwt.SigningMethodRS256.Alg() && alg != jwt.SigningMethodRS512.Alg() {
