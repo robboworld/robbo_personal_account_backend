@@ -144,8 +144,7 @@ func (r *UsersGatewayImpl) UpdateStudent(student *models.StudentCore) (studentUp
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Model(&studentDb).Clauses(clause.Returning{}).
 			Where("id = ?", studentDb.ID).First(&models.StudentDB{}).Updates(studentDb).Error; err != nil {
-			var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-			if errors.As(err, &duplicateEntryError) {
+			if isUniqueViolation(err) {
 				return users.ErrAlreadyUsedEmail
 			}
 			err = auth.ErrUserNotFound
@@ -220,8 +219,7 @@ func (r *UsersGatewayImpl) UpdateTeacher(teacher *models.TeacherCore) (teacherUp
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 			if err = tx.Model(&teacherDb).Where("id = ?", teacherDb.ID).First(&models.TeacherDB{}).Updates(teacherDb).Error; err != nil {
-				var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-				if errors.As(err, &duplicateEntryError) {
+				if isUniqueViolation(err) {
 					return users.ErrAlreadyUsedEmail
 				}
 				err = auth.ErrUserNotFound
@@ -320,8 +318,7 @@ func (r *UsersGatewayImpl) UpdateParent(parent *models.ParentCore) (parentUpdate
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Model(&parentDb).Clauses(clause.Returning{}).
 			Where("id = ?", parentDb.ID).First(&models.ParentDB{}).Updates(parentDb).Error; err != nil {
-			var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-			if errors.As(err, &duplicateEntryError) {
+			if isUniqueViolation(err) {
 				return users.ErrAlreadyUsedEmail
 			}
 			err = auth.ErrUserNotFound
@@ -379,8 +376,7 @@ func (r *UsersGatewayImpl) UpdateFreeListener(freeListener *models.FreeListenerC
 		err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 			if err = tx.Model(&freeListenerDb).Where("id = ?", freeListenerDb.ID).
 				First(&models.FreeListenerDB{}).Updates(freeListenerDb).Error; err != nil {
-				var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-				if errors.As(err, &duplicateEntryError) {
+				if isUniqueViolation(err) {
 					return users.ErrAlreadyUsedEmail
 				}
 				err = auth.ErrUserNotFound
@@ -457,8 +453,7 @@ func (r *UsersGatewayImpl) UpdateUnitAdmin(unitAdmin *models.UnitAdminCore) (uni
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		if err = tx.Model(&unitAdminDb).Clauses(clause.Returning{}).
 			Where("id = ?", unitAdminDb.ID).First(&models.UnitAdminDB{}).Updates(unitAdminDb).Error; err != nil {
-			var duplicateEntryError = &pgconn.PgError{Code: "23505"}
-			if errors.As(err, &duplicateEntryError) {
+			if isUniqueViolation(err) {
 				return users.ErrAlreadyUsedEmail
 			}
 			err = auth.ErrUserNotFound
@@ -746,4 +741,11 @@ func (r *UsersGatewayImpl) GetStudentTeacherRelationsByStudentId(studentId strin
 		relations = append(relations, relationDB.ToCore())
 	}
 	return
+}
+
+// isUniqueViolation reports a Postgres unique-constraint error (23505). errors.As into a
+// pre-filled *PgError matches every PgError, so the code has to be checked explicitly.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
