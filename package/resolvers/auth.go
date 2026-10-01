@@ -125,7 +125,7 @@ func signInErrorCode(err error) string {
 }
 
 func getRefreshToken(c *gin.Context) (refreshToken string, err error) {
-	refreshToken = c.Value("refresh_token").(string)
+	refreshToken, _ = c.Value("refresh_token").(string)
 	if refreshToken == "" {
 		return "", errors.New("error finding cookie")
 	}

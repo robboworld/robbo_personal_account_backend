@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/99designs/gqlgen/graphql"
 	"github.com/dgrijalva/jwt-go/v4"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
@@ -14,7 +13,6 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/spf13/viper"
-	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 var errInvalidTokenAlg = errors.New("unexpected token alg")
@@ -174,14 +172,7 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 		}
 		headerParts := strings.Split(header, " ")
 		if len(headerParts) != 2 {
-			graphql.AddError(c, &gqlerror.Error{
-				Path:    graphql.GetPath(c),
-				Message: "invalid authorization header format",
-				Extensions: map[string]interface{}{
-					"code": "401",
-				},
-			})
-			c.Abort()
+			c.AbortWithStatusJSON(401, gin.H{"error": "INVALID_TOKEN", "code": "INVALID_TOKEN"})
 			return
 		}
 		data, err := jwt.ParseWithClaims(headerParts[1], &models.UserClaims{},
@@ -200,14 +191,7 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 
 		claims, ok := data.Claims.(*models.UserClaims)
 		if !ok {
-			graphql.AddError(c, &gqlerror.Error{
-				Path:    graphql.GetPath(c),
-				Message: "token claims are not of type *StandardClaims",
-				Extensions: map[string]interface{}{
-					"code": "401",
-				},
-			})
-			c.Abort()
+			c.AbortWithStatusJSON(401, gin.H{"error": "INVALID_TOKEN", "code": "INVALID_TOKEN"})
 			return
 		}
 		if !sessionOwnedBy(sessions, claims.Sid, claims.Id) {
