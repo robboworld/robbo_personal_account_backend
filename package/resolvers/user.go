@@ -160,8 +160,12 @@ func (r *queryResolver) GetUser(ctx context.Context, peekUserID *string, peekUse
 	var userId string
 	var userRole models.Role
 	callerRole := roleFromGin(ginContext)
+	// Signed-out callers used to fall through to the "internal server error" branch below.
+	if err := requireAuthenticated(ctx, callerRole); err != nil {
+		return nil, err
+	}
 	if utils.UseString(peekUserID) == "" || peekUserID == nil {
-		userId = ginContext.Value("user_id").(string)
+		userId, _ = ginContext.Value("user_id").(string)
 		userRole = callerRole
 	} else {
 		allowedPeekRoles := []models.Role{models.SuperAdmin, models.UnitAdmin}

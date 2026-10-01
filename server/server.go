@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"time"
 
 	"github.com/99designs/gqlgen/graphql"
@@ -20,6 +21,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/spf13/viper"
 	"github.com/vektah/gqlparser/v2/ast"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 	"go.uber.org/fx"
 )
 
@@ -152,6 +154,15 @@ func newGraphQLServer(es graphql.ExecutableSchema) *handler.Server {
 	srv.AddTransport(transport.GET{})
 	srv.AddTransport(transport.POST{})
 	srv.AddTransport(transport.MultipartForm{})
+	// gqlgen's default recover answers "internal server error" and logs nothing.
+	srv.SetRecoverFunc(func(ctx context.Context, p interface{}) error {
+		rid := ""
+		if gc, ok := ctx.Value("GinContextKey").(*gin.Context); ok {
+			rid = gc.GetString("request_id")
+		}
+		log.Printf("graphql panic rid=%s path=%v: %v\n%s", rid, graphql.GetPath(ctx), p, debug.Stack())
+		return gqlerror.Errorf("internal server error")
+	})
 	srv.SetQueryCache(lru.New[*ast.QueryDocument](1000))
 	// Bounds the work one request can ask for (aliases, nesting). The heaviest frontend
 	// operation (GetUser) scores ~106; graphql.complexity_limit / GRAPHQL_COMPLEXITY_LIMIT override.

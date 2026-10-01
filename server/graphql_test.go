@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -61,5 +63,24 @@ func TestGraphQLComplexityLimit(t *testing.T) {
 	}
 	if body := postQuery(t, "{ __typename }"); !strings.Contains(body, `"Query"`) {
 		t.Fatalf("small query rejected: %s", body)
+	}
+}
+
+type panicResolvers struct{ generated.ResolverRoot }
+
+func TestGraphQLRecoverLogsPanic(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	srv := newGraphQLServer(generated.NewExecutableSchema(generated.Config{Resolvers: panicResolvers{}}))
+	req := httptest.NewRequest(http.MethodPost, "/query", strings.NewReader(`{"query":"{ GetUser { __typename } }"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, req)
+	if !strings.Contains(w.Body.String(), "internal server error") {
+		t.Fatalf("body=%s", w.Body.String())
+	}
+	if !strings.Contains(buf.String(), "graphql panic") {
+		t.Fatalf("panic not logged: %q", buf.String())
 	}
 }
