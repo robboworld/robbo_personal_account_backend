@@ -41,6 +41,8 @@ type Entitlements struct {
 	SessionLimit     int
 	SeatLimit        int
 	Capabilities     []string
+	// ExpiresAt of the active licence; zero for Free.
+	ExpiresAt time.Time
 }
 
 // ResolveEntitlements looks up the account's active, non-expired license and
@@ -76,10 +78,17 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 				SessionLimit:     lic.SessionLimit,
 				SeatLimit:        lic.SeatLimit,
 				Capabilities:     lic.Capabilities,
+				ExpiresAt:        lic.ExpiresAt,
 			}, nil
 		}
 	}
 	return freeEntitlements(), nil
+}
+
+// TariffName is the licence's tariff as the ЛК shows it: the product title, or Individual / Class
+// by its limits.
+func TariffName(gateway Gateway, lic *models.LicenseCore) string {
+	return resolveTariffName(gateway, lic)
 }
 
 func resolveTariffName(gateway Gateway, lic *models.LicenseCore) string {
@@ -91,10 +100,15 @@ func resolveTariffName(gateway Gateway, lic *models.LicenseCore) string {
 			return strings.TrimSpace(title)
 		}
 	}
-	if lic.SeatLimit >= 5 || lic.SessionLimit >= 5 || lic.CloudQuotaMB >= 500 {
+	if IsClassLicense(lic) {
 		return "Class"
 	}
 	return "Individual"
+}
+
+// IsClassLicense: a licence for a class or a school (many computers or sessions), not one person.
+func IsClassLicense(lic *models.LicenseCore) bool {
+	return lic != nil && (lic.SeatLimit >= 5 || lic.SessionLimit >= 5 || lic.CloudQuotaMB >= 500)
 }
 
 func freeEntitlements() Entitlements {
@@ -147,6 +161,32 @@ func LMSUserHasUnlimitedSessionsAndSeats(lmsUserID string) bool {
 		return true
 	}
 	return false
+}
+
+// LMSUserDisplayName is the name of an LMS account as people see it: the profile's full name,
+// the first and last name, or the username. Empty when the LMS cannot be read.
+func LMSUserDisplayName(lmsUserID string) string {
+	id, err := strconv.ParseInt(strings.TrimSpace(lmsUserID), 10, 64)
+	if err != nil || id <= 0 {
+		return ""
+	}
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		log.Printf("licensing: LMS reader for the licence owner name: %v", err)
+		return ""
+	}
+	defer reader.Close()
+	profile, err := reader.LookupAuthUserProfileByID(id)
+	if err != nil || profile == nil {
+		return ""
+	}
+	if name := strings.TrimSpace(profile.ProfileName); name != "" {
+		return name
+	}
+	if name := strings.TrimSpace(profile.FirstName + " " + profile.LastName); name != "" {
+		return name
+	}
+	return strings.TrimSpace(profile.Username)
 }
 
 // CheckSessionLimit returns ErrSessionLimitReached when the account's active

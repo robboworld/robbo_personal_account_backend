@@ -23,4 +23,8 @@ var (
 	ErrSeatNotActive        = errors.New("seat_not_active")
 	ErrSessionLimitReached  = errors.New("SESSION_LIMIT_REACHED")
 	ErrSessionNotFound      = errors.New("SESSION_NOT_FOUND")
+
+	// Token refresh / seat release: the licence was revoked, or this device was removed from it.
+	ErrLicenseRevoked = errors.New("license_revoked")
+	ErrSeatRemoved    = errors.New("seat_removed")
 )

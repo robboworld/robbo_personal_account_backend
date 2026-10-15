@@ -15,6 +15,9 @@ type UseCase interface {
 
 	Activate(licenseKey, fingerprint, publicBase string) (*models.ActivateResult, error)
 	DeactivateSeat(licenseKey, fingerprint string) (seatID string, err error)
+	// Device offline-token lifecycle without a licence key (RS3 Desktop).
+	RefreshToken(token, fingerprint, publicBase string) (*models.ActivateResult, error)
+	ReleaseSeat(token, fingerprint string) (seatID string, err error)
 
 	StartDeviceLink(fingerprint string) (*models.DeviceLinkSessionCore, error)
 	ConfirmDeviceLink(lmsUserID, userCode, licenseID string) (*models.DeviceLinkSessionCore, error)

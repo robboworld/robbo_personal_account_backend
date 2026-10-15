@@ -11,6 +11,8 @@ type Delegate interface {
 
 	Activate(licenseKey, fingerprint, publicBase string) (*models.ActivateResult, error)
 	DeactivateSeat(licenseKey, fingerprint string) (string, error)
+	RefreshToken(token, fingerprint, publicBase string) (*models.ActivateResult, error)
+	ReleaseSeat(token, fingerprint string) (string, error)
 
 	StartDeviceLink(fingerprint string) (*models.DeviceLinkSessionCore, error)
 	ConfirmDeviceLink(lmsUserID, userCode, licenseID string) (*models.DeviceLinkSessionCore, error)

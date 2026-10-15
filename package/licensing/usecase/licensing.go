@@ -18,6 +18,9 @@ import (
 	"go.uber.org/fx"
 )
 
+// ownerDisplayName names the account a licence belongs to (tests replace it: no LMS there).
+var ownerDisplayName = licensing.LMSUserDisplayName
+
 type LicensingUseCaseImpl struct {
 	gateway licensing.Gateway
 	signer  *licrypto.Signer
@@ -208,6 +211,106 @@ func (u *LicensingUseCaseImpl) DeactivateSeat(licenseKey, fingerprint string) (s
 	return seat.SeatID, nil
 }
 
+// seatOfToken resolves the licence and seat an offline token was issued for. The signature must
+// be valid and the token bound to this device; an expired token is accepted, so a device can be
+// told its licence was renewed or release its seat after the expiry.
+func (u *LicensingUseCaseImpl) seatOfToken(token, fingerprint string) (*models.LicenseCore, *licrypto.TokenClaims, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, nil, licensing.ErrAddonAuthRequired
+	}
+	claims, err := u.signer.VerifyJWTAllowExpired(token)
+	if err != nil {
+		if err.Error() == "unsupported_alg" {
+			return nil, nil, licensing.ErrUnsupportedAlg
+		}
+		if err.Error() == "invalid_token_shape" {
+			return nil, nil, licensing.ErrInvalidToken
+		}
+		return nil, nil, licensing.ErrInvalidSignature
+	}
+	fp := strings.TrimSpace(fingerprint)
+	if fp == "" {
+		return nil, nil, licensing.ErrDeviceFingerprint
+	}
+	if claims.DeviceBinding == "" || claims.DeviceBinding != fp {
+		return nil, nil, licensing.ErrDeviceBinding
+	}
+	lic, err := u.gateway.GetLicenseByID(claims.EntitlementID)
+	if err != nil {
+		if errors.Is(err, licensing.ErrLicenseNotFound) {
+			return nil, nil, licensing.ErrLicenseRevoked
+		}
+		return nil, nil, err
+	}
+	return lic, claims, nil
+}
+
+// RefreshToken re-issues a device's offline token with the licence's current terms (expiry,
+// capabilities, tariff): a renewal in the ЛК reaches the device without a new activation, and a
+// revocation or a removed seat is reported to it.
+func (u *LicensingUseCaseImpl) RefreshToken(token, fingerprint, publicBase string) (*models.ActivateResult, error) {
+	lic, claims, err := u.seatOfToken(token, fingerprint)
+	if err != nil {
+		return nil, err
+	}
+	if lic.Status == models.LicenseStatusRevoked {
+		return nil, licensing.ErrLicenseRevoked
+	}
+	now := time.Now().UTC()
+	if lic.Status != models.LicenseStatusActive || !lic.ExpiresAt.After(now) {
+		return nil, licensing.ErrSubscriptionExpired
+	}
+	fp := strings.TrimSpace(fingerprint)
+	seat, err := u.gateway.GetSeatByFingerprint(lic.ID, fp)
+	if err != nil {
+		if errors.Is(err, licensing.ErrSeatNotFound) {
+			return nil, licensing.ErrSeatRemoved
+		}
+		return nil, err
+	}
+	if seat.SeatID != claims.SeatID {
+		// The device was removed and activated again: the old token is not that seat's.
+		return nil, licensing.ErrSeatRemoved
+	}
+	_ = u.gateway.TouchSeat(seat.SeatID, now)
+	return u.buildActivateResult(lic, seat.SeatID, fp, publicBase, now)
+}
+
+// ReleaseSeat frees the seat of the device holding the token ("Deactivate" in the editor). Unlike
+// DeactivateSeat it needs no licence key, which a device activated through Robbo ID never had.
+func (u *LicensingUseCaseImpl) ReleaseSeat(token, fingerprint string) (string, error) {
+	lic, claims, err := u.seatOfToken(token, fingerprint)
+	if err != nil {
+		return "", err
+	}
+	fp := strings.TrimSpace(fingerprint)
+	seat, err := u.gateway.GetSeatByFingerprint(lic.ID, fp)
+	if err != nil {
+		return "", err
+	}
+	if seat.SeatID != claims.SeatID {
+		// A newer activation of this device owns the seat now.
+		return "", licensing.ErrSeatNotFound
+	}
+	if _, err := u.gateway.DeleteSeatByFingerprint(lic.ID, fp); err != nil {
+		return "", err
+	}
+	now := time.Now().UTC()
+	lic.LastSeatChangeAt = &now
+	_ = u.gateway.UpdateLicense(lic)
+	return seat.SeatID, nil
+}
+
+// licenceOwnerName goes into the offline token: the account name for a personal licence, nothing
+// for a class licence (the computer is shared; the teacher's name is not shown to pupils).
+func licenceOwnerName(lic *models.LicenseCore) string {
+	if licensing.IsClassLicense(lic) {
+		return ""
+	}
+	return ownerDisplayName(lic.LmsUserID)
+}
+
 func (u *LicensingUseCaseImpl) buildActivateResult(
 	lic *models.LicenseCore,
 	seatID, fingerprint, publicBase string,
@@ -228,6 +331,8 @@ func (u *LicensingUseCaseImpl) buildActivateResult(
 		Capabilities:     append([]string{}, lic.Capabilities...),
 		DeviceBinding:    fingerprint,
 		AddonManifestUrl: manifestURL,
+		Tariff:           licensing.TariffName(u.gateway, lic),
+		OwnerName:        licenceOwnerName(lic),
 	}
 	token, err := u.signer.SignJWT(claims)
 	if err != nil {

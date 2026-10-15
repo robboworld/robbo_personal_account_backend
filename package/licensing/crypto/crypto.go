@@ -88,6 +88,11 @@ type TokenClaims struct {
 	Capabilities     []string `json:"capabilities"`
 	DeviceBinding    string   `json:"deviceBinding"`
 	AddonManifestUrl string   `json:"addonManifestUrl"`
+	// Tariff is the licence's tariff name (as on the ЛК licences page), shown by the editor.
+	Tariff string `json:"tariff,omitempty"`
+	// OwnerName is the account the licence belongs to, for a personal licence only: a class
+	// licence on a school computer does not show the teacher's name.
+	OwnerName string `json:"ownerName,omitempty"`
 }
 
 func (s *Signer) SignJWT(claims TokenClaims) (string, error) {
@@ -110,6 +115,16 @@ func (s *Signer) SignJWT(claims TokenClaims) (string, error) {
 }
 
 func (s *Signer) VerifyJWT(token string) (*TokenClaims, error) {
+	return s.verifyJWT(token, true)
+}
+
+// VerifyJWTAllowExpired checks the signature but not the expiry: a device with an expired
+// offline token may still ask for a renewed one or release its seat.
+func (s *Signer) VerifyJWTAllowExpired(token string) (*TokenClaims, error) {
+	return s.verifyJWT(token, false)
+}
+
+func (s *Signer) verifyJWT(token string, checkExpiry bool) (*TokenClaims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return nil, fmt.Errorf("invalid_token_shape")
@@ -143,7 +158,7 @@ func (s *Signer) VerifyJWT(token string) (*TokenClaims, error) {
 		return nil, fmt.Errorf("invalid_token_shape")
 	}
 	now := time.Now().Unix()
-	if claims.Exp > 0 && now >= claims.Exp {
+	if checkExpiry && claims.Exp > 0 && now >= claims.Exp {
 		return nil, fmt.Errorf("license_expired")
 	}
 	return &claims, nil
