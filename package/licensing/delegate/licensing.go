@@ -45,6 +45,14 @@ func (d *LicensingDelegateImpl) DeactivateSeat(licenseKey, fingerprint string) (
 	return d.usecase.DeactivateSeat(licenseKey, fingerprint)
 }
 
+func (d *LicensingDelegateImpl) RefreshToken(token, fingerprint, publicBase string) (*models.ActivateResult, error) {
+	return d.usecase.RefreshToken(token, fingerprint, publicBase)
+}
+
+func (d *LicensingDelegateImpl) ReleaseSeat(token, fingerprint string) (string, error) {
+	return d.usecase.ReleaseSeat(token, fingerprint)
+}
+
 func (d *LicensingDelegateImpl) StartDeviceLink(fingerprint string) (*models.DeviceLinkSessionCore, error) {
 	return d.usecase.StartDeviceLink(fingerprint)
 }

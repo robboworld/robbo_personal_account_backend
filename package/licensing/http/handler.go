@@ -36,6 +36,8 @@ func NewLicensingHandler(
 func (h *Handler) InitLicensingRoutes(router *gin.Engine) {
 	router.OPTIONS("/v1/activate", h.corsPreflight)
 	router.OPTIONS("/v1/seats/deactivate", h.corsPreflight)
+	router.OPTIONS("/v1/seats/release", h.corsPreflight)
+	router.OPTIONS("/v1/token/refresh", h.corsPreflight)
 	router.OPTIONS("/v1/device/link/start", h.corsPreflight)
 	router.OPTIONS("/v1/device/link/poll", h.corsPreflight)
 	router.OPTIONS("/addon/manifest.json", h.corsPreflight)
@@ -44,6 +46,8 @@ func (h *Handler) InitLicensingRoutes(router *gin.Engine) {
 
 	router.POST("/v1/activate", h.Activate)
 	router.POST("/v1/seats/deactivate", h.DeactivateSeat)
+	router.POST("/v1/seats/release", h.ReleaseSeat)
+	router.POST("/v1/token/refresh", h.RefreshToken)
 	router.POST("/v1/device/link/start", h.StartDeviceLink)
 	router.POST("/v1/device/link/poll", h.PollDeviceLink)
 	router.GET("/addon/manifest.json", h.AddonManifest)
@@ -183,6 +187,87 @@ func (h *Handler) DeactivateSeat(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true, "seatId": seatID})
+}
+
+// deviceTokenRequest: the device's offline token and fingerprint, in the body or as
+// Authorization: Bearer / X-RS3-Device-Fingerprint (the same headers as the addon download).
+type deviceTokenRequest struct {
+	Token             string `json:"token"`
+	DeviceFingerprint string `json:"deviceFingerprint"`
+	PublicBase        string `json:"publicBase"`
+}
+
+func extractDeviceToken(c *gin.Context, body deviceTokenRequest) (token, fingerprint string) {
+	token, fingerprint = extractAddonAuth(c)
+	if token == "" {
+		token = strings.TrimSpace(body.Token)
+	}
+	if fingerprint == "" {
+		fingerprint = strings.TrimSpace(body.DeviceFingerprint)
+	}
+	return
+}
+
+// RefreshToken: POST /v1/token/refresh — a new offline token with the licence's current terms, or
+// the reason it no longer applies to this device.
+func (h *Handler) RefreshToken(c *gin.Context) {
+	setCORS(c)
+	var body deviceTokenRequest
+	_ = c.ShouldBindJSON(&body)
+	token, fp := extractDeviceToken(c, body)
+	result, err := h.licensingDelegate.RefreshToken(token, fp, publicBaseFromRequest(c, body.PublicBase))
+	if err != nil {
+		writeDeviceTokenError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"signedOfflineToken": result.SignedOfflineToken,
+		"addonManifestUrl":   result.AddonManifestUrl,
+		"serverTime":         result.ServerTime.Format(time.RFC3339),
+		"refreshAfter":       result.RefreshAfter.Format(time.RFC3339),
+		"seatId":             result.SeatID,
+	})
+}
+
+// ReleaseSeat: POST /v1/seats/release — frees this device's seat by its offline token.
+func (h *Handler) ReleaseSeat(c *gin.Context) {
+	setCORS(c)
+	var body deviceTokenRequest
+	_ = c.ShouldBindJSON(&body)
+	token, fp := extractDeviceToken(c, body)
+	seatID, err := h.licensingDelegate.ReleaseSeat(token, fp)
+	if err != nil {
+		writeDeviceTokenError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true, "seatId": seatID})
+}
+
+// writeDeviceTokenError answers token refresh / seat release with a "reason" the editor shows:
+// expired | revoked | seat_removed | other_device | invalid.
+func writeDeviceTokenError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, licensing.ErrSubscriptionExpired):
+		c.JSON(http.StatusForbidden, gin.H{"error": "SUBSCRIPTION_EXPIRED", "reason": "expired"})
+	case errors.Is(err, licensing.ErrLicenseRevoked):
+		c.JSON(http.StatusForbidden, gin.H{"error": "license_revoked", "reason": "revoked"})
+	case errors.Is(err, licensing.ErrSeatRemoved):
+		c.JSON(http.StatusForbidden, gin.H{"error": "seat_removed", "reason": "seat_removed"})
+	case errors.Is(err, licensing.ErrSeatNotFound):
+		// Release: the seat is already free.
+		c.JSON(http.StatusNotFound, gin.H{"error": "SEAT_NOT_FOUND", "errorCode": "SEAT_NOT_FOUND", "reason": "seat_removed"})
+	case errors.Is(err, licensing.ErrDeviceBinding):
+		c.JSON(http.StatusForbidden, gin.H{"error": "device_binding_mismatch", "reason": "other_device"})
+	case errors.Is(err, licensing.ErrDeviceFingerprint):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "device_fingerprint_required", "errorCode": "DEVICE_FINGERPRINT_REQUIRED"})
+	case errors.Is(err, licensing.ErrAddonAuthRequired),
+		errors.Is(err, licensing.ErrInvalidToken),
+		errors.Is(err, licensing.ErrUnsupportedAlg),
+		errors.Is(err, licensing.ErrInvalidSignature):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "reason": "invalid"})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+	}
 }
 
 type deviceLinkStartRequest struct {
@@ -428,7 +513,12 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 	if tariffName == "" {
 		tariffName = "Free"
 	}
+	var expiresAt interface{}
+	if !ent.ExpiresAt.IsZero() {
+		expiresAt = ent.ExpiresAt.UTC().Format(time.RFC3339)
+	}
 	c.JSON(http.StatusOK, gin.H{
+		"expiresAt":        expiresAt,
 		"tariffName":       tariffName,
 		"hasLicense":       ent.HasLicense,
 		"cloudQuotaMb":     ent.MaxProjectSizeMB,

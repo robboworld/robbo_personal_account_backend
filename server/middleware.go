@@ -134,6 +134,8 @@ func TokenAuthMiddleware(sessions licensing.Gateway) gin.HandlerFunc {
 		// Public RS3 activation / device-link / addon delivery (no BFF session).
 		if path == "/v1/activate" ||
 			path == "/v1/seats/deactivate" ||
+			path == "/v1/seats/release" ||
+			path == "/v1/token/refresh" ||
 			path == "/v1/device/link/start" ||
 			path == "/v1/device/link/poll" ||
 			path == "/addon/manifest.json" ||
