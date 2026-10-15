@@ -31,6 +31,7 @@ services:
       - OIDC_TOKEN_ENDPOINT=${OIDC_TOKEN_ENDPOINT:-http://host.docker.internal:8081/default/token}
       - OIDC_JWKS_URI=${OIDC_JWKS_URI:-http://host.docker.internal:8081/default/jwks}
       - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-lk-web}
+      - OIDC_SCOPES=${OIDC_SCOPES:-openid profile email}
       - OIDC_REDIRECT_URI=${OIDC_REDIRECT_URI:-http://localhost:8080/auth/oidc/callback}
       - OIDC_LOGOUT_ENDPOINT=${OIDC_LOGOUT_ENDPOINT:-http://localhost:8081/default/endsession}
       - OIDC_POST_LOGOUT_REDIRECT_URI=${OIDC_POST_LOGOUT_REDIRECT_URI:-http://localhost:3030/}
