@@ -77,3 +77,17 @@ func TestCORSPreflightAllowsPatch(t *testing.T) {
 		t.Fatalf("Access-Control-Allow-Methods=%q want PATCH", got)
 	}
 }
+
+func TestCORSPreflightIsCacheable(t *testing.T) {
+	t.Setenv("CORS_ALLOW_PRIVATE_NETWORK", "false")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "")
+	h := newCORS().Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	req := httptest.NewRequest(http.MethodOptions, "/api/notifications/unread-count", nil)
+	req.Header.Set("Origin", "http://localhost:3030")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if got := w.Header().Get("Access-Control-Max-Age"); got != "600" {
+		t.Fatalf("Access-Control-Max-Age=%q want 600", got)
+	}
+}

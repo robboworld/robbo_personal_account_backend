@@ -10,6 +10,8 @@ import (
 	"github.com/rs/cors"
 )
 
+const corsPreflightMaxAgeSeconds = 600
+
 // newCORS is the API CORS policy: credentialed requests from allowlisted frontend origins.
 // PATCH is needed by the teacher classes API (PATCH /api/teacher/classes/:id).
 func newCORS() *cors.Cors {
@@ -25,6 +27,8 @@ func newCORS() *cors.Cors {
 			http.MethodOptions,
 		},
 		AllowedHeaders: []string{"*"},
+		// Browsers cache the preflight, so status/notification polls cost one request, not two.
+		MaxAge: corsPreflightMaxAgeSeconds,
 	})
 }
 
