@@ -163,3 +163,10 @@ func TestCreateProjectComment_Profanity(t *testing.T) {
 		t.Fatalf("expected ErrProfanityDetected, got %v", err)
 	}
 }
+
+func TestPutCommentReactionRejectsDislike(t *testing.T) {
+	uc := &ProjectPageUseCaseImpl{projectPageGateway: &stubCommentGateway{}}
+	if _, err := uc.PutCommentReaction("p1", "c1", "797", "dislike"); err != projectPage.ErrBadRequest {
+		t.Fatalf("dislike err = %v, want ErrBadRequest", err)
+	}
+}
