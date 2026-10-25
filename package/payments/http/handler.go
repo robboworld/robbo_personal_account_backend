@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/payments"
 )
@@ -43,7 +44,18 @@ func (h *Handler) ListProducts(c *gin.Context) {
 	for _, p := range list {
 		out = append(out, productToJSON(p))
 	}
-	c.JSON(http.StatusOK, gin.H{"products": out})
+	c.JSON(http.StatusOK, gin.H{"products": out, "free": freeTariffJSON()})
+}
+
+// freeTariffJSON publishes the Free limits the backend enforces, so pages quoting them
+// (landing, "My tariffs") cannot drift from the code.
+func freeTariffJSON() gin.H {
+	return gin.H{
+		"maxProjectSizeMb": licensing.FreeCloudQuotaMB,
+		"maxProjects":      licensing.FreeMaxProjects,
+		"sessionLimit":     licensing.FreeSessionLimit,
+		"seatLimit":        licensing.FreeSeatLimit,
+	}
 }
 
 type createProductRequest struct {
