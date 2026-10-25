@@ -227,7 +227,8 @@ func (p *ProjectPageUseCaseImpl) PutCommentReaction(
 ) (*models.CommentReactionsHTTP, error) {
 	userId = strings.TrimSpace(userId)
 	reactionCode = strings.TrimSpace(reactionCode)
-	if userId == "" || (reactionCode != "like" && reactionCode != "dislike") {
+	// Comments take only "like": a dislike button invited piling on in a children's gallery.
+	if userId == "" || reactionCode != "like" {
 		return nil, projectPage.ErrBadRequest
 	}
 	project, err := p.requirePublicProject(projectPageId)
