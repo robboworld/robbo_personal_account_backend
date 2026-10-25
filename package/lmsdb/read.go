@@ -295,6 +295,62 @@ func (r *Reader) ListAuthUsersForIndex(limit, offset int) ([]AuthUserSearchHit, 
 	return out, rows.Err()
 }
 
+// CourseRow is one Open edX course for pickers.
+type CourseRow struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListCourses returns courses that have not ended, newest first.
+func (r *Reader) ListCourses(limit int) ([]CourseRow, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 500
+	}
+	const q = `SELECT id, display_name FROM course_overviews_courseoverview
+		WHERE end IS NULL OR end > UTC_TIMESTAMP()
+		ORDER BY created DESC LIMIT ?`
+	rows, err := r.db.Query(q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]CourseRow, 0)
+	for rows.Next() {
+		var row CourseRow
+		var name sql.NullString
+		if err := rows.Scan(&row.ID, &name); err != nil {
+			return nil, err
+		}
+		row.Name = strings.TrimSpace(name.String)
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// IsUserInAnyCohort reports whether userID belongs to one of the given Open edX cohorts.
+func (r *Reader) IsUserInAnyCohort(userID int64, cohortIDs []int64) (bool, error) {
+	if userID <= 0 || len(cohortIDs) == 0 {
+		return false, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(cohortIDs)), ",")
+	q := `SELECT 1 FROM course_groups_cohortmembership WHERE user_id = ? AND course_user_group_id IN (` +
+		placeholders + `) LIMIT 1`
+	args := make([]interface{}, 0, len(cohortIDs)+1)
+	args = append(args, userID)
+	for _, id := range cohortIDs {
+		args = append(args, id)
+	}
+	var one int
+	err := r.db.QueryRow(q, args...).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // HasEnrollment checks student_courseenrollment for idempotency before API enroll.
 func (r *Reader) HasEnrollment(userID int64, courseID string) (bool, error) {
 	const q = `SELECT 1 FROM student_courseenrollment WHERE user_id = ? AND course_id = ? AND is_active = 1 LIMIT 1`

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -48,9 +49,19 @@ func (h Handler) InitRoutes(router *gin.Engine) {
 		g.GET("/logout/lms", logoutSourceGuard, h.LogoutFromLMS)
 		g.GET("/logout/clear", logoutSourceGuard, h.LogoutClear)
 		g.GET("/status", h.Status)
-		g.POST("/verify-credentials", h.VerifyCredentials)
-		g.POST("/password-login", h.PasswordLogin)
+		g.POST("/verify-credentials", passwordFallbackGuard, h.VerifyCredentials)
+		g.POST("/password-login", passwordFallbackGuard, h.PasswordLogin)
 	}
+}
+
+// passwordFallbackGuard keeps LMS password checks behind AUTH_LMS_PASSWORD_FALLBACK: without
+// it, sign-in goes through the IdP only, so its own policies (SSO, MFA, lockouts) apply.
+func passwordFallbackGuard(c *gin.Context) {
+	if !auth.LmsPasswordFallbackEnabled() {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"ok": false, "error": "password_login_disabled"})
+		return
+	}
+	c.Next()
 }
 
 // logoutSourceGuard rejects logout requests coming from foreign pages (see oidc.LogoutSourceAllowed).
@@ -302,9 +313,8 @@ func authStatusPayload(authenticated bool, sub, email, edxUserID string, role ui
 		"role":                  role,
 		"auth_mode":             viper.GetString("auth.mode"),
 		"legacy_auth":           viper.GetBool("legacyPostgres.enabled"),
-		"lms_password_fallback": viper.GetBool("auth.lmsPasswordFallback") ||
-			strings.EqualFold(viper.GetString("auth.mode"), "lms_db"),
-		"oidc_enabled": viper.GetBool("oidc.enabled"),
+		"lms_password_fallback": auth.LmsPasswordFallbackEnabled(),
+		"oidc_enabled":          viper.GetBool("oidc.enabled"),
 	}
 }
 

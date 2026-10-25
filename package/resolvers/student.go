@@ -235,6 +235,10 @@ func (r *queryResolver) GetStudentByID(ctx context.Context, studentID string) (m
 		return nil, accessErr
 	}
 
+	if profileErr := profileReadAccess(ctx, ginContext, userRole, studentID); profileErr != nil {
+		return nil, profileErr
+	}
+
 	student, getStudentByIdErr := r.usersDelegate.GetStudentById(studentID)
 	if getStudentByIdErr != nil {
 		return nil, &gqlerror.Error{

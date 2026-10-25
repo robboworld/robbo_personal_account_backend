@@ -325,7 +325,16 @@ func (w *Writer) UpsertProfileName(userID int64, fullName string) error {
 	return err
 }
 
-// UpdateProfile updates auth_user email and auth_userprofile demographic fields.
+// ErrEmailChangeViaLMS: the request asked to change the email, which only the LMS may do.
+var ErrEmailChangeViaLMS = errors.New("email_change_via_lms")
+
+// sameEmail treats an empty value as "unchanged" (forms that do not send the field).
+func sameEmail(current, requested string) bool {
+	requested = strings.TrimSpace(requested)
+	return requested == "" || strings.EqualFold(strings.TrimSpace(current), requested)
+}
+
+// UpdateProfile updates auth_userprofile demographic fields (the email must stay the same).
 func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExtendedUpdate) error {
 	if w == nil || w.db == nil {
 		return errors.New("lms mysql writer is not configured")
@@ -336,25 +345,21 @@ func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExte
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	res, err := tx.Exec(`UPDATE auth_user SET email = ? WHERE id = ?`, email, id)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		var one int
-		if err := tx.QueryRow(`SELECT 1 FROM auth_user WHERE id = ? LIMIT 1`, id).Scan(&one); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return sql.ErrNoRows
-			}
-			return err
+	// The LK never changes the login email: Open edX account settings do it with a
+	// confirmation letter. Writing it here let anyone with edit rights take over an
+	// account through a password reset.
+	var current string
+	if err := tx.QueryRow(`SELECT email FROM auth_user WHERE id = ? LIMIT 1`, id).Scan(&current); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return sql.ErrNoRows
 		}
+		return err
+	}
+	if !sameEmail(current, email) {
+		return ErrEmailChangeViaLMS
 	}
 
-	res, err = tx.Exec(
+	res, err := tx.Exec(
 		`UPDATE auth_userprofile SET name = ?, level_of_education = ?, country = ?,
 		 year_of_birth = ?, gender = ?, language = ?, bio = ?
 		 WHERE user_id = ?`,
@@ -370,7 +375,7 @@ func (w *Writer) UpdateProfile(id int64, email, fullName string, ext ProfileExte
 	if err != nil {
 		return err
 	}
-	n, err = res.RowsAffected()
+	n, err := res.RowsAffected()
 	if err != nil {
 		return err
 	}

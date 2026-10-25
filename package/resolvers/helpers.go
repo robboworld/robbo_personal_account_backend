@@ -9,8 +9,24 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/users/profileaccess"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
+
+// profileReadAccess rejects reading someone else's profile by ID unless profileaccess allows it.
+func profileReadAccess(ctx context.Context, c *gin.Context, role models.Role, targetID string) error {
+	viewerID, _ := c.Value("user_id").(string)
+	if profileaccess.CanRead(viewerID, role, targetID) {
+		return nil
+	}
+	return &gqlerror.Error{
+		Path:    graphql.GetPath(ctx),
+		Message: auth.ErrNotAccess.Error(),
+		Extensions: map[string]interface{}{
+			"code": "403",
+		},
+	}
+}
 
 func allAuthenticatedRoles() []models.Role {
 	return []models.Role{
@@ -24,7 +40,7 @@ func allAuthenticatedRoles() []models.Role {
 }
 
 func projectCreateRoles() []models.Role {
-	return []models.Role{models.Student, models.UnitAdmin, models.SuperAdmin}
+	return []models.Role{models.Student, models.Teacher, models.UnitAdmin, models.SuperAdmin}
 }
 
 func requireAuthenticated(ctx context.Context, userRole models.Role) error {

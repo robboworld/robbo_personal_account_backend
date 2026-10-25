@@ -15,11 +15,22 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
+// SignInAttemptAllowed is the shared password-attempt budget (server.AllowLoginAttempt).
+// Each alias of SingIn in one request spends one attempt.
+var SignInAttemptAllowed func(ip string) bool
+
 // SingIn is the resolver for the SingIn field.
 func (r *mutationResolver) SingIn(ctx context.Context, input models.SignInInput) (models.SignInResult, error) {
 	ginContext, getGinContextErr := GinContextFromContext(ctx)
 	if getGinContextErr != nil {
 		return nil, getGinContextErr
+	}
+	if SignInAttemptAllowed != nil && ginContext != nil && !SignInAttemptAllowed(ginContext.ClientIP()) {
+		return nil, &gqlerror.Error{
+			Path:       graphql.GetPath(ctx),
+			Message:    "too_many_requests",
+			Extensions: map[string]interface{}{"code": "429"},
+		}
 	}
 	client := auth.ClientInfo{}
 	if ginContext != nil && ginContext.Request != nil {

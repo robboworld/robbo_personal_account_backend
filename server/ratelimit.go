@@ -76,9 +76,18 @@ func isAuthAbusePath(path string) bool {
 	}
 }
 
+// loginLimiter is one budget per client IP for every password check: the REST
+// credential paths and the GraphQL SingIn mutation (one hit per alias).
+var loginLimiter = newIPRateLimiter(10, time.Minute)
+
+// AllowLoginAttempt spends one password attempt for ip; false once the budget is used up.
+func AllowLoginAttempt(ip string) bool {
+	return loginLimiter.allow(ip)
+}
+
 // AuthLoginRateLimit limits password / credential endpoints per client IP.
 func AuthLoginRateLimit() gin.HandlerFunc {
-	limiter := newIPRateLimiter(10, time.Minute)
+	limiter := loginLimiter
 	return func(c *gin.Context) {
 		if !isAuthAbusePath(c.Request.URL.Path) {
 			c.Next()

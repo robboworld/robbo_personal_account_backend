@@ -2,6 +2,8 @@ package modules
 
 import (
 	"context"
+	"strconv"
+	"strings"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	authdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/auth/delegate"
@@ -24,6 +26,7 @@ import (
 	crshttp "github.com/skinnykaen/robbo_student_personal_account.git/package/courses/http"
 	crsusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/courses/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/dbmigrate"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	edxusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/edx/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
@@ -67,6 +70,8 @@ import (
 	tchtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/http"
 	tcusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/usecase"
 	ppageaccess "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/users/profileaccess"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	robboGroupdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/delegate"
 	robboGroupgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/gateway"
@@ -106,6 +111,10 @@ type GatewayModule struct {
 }
 
 func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error) {
+	// Bring the projects and licensing schemas up to the code before any gateway uses them.
+	if err := dbmigrate.ApplyConfigured(); err != nil {
+		return GatewayModule{}, err
+	}
 	tcGw, err := tcgateway.SetupTeacherClassGateway(postgresClient)
 	if err != nil {
 		return GatewayModule{}, err
@@ -137,6 +146,35 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 	ppageaccess.CohortTeacherReader = func(teacherID, courseID, cohortID string) bool {
 		inv, err := tcGw.Gateway.GetInviteByCourseCohort(courseID, cohortID)
 		return err == nil && inv != nil && inv.OwnerTeacherID == teacherID && inv.ArchivedAt == nil
+	}
+	profileaccess.TeacherStudentReader = func(teacherID, studentID string) bool {
+		studentNum, err := strconv.ParseInt(strings.TrimSpace(studentID), 10, 64)
+		if err != nil || studentNum <= 0 {
+			return false
+		}
+		invites, err := tcGw.Gateway.ListInvitesByOwner(teacherID)
+		if err != nil {
+			return false
+		}
+		var cohortIDs []int64
+		for _, inv := range invites {
+			if inv.ArchivedAt != nil {
+				continue
+			}
+			if id, err := strconv.ParseInt(strings.TrimSpace(inv.EdxCohortID), 10, 64); err == nil {
+				cohortIDs = append(cohortIDs, id)
+			}
+		}
+		if len(cohortIDs) == 0 {
+			return false
+		}
+		reader, err := lmsdb.NewReaderFromConfig()
+		if err != nil {
+			return false
+		}
+		defer reader.Close()
+		member, err := reader.IsUserInAnyCohort(studentNum, cohortIDs)
+		return err == nil && member
 	}
 	return GatewayModule{
 		AuthGateway:          authgateway.SetupAuthGateway(postgresClient),

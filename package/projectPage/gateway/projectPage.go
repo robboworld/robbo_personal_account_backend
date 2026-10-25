@@ -293,6 +293,10 @@ func (r *ProjectPageGatewayImpl) GetPublicProjectPages(page, pageSize int, filte
 		query = query.Where("scratch_projects.tags @> ?", pq.Array(filter.Tags))
 		countQuery = countQuery.Where("tags @> ?", pq.Array(filter.Tags))
 	}
+	if owner := strings.TrimSpace(filter.OwnerUserID); owner != "" {
+		query = query.Where("scratch_projects.owner_user_id = ?", owner)
+		countQuery = countQuery.Where("owner_user_id = ?", owner)
+	}
 	if q := strings.TrimSpace(filter.Query); q != "" {
 		like := "%" + q + "%"
 		orParts := []string{

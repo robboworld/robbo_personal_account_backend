@@ -233,6 +233,10 @@ func (r *queryResolver) GetTeacherByID(ctx context.Context, teacherID string) (m
 		return nil, accessErr
 	}
 
+	if profileErr := profileReadAccess(ctx, ginContext, userRole, teacherID); profileErr != nil {
+		return nil, profileErr
+	}
+
 	teacher, getTeacherByIdErr := r.usersDelegate.GetTeacherById(teacherID)
 	if getTeacherByIdErr != nil {
 		return nil, &gqlerror.Error{

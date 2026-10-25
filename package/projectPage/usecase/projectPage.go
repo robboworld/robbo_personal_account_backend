@@ -244,22 +244,37 @@ func (p *ProjectPageUseCaseImpl) DeleteProjectPage(projectPageId string, authorI
 	return p.projectGateway.DeleteProject(row.ID)
 }
 
-func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId string, page, pageSize int) (
+// maxAuthorListPageSize caps one page of an author's project list.
+const maxAuthorListPageSize = 50
+
+// GetAllProjectPageByUserId lists authorId's projects as seen by viewerId: the author gets
+// every project, anyone else only the shared ones, exactly as the public catalog shows them.
+func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId, viewerId string, page, pageSize int) (
 	projectPages []*models.ProjectPageCore,
 	countRows int64,
 	err error,
 ) {
-	projects, countRows, getProjectsErr := p.projectGateway.GetProjectsByAuthorId(authorId, page, pageSize)
-	if getProjectsErr != nil {
-		return
+	authorId = strings.TrimSpace(authorId)
+	if pageSize > maxAuthorListPageSize {
+		pageSize = maxAuthorListPageSize
 	}
+	if authorId == "" {
+		return nil, 0, nil
+	}
+	if strings.TrimSpace(viewerId) != authorId {
+		return p.GetPublicProjectPages(page, pageSize, projectPage.PublicListFilter{OwnerUserID: authorId})
+	}
+	projects, countRows, err := p.projectGateway.GetProjectsByAuthorId(authorId, page, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+	author := lookupAuthorInfo(authorId)
 	for _, project := range projects {
 		projectPage, errGetProjectPageById := p.projectPageGateway.GetProjectPageByProjectId(project.ID)
 		if errGetProjectPageById != nil {
 			return []*models.ProjectPageCore{}, 0, errGetProjectPageById
 		}
 		projectPage.AuthorUserId = authorId
-		author := lookupAuthorInfo(authorId)
 		projectPage.AuthorName = author.Name
 		projectPage.AuthorAvatarId = author.AvatarID
 		projectPage.IsOwner = true

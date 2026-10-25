@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -40,6 +41,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 	api := router.Group("/api/teacher")
 	{
 		api.GET("/classes", h.ListMyClasses)
+		api.GET("/courses", h.ListCourses)
 		api.POST("/classes", h.CreateClass)
 		api.GET("/classes/:classId", h.GetClass)
 		api.PATCH("/classes/:classId", h.RenameClass)
@@ -92,6 +94,12 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, teacherclass.ErrConflict), errors.Is(err, teacherclass.ErrAlreadyIn):
 		status = http.StatusConflict
 	}
+	if status == http.StatusInternalServerError {
+		// Unexpected errors carry internal hosts and SQL; log them, answer with a code.
+		log.Printf("teacherclass: %s %s: %v", c.Request.Method, c.FullPath(), err)
+		c.AbortWithStatusJSON(status, gin.H{"error": teacherclass.ErrInternal.Error(), "code": "INTERNAL"})
+		return
+	}
 	c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
 }
 
@@ -137,6 +145,18 @@ func (h *Handler) JoinClass(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, dto)
+}
+
+func (h *Handler) ListCourses(c *gin.Context) {
+	if _, _, ok := h.identity(c, teacherRoles()); !ok {
+		return
+	}
+	list, err := h.uc.ListCourses()
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
 func (h *Handler) ListMyClasses(c *gin.Context) {

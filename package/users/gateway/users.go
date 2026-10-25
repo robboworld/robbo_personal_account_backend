@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"errors"
+	"fmt"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -11,6 +12,8 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"log"
+	"strconv"
+	"strings"
 )
 
 type UsersGatewayImpl struct {
@@ -45,10 +48,18 @@ func (r *UsersGatewayImpl) GetStudentsByRobboUnitId(robboUnitId string) (student
 }
 
 func (r *UsersGatewayImpl) AddStudentToRobboGroup(studentId, robboGroupId, robboUnitId string) (err error) {
+	// IDs go in as bound numbers: gorm.Expr pasted the caller's text into the SQL.
+	groupID, err := strconv.ParseUint(strings.TrimSpace(robboGroupId), 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid robbo group id: %w", err)
+	}
+	unitID, err := strconv.ParseUint(strings.TrimSpace(robboUnitId), 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid robbo unit id: %w", err)
+	}
 	err = r.PostgresClient.Db.Transaction(func(tx *gorm.DB) (err error) {
 		err = tx.Model(&models.StudentDB{}).Where("id = ?", studentId).
-			Update("robbo_group_id", gorm.Expr(robboGroupId)).
-			Update("robbo_unit_id", gorm.Expr(robboUnitId)).Error
+			Updates(map[string]interface{}{"robbo_group_id": groupID, "robbo_unit_id": unitID}).Error
 		return
 	})
 	return

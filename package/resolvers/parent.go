@@ -179,6 +179,10 @@ func (r *queryResolver) GetParentByID(ctx context.Context, parentID string) (mod
 		return nil, accessErr
 	}
 
+	if profileErr := profileReadAccess(ctx, ginContext, userRole, parentID); profileErr != nil {
+		return nil, profileErr
+	}
+
 	parent, getParentByIdErr := r.usersDelegate.GetParentById(parentID)
 	if getParentByIdErr != nil {
 		return nil, &gqlerror.Error{
