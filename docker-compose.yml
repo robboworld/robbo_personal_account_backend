@@ -53,6 +53,9 @@ services:
       - API_TOKEN=${API_TOKEN:-}
       - API_CLIENT_ID=${API_CLIENT_ID:-}
       - API_CLIENT_SECRET=${API_CLIENT_SECRET:-}
+      # Server-to-server Open edX base for every api_urls.* call (cohorts, enrollments, courses).
+      # Empty keeps the URLs from config.yml.
+      - EDX_API_BASE_URL=${EDX_API_BASE_URL:-}
       # YooKassa (optional; from backend/.env — never commit secrets)
       - PAYMENTS_YOOKASSA_SHOP_ID=${PAYMENTS_YOOKASSA_SHOP_ID:-}
       - PAYMENTS_YOOKASSA_SECRET_KEY=${PAYMENTS_YOOKASSA_SECRET_KEY:-}
