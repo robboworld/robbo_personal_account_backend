@@ -8,6 +8,9 @@ type PublicListFilter struct {
 	Query               string
 	Tags                []string
 	AuthorUserIDs       []string
+	// OwnerUserID, when set, keeps only that author's projects (AND, unlike AuthorUserIDs,
+	// which only widens the text search).
+	OwnerUserID string
 	// Sort: "popular" orders by reaction count desc, then updated_at desc.
 	// Empty keeps updated_at desc. Featured lists ignore this and use landing_sort_order.
 	Sort string

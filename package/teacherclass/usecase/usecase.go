@@ -206,6 +206,24 @@ func (u *UseCaseImpl) ListMyClasses(teacherID string) ([]teacherclass.ClassDTO, 
 	return out, nil
 }
 
+// ListCourses: running Open edX courses for the "create class" picker.
+func (u *UseCaseImpl) ListCourses() ([]teacherclass.CourseDTO, error) {
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	rows, err := reader.ListCourses(500)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]teacherclass.CourseDTO, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, teacherclass.CourseDTO{ID: row.ID, Name: row.Name})
+	}
+	return out, nil
+}
+
 func (u *UseCaseImpl) GetClass(teacherID, classID string) (*teacherclass.ClassDTO, error) {
 	inv, err := u.requireOwner(teacherID, classID)
 	if err != nil {
@@ -590,7 +608,9 @@ func (u *UseCaseImpl) CreateAssignment(teacherID, classID string, in teacherclas
 		if m.UserID == "" {
 			continue
 		}
-		_, _ = u.gw.ForkProjectForStudent(tpl, m.UserID, in.Title, a)
+		if _, err := u.gw.ForkProjectForStudent(tpl, m.UserID, in.Title, a); err != nil {
+			log.Printf("teacherclass: assignment %s: copy for student %s: %v", a.ID, m.UserID, err)
+		}
 	}
 	dto := assignmentDTO(a)
 	return &dto, nil
@@ -612,16 +632,51 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 		if err != nil {
 			return nil, teacherclass.ErrNotFound
 		}
+		member, err := studentInCohort(viewerID, inv.EdxCohortID)
+		if err != nil {
+			return nil, err
+		}
+		if !member {
+			return nil, teacherclass.ErrForbidden
+		}
 	}
 	list, err := u.gw.ListAssignments(inv.EdxCourseID, inv.EdxCohortID)
 	if err != nil {
 		return nil, err
 	}
+	studentView := role != models.Teacher && role != models.SuperAdmin
 	out := make([]teacherclass.AssignmentDTO, 0, len(list))
 	for i := range list {
-		out = append(out, assignmentDTO(&list[i]))
+		dto := assignmentDTO(&list[i])
+		if studentView {
+			if p, err := u.gw.FindStudentAssignmentProject(list[i].ID, viewerID); err == nil && p != nil {
+				dto.MyProjectID = p.ID
+				dto.MyReviewStatus = deref(p.ReviewStatus)
+				dto.MyReviewComment = deref(p.ReviewComment)
+			}
+		}
+		out = append(out, dto)
 	}
 	return out, nil
+}
+
+// studentInCohort reports whether the LMS user is a member of the Open edX cohort.
+// A variable so tests can stand in for LMS MySQL.
+var studentInCohort = func(userID, cohortID string) (bool, error) {
+	uid, err := lmsdb.ParseLMSUserID(userID)
+	if err != nil {
+		return false, nil
+	}
+	cid, err := strconv.ParseInt(strings.TrimSpace(cohortID), 10, 64)
+	if err != nil {
+		return false, nil
+	}
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return false, err
+	}
+	defer reader.Close()
+	return reader.IsUserInAnyCohort(uid, []int64{cid})
 }
 
 func (u *UseCaseImpl) IssueToLatecomers(teacherID, classID, assignmentID string) (int, error) {
@@ -654,6 +709,8 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID, classID, assignmentID string)
 		}
 		if _, err := u.gw.ForkProjectForStudent(tpl, m.UserID, a.Title, a); err == nil {
 			issued++
+		} else {
+			log.Printf("teacherclass: assignment %s: late copy for student %s: %v", a.ID, m.UserID, err)
 		}
 	}
 	return issued, nil
@@ -666,6 +723,10 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	}
 	if p.OwnerUserID != studentID {
 		return teacherclass.ErrForbidden
+	}
+	// Only a copy issued for an assignment goes to the teacher's review queue.
+	if p.AssignmentID == nil || strings.TrimSpace(*p.AssignmentID) == "" {
+		return teacherclass.ErrBadRequest
 	}
 	now := time.Now().UTC()
 	return u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now)

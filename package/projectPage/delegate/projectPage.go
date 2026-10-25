@@ -160,7 +160,7 @@ func (p *ProjectPageDelegateImpl) DeleteCommentReaction(
 	return p.UseCase.DeleteCommentReaction(projectPageId, commentId, userId)
 }
 
-func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pageSize string) (
+func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, viewerId, page, pageSize string) (
 	projectPages []*models.ProjectPageHTTP,
 	countRows int,
 	err error,
@@ -175,6 +175,7 @@ func (p *ProjectPageDelegateImpl) GetAllProjectPagesByUserId(authorId, page, pag
 	}
 	projectPagesCore, countRowsInt64, err := p.UseCase.GetAllProjectPageByUserId(
 		authorId,
+		viewerId,
 		int(pageInt32),
 		int(pageSizeInt32),
 	)

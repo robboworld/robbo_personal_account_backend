@@ -61,53 +61,51 @@ func (s *AuthDelegateImpl) RevokeSessionByID(lmsUserID, sessionID string) error 
 	return s.UseCase.RevokeSessionByID(lmsUserID, sessionID)
 }
 
+func unauthorizedIdentity(c *gin.Context, message string) (string, models.Role, error) {
+	return "", models.Anonymous, &gqlerror.Error{
+		Path:    graphql.GetPath(c),
+		Message: message,
+		Extensions: map[string]interface{}{
+			"code": "401",
+		},
+	}
+}
+
 func (s *AuthDelegateImpl) UserIdentity(c *gin.Context) (id string, role models.Role, err error) {
-	// Prefer OIDC/BFF identity already placed into gin context by TokenAuthMiddleware.
-	if rawID, ok := c.Get("user_id"); ok {
-		if uid, _ := rawID.(string); strings.TrimSpace(uid) != "" && uid != "0" {
-			role = models.Anonymous
-			if rawRole, ok := c.Get("user_role"); ok {
-				if r, ok := rawRole.(models.Role); ok {
-					role = r
-				}
-			}
-			if role != models.Anonymous && role != models.WithExpiredToken {
-				return uid, role, nil
-			}
+	// Wherever TokenAuthMiddleware ran, its verdict is final: it has already checked the
+	// session row and the account. Re-parsing the header here would let a revoked or banned
+	// token through, since the middleware marks such a request Anonymous and moves on.
+	if rawRole, ok := c.Get("user_role"); ok {
+		role, _ = rawRole.(models.Role)
+		uid := ""
+		if rawID, ok := c.Get("user_id"); ok {
+			uid, _ = rawID.(string)
+			uid = strings.TrimSpace(uid)
 		}
+		if uid != "" && uid != "0" && role != models.Anonymous && role != models.WithExpiredToken {
+			return uid, role, nil
+		}
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
 	}
 
+	// Paths the middleware skips (public routes): legacy JWT Bearer only.
 	header := c.GetHeader(authorizationHeader)
 	if header == "" {
-		return "", models.Anonymous, &gqlerror.Error{
-			Path:    graphql.GetPath(c),
-			Message: auth.ErrTokenNotFound.Error(),
-			Extensions: map[string]interface{}{
-				"code": "401",
-			},
-		}
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
 	}
 
 	headerParts := strings.Split(header, " ")
 	if len(headerParts) != 2 {
-		return "", models.Anonymous, &gqlerror.Error{
-			Path:    graphql.GetPath(c),
-			Message: auth.ErrTokenNotFound.Error(),
-			Extensions: map[string]interface{}{
-				"code": "401",
-			},
-		}
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
 	}
 
 	claims, parseTokenErr := s.UseCase.ParseToken(headerParts[1], []byte(viper.GetString("auth.access_signing_key")))
 	if parseTokenErr != nil {
-		return "", models.Anonymous, &gqlerror.Error{
-			Path:    graphql.GetPath(c),
-			Message: parseTokenErr.Error(),
-			Extensions: map[string]interface{}{
-				"code": "401",
-			},
-		}
+		return unauthorizedIdentity(c, parseTokenErr.Error())
+	}
+	// A BFF session token shares the signing key but has no Id: it names nobody here.
+	if strings.TrimSpace(claims.Id) == "" {
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
 	}
 	return claims.Id, claims.Role, nil
 }

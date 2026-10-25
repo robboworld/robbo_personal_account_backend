@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
@@ -158,6 +159,8 @@ func (g *GatewayImpl) ForkProjectForStudent(template *models.ScratchProjectDB, s
 	if row.ScratchVMJSON == "" {
 		row.ScratchVMJSON = "{}"
 	}
+	// tags is NOT NULL: a nil slice made every copy fail, so no student ever got the work.
+	row.Tags = append(pq.StringArray{}, template.Tags...)
 	if err := g.db.Create(&row).Error; err != nil {
 		return nil, err
 	}

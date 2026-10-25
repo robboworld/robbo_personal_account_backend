@@ -186,9 +186,10 @@ func (r *queryResolver) GetAllProjectPagesByUserID(ctx context.Context, userID s
 	if accessErr != nil {
 		return nil, accessErr
 	}
+	viewerId, _ := ginContext.Value("user_id").(string)
 
 	projectPages, countRows, getAllProjectPagesErr := r.projectPageDelegate.
-		GetAllProjectPagesByUserId(userID, page, pageSize)
+		GetAllProjectPagesByUserId(userID, viewerId, page, pageSize)
 	if getAllProjectPagesErr != nil {
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
@@ -218,7 +219,7 @@ func (r *queryResolver) GetAllProjectPagesByAccessToken(ctx context.Context, pag
 	}
 
 	projectPages, countRows, getAllProjectPagesErr := r.projectPageDelegate.
-		GetAllProjectPagesByUserId(userId, page, pageSize)
+		GetAllProjectPagesByUserId(userId, userId, page, pageSize)
 	if getAllProjectPagesErr != nil {
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),

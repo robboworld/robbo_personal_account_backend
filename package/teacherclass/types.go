@@ -36,6 +36,12 @@ type ClassDTO struct {
 	OwnerName      string     `json:"ownerName,omitempty"`
 }
 
+// CourseDTO is a course a class can be created on.
+type CourseDTO struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type JoinPreviewDTO struct {
 	DisplayName    string `json:"displayName"`
 	EdxCourseID    string `json:"edxCourseId"`
@@ -63,6 +69,10 @@ type AssignmentDTO struct {
 	DueAt              *time.Time `json:"dueAt,omitempty"`
 	ClosedAt           *time.Time `json:"closedAt,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`
+	// Student view only: the student's own copy of the template and its review state.
+	MyProjectID     string `json:"myProjectId,omitempty"`
+	MyReviewStatus  string `json:"myReviewStatus,omitempty"`
+	MyReviewComment string `json:"myReviewComment,omitempty"`
 }
 
 type CreateAssignmentInput struct {
@@ -135,6 +145,7 @@ type Gateway interface {
 type UseCase interface {
 	CreateClass(teacherID string, in CreateClassInput) (*ClassDTO, error)
 	ListMyClasses(teacherID string) ([]ClassDTO, error)
+	ListCourses() ([]CourseDTO, error)
 	GetClass(teacherID, classID string) (*ClassDTO, error)
 	RenameClass(teacherID, classID, displayName string) (*ClassDTO, error)
 	ArchiveClass(teacherID, classID string) error

@@ -19,6 +19,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/app/modules"
 	"github.com/skinnykaen/robbo_student_personal_account.git/graph/generated"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/resolvers"
 	"github.com/spf13/viper"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -103,6 +104,7 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 		CookieCSRFMiddleware(),
 		AuthLoginRateLimit(),
 	)
+	resolvers.SignInAttemptAllowed = AllowLoginAttempt
 	handlers.AuthHandler.InitAuthRoutes(router)
 	if handlers.OIDCHandler != nil {
 		handlers.OIDCHandler.InitRoutes(router)
