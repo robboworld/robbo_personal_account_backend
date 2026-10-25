@@ -9,6 +9,8 @@ services:
       - OIDC_SCOPES=${OIDC_SCOPES:-email profile user_id}
       # Tutor issuer is a real IdP: never accept a missing aud.
       - OIDC_ALLOW_MOCK_AUDIENCE=false
+      # Cohorts, enrollments and course reads go to Tutor's LMS, not the URLs in config.yml.
+      - EDX_API_BASE_URL=${EDX_API_BASE_URL:-http://lms:8000}
     networks:
       - tutor_local
 

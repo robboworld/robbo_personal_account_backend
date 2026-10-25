@@ -117,8 +117,41 @@ func Init() error {
 		viper.Set("elasticsearch.index", os.Getenv("ELASTICSEARCH_INDEX"))
 	}
 
+	applyEdxAPIBase(os.Getenv("EDX_API_BASE_URL"))
 	err := viper.ReadInConfig()
 	return err
+}
+
+// edxAPIPaths are the Open edX endpoints the backend calls server-to-server.
+var edxAPIPaths = map[string]string{
+	"refreshToken":        "/oauth2/access_token",
+	"getUser":             "/api/user/v1/me",
+	"getCourse":           "/api/courses/v1/courses/",
+	"getEnrollment":       "/api/enrollment/v1/enrollments?username=",
+	"getCourses":          "/api/courses/v1/courses/",
+	"getAllPublicCourses": "/api/courses/v1/courses/?page=",
+	"postEnrollment":      "/api/enrollment/v1/enrollment",
+	"postRegistration":    "/api/user/v1/account/registration/",
+	"postCohort":          "/api/cohorts/v1/courses/",
+	"login":               "/api/user/v1/account/login_session/",
+	"getLogin":            "/login",
+	"getRegistration":     "/register?next=%2F",
+}
+
+// applyEdxAPIBase points every api_urls.* key at one LMS (e.g. http://lms:8000 inside
+// Tutor's network), so a stand does not silently keep the URLs baked into the image.
+// An explicit API_URLS_<KEY> env still wins for a single endpoint.
+func applyEdxAPIBase(base string) {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" {
+		return
+	}
+	for key, path := range edxAPIPaths {
+		if os.Getenv("API_URLS_"+strings.ToUpper(key)) != "" {
+			continue
+		}
+		viper.Set("api_urls."+key, base+path)
+	}
 }
 
 func InitForTests() error {
