@@ -37,7 +37,6 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 		project.POST("/", h.CreateProject)
 		project.GET("/:projectId", h.GetProject)
 		project.POST("/:projectId", h.UpdateProject)
-		project.DELETE("/", h.DeleteProject)
 	}
 }
 
@@ -168,7 +167,4 @@ func (h *Handler) UpdateProject(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, testResponse{Id: projectId})
-}
-
-func (h *Handler) DeleteProject(c *gin.Context) {
 }

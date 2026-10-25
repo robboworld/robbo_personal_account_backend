@@ -35,10 +35,6 @@ func (p *ProjectUseCaseImpl) UpdateProject(project *models.ProjectCore, userId s
 	return p.Gateway.UpdateProject(project)
 }
 
-func (p *ProjectUseCaseImpl) DeleteProject() {
-
-}
-
 func (p *ProjectUseCaseImpl) GetProjectById(projectId, userId string) (project *models.ProjectCore, err error) {
 	project, getProjectErr := p.Gateway.GetProjectById(projectId, userId)
 	if getProjectErr != nil {
