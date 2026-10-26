@@ -33,5 +33,7 @@ type UseCase interface {
 	ListLoginSessions(lmsUserID string) ([]*models.UserSessionCore, error)
 	RevokeLoginSessionByID(lmsUserID, sessionID string) error
 	ResolveEntitlements(lmsUserID string) (Entitlements, error)
+	SaveFeatureInterest(answer models.FeatureInterestCore) error
+	GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error)
 	RevokeActiveOrderLicenses(lmsUserID, exceptLicenseID string) error
 }

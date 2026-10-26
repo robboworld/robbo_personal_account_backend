@@ -22,4 +22,7 @@ type Delegate interface {
 	EncryptAddonBundle(token, fingerprint string) (string, error)
 
 	ResolveEntitlements(lmsUserID string) (Entitlements, error)
+
+	SaveFeatureInterest(answer models.FeatureInterestCore) error
+	GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error)
 }

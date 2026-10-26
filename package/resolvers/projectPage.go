@@ -34,9 +34,7 @@ func (r *mutationResolver) CreateProjectPage(ctx context.Context) (models.Projec
 	)
 	if createProjectPageErr != nil {
 		code := "500"
-		if createProjectPageErr == projectPage.ErrProjectLimitReached {
-			code = "PROJECT_LIMIT_REACHED"
-		} else if createProjectPageErr == projectPage.ErrStorageQuotaExceeded {
+		if createProjectPageErr == projectPage.ErrStorageQuotaExceeded {
 			code = "STORAGE_QUOTA_EXCEEDED"
 		}
 		return nil, &gqlerror.Error{
@@ -87,8 +85,6 @@ func (r *mutationResolver) UpdateProjectPage(ctx context.Context, input models.U
 		code := "500"
 		if updateProjectPageErr == projectPage.ErrProjectSizeExceeded {
 			code = "PROJECT_SIZE_EXCEEDED"
-		} else if updateProjectPageErr == projectPage.ErrProjectLimitReached {
-			code = "PROJECT_LIMIT_REACHED"
 		} else if updateProjectPageErr == projectPage.ErrInvalidProjectFile {
 			code = "INVALID_PROJECT_FILE"
 		}

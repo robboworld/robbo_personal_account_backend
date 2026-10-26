@@ -28,11 +28,9 @@ type Gateway interface {
 	GetDeviceLinkByUserCode(userCode string) (*models.DeviceLinkSessionCore, error)
 	UpdateDeviceLink(session *models.DeviceLinkSessionCore) error
 
-	// Web login session tracking (LK + RS3 Web), used to enforce the
-	// concurrent-session tariff limit. Independent of device Seats above.
+	// Web login session tracking (LK + RS3 Web), one per device (browser), held to the
+	// tariff's session limit. Independent of device Seats above.
 	CreateSession(session *models.UserSessionCore) (*models.UserSessionCore, error)
-	// CountActiveSessions counts active sessions: one per device (browser).
-	CountActiveSessions(lmsUserID string) (int64, error)
 	GetActiveSession(sessionKey string) (*models.UserSessionCore, error)
 	FindReusableSession(lmsUserID, deviceID, ipAddress string) (*models.UserSessionCore, error)
 	ReuseSession(sessionKey, authMode, userAgent, ipAddress, deviceID string, expiresAt, lastSeenAt time.Time) error
@@ -41,4 +39,8 @@ type Gateway interface {
 	RevokeSessionByID(lmsUserID, sessionID string) error
 	RevokeAllSessionsForUser(lmsUserID string) (int, error)
 	ListActiveSessions(lmsUserID string) ([]*models.UserSessionCore, error)
+
+	// Paid-edition interest survey: one answer per account.
+	SaveFeatureInterest(answer *models.FeatureInterestCore) error
+	GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error)
 }

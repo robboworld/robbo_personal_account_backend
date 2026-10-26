@@ -21,7 +21,6 @@ var (
 	ErrLicenseExpiredToken  = errors.New("license_expired")
 	ErrDeviceBinding        = errors.New("device_binding_mismatch")
 	ErrSeatNotActive        = errors.New("seat_not_active")
-	ErrSessionLimitReached  = errors.New("SESSION_LIMIT_REACHED")
 	ErrSessionNotFound      = errors.New("SESSION_NOT_FOUND")
 
 	// Token refresh / seat release: the licence was revoked, or this device was removed from it.

@@ -3,7 +3,6 @@ package gateway
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"strings"
 	"time"
 
@@ -49,15 +48,6 @@ func (g *LicensingGatewayImpl) CreateSession(session *models.UserSessionCore) (*
 	return row.ToCore(), nil
 }
 
-// CountActiveSessions counts active sessions; there is one per device (browser).
-func (g *LicensingGatewayImpl) CountActiveSessions(lmsUserID string) (int64, error) {
-	var count int64
-	err := g.db.Model(&models.UserSessionDB{}).
-		Where("lms_user_id = ? AND revoked_at IS NULL AND expires_at > ?", lmsUserID, time.Now().UTC()).
-		Count(&count).Error
-	return count, err
-}
-
 // GetActiveSession returns a non-revoked, non-expired session by session_key.
 func (g *LicensingGatewayImpl) GetActiveSession(sessionKey string) (*models.UserSessionCore, error) {
 	if sessionKey == "" {
@@ -74,35 +64,30 @@ func (g *LicensingGatewayImpl) GetActiveSession(sessionKey string) (*models.User
 	return row.ToCore(), nil
 }
 
-// FindReusableSession returns the active session of this device (browser). Without one,
-// it falls back to a legacy row from before device tracking (empty device_id) with the same
-// IP, so sessions opened before the upgrade are adopted rather than counted twice.
+// FindReusableSession returns the active session of this device (browser). A client without
+// the lk_device cookie is matched by IP among sessions opened without one.
 func (g *LicensingGatewayImpl) FindReusableSession(lmsUserID, deviceID, ipAddress string) (*models.UserSessionCore, error) {
 	if lmsUserID == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
 	now := time.Now().UTC()
 	var row models.UserSessionDB
+	var err error
 	if deviceID != "" {
-		err := g.db.Where(
+		err = g.db.Where(
 			"lms_user_id = ? AND device_id = ? AND revoked_at IS NULL AND expires_at > ?",
 			lmsUserID, deviceID, now,
 		).Order("last_seen_at DESC").First(&row).Error
-		if err == nil {
-			return row.ToCore(), nil
+	} else {
+		ipAddress = strings.TrimSpace(ipAddress)
+		if ipAddress == "" {
+			return nil, gorm.ErrRecordNotFound
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
-		}
+		err = g.db.Where(
+			"lms_user_id = ? AND device_id = '' AND ip_address = ? AND revoked_at IS NULL AND expires_at > ?",
+			lmsUserID, ipAddress, now,
+		).Order("last_seen_at DESC").First(&row).Error
 	}
-	ipAddress = strings.TrimSpace(ipAddress)
-	if ipAddress == "" {
-		return nil, gorm.ErrRecordNotFound
-	}
-	err := g.db.Where(
-		"lms_user_id = ? AND device_id = '' AND ip_address = ? AND revoked_at IS NULL AND expires_at > ?",
-		lmsUserID, ipAddress, now,
-	).Order("last_seen_at DESC").First(&row).Error
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +95,7 @@ func (g *LicensingGatewayImpl) FindReusableSession(lmsUserID, deviceID, ipAddres
 }
 
 // ReuseSession refreshes an existing active session on a repeat sign-in from the same
-// device; deviceID (when set) also claims a legacy row for that device.
+// device.
 func (g *LicensingGatewayImpl) ReuseSession(sessionKey, authMode, userAgent, ipAddress, deviceID string, expiresAt, lastSeenAt time.Time) error {
 	if sessionKey == "" {
 		return nil
@@ -123,9 +108,6 @@ func (g *LicensingGatewayImpl) ReuseSession(sessionKey, authMode, userAgent, ipA
 	}
 	if ipAddress != "" {
 		updates["ip_address"] = ipAddress
-	}
-	if deviceID != "" {
-		updates["device_id"] = deviceID
 	}
 	return g.db.Model(&models.UserSessionDB{}).
 		Where("session_key = ? AND revoked_at IS NULL AND expires_at > ?", sessionKey, time.Now().UTC()).

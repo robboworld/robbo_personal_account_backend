@@ -869,11 +869,6 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusNotFound, err.Error())
 	case errors.Is(err, projectPage.ErrBadRequestBody):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case errors.Is(err, projectPage.ErrProjectLimitReached):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
-			"error": err.Error(),
-			"code":  "PROJECT_LIMIT_REACHED",
-		})
 	case errors.Is(err, projectPage.ErrProjectSizeExceeded):
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
 			"error": err.Error(),

@@ -64,8 +64,6 @@ func signInErrorCode(err error) string {
 		return "403"
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):
 		return "410"
-	case errors.Is(err, auth.ErrSessionLimitReached):
-		return "SESSION_LIMIT_REACHED"
 	default:
 		return "500"
 	}

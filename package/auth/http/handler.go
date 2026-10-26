@@ -321,11 +321,6 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrSessionNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error(), "code": "SESSION_NOT_FOUND"})
-	case errors.Is(err, auth.ErrSessionLimitReached):
-		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
-			"error": err.Error(),
-			"code":  "SESSION_LIMIT_REACHED",
-		})
 	case errors.Is(err, auth.ErrLegacyAuthDisabled):
 		c.AbortWithStatusJSON(http.StatusGone, gin.H{"error": err.Error()})
 	case errors.Is(err, auth.ErrUserNotFound), errors.Is(err, auth.ErrInvalidCredentials):
