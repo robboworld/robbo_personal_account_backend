@@ -110,3 +110,29 @@ func TestSubmitOnlyAssignmentCopies(t *testing.T) {
 		t.Fatalf("submit err=%v reviewed=%q", err, gw.reviewed)
 	}
 }
+
+type classListGateway struct {
+	studentGateway
+}
+
+func (g *classListGateway) ListActiveInvites() ([]models.ClassInviteDB, error) {
+	return []models.ClassInviteDB{
+		{ID: "c7", EdxCohortID: "7", DisplayName: "5A"},
+		{ID: "c9", EdxCohortID: "9", DisplayName: "6B"},
+	}, nil
+}
+
+func TestStudentClassesComeFromCohortMembership(t *testing.T) {
+	prev := studentCohortIDs
+	studentCohortIDs = func(string) (map[string]bool, error) { return map[string]bool{"9": true}, nil }
+	t.Cleanup(func() { studentCohortIDs = prev })
+	uc := &UseCaseImpl{gw: &classListGateway{}}
+
+	list, err := uc.ListStudentClasses("797")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != "c9" {
+		t.Fatalf("classes = %+v, want only c9", list)
+	}
+}

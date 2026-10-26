@@ -327,6 +327,27 @@ func (r *Reader) ListCourses(limit int) ([]CourseRow, error) {
 	return out, rows.Err()
 }
 
+// ListUserCohortIDs returns every Open edX cohort (course_user_group) the user is in.
+func (r *Reader) ListUserCohortIDs(userID int64) ([]int64, error) {
+	if userID <= 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(`SELECT course_user_group_id FROM course_groups_cohortmembership WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
 // IsUserInAnyCohort reports whether userID belongs to one of the given Open edX cohorts.
 func (r *Reader) IsUserInAnyCohort(userID int64, cohortIDs []int64) (bool, error) {
 	if userID <= 0 || len(cohortIDs) == 0 {

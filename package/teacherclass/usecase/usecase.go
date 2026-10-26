@@ -385,61 +385,55 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 }
 
 func (u *UseCaseImpl) ListStudentClasses(studentID string) ([]teacherclass.ClassDTO, error) {
-	id, err := lmsdb.ParseLMSUserID(studentID)
-	if err != nil {
+	if _, err := lmsdb.ParseLMSUserID(studentID); err != nil {
 		return nil, teacherclass.ErrBadRequest
+	}
+	// One query for the student's cohorts instead of one Open edX API call per class.
+	cohorts, err := studentCohortIDs(studentID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]teacherclass.ClassDTO, 0)
+	if len(cohorts) == 0 {
+		return out, nil
+	}
+	all, err := u.gw.ListActiveInvites()
+	if err != nil {
+		return nil, err
+	}
+	for i := range all {
+		inv := &all[i]
+		if !cohorts[strings.TrimSpace(inv.EdxCohortID)] {
+			continue
+		}
+		dto := u.toDTO(inv)
+		u.fillOwnerName(dto)
+		out = append(out, *dto)
+	}
+	return out, nil
+}
+
+// studentCohortIDs returns the Open edX cohort ids the LMS user belongs to.
+// A variable so tests can stand in for LMS MySQL.
+var studentCohortIDs = func(userID string) (map[string]bool, error) {
+	uid, err := lmsdb.ParseLMSUserID(userID)
+	if err != nil {
+		return nil, err
 	}
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
-	user, err := reader.LookupAuthUserByID(id)
-	if err != nil || user == nil {
-		return nil, teacherclass.ErrBadRequest
-	}
-	all, err := u.gw.ListActiveInvites()
+	ids, err := reader.ListUserCohortIDs(uid)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]teacherclass.ClassDTO, 0)
-	for i := range all {
-		inv := &all[i]
-		cohortID, _ := strconv.Atoi(inv.EdxCohortID)
-		body, err := u.edx.ListCohortUsers(inv.EdxCourseID, cohortID)
-		if err != nil {
-			continue
-		}
-		if cohortContainsUsername(body, user.Username) {
-			dto := u.toDTO(inv)
-			u.fillOwnerName(dto)
-			out = append(out, *dto)
-		}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[strconv.FormatInt(id, 10)] = true
 	}
 	return out, nil
-}
-
-func cohortContainsUsername(body []byte, username string) bool {
-	username = strings.ToLower(username)
-	var asList []map[string]interface{}
-	if err := json.Unmarshal(body, &asList); err == nil {
-		for _, u := range asList {
-			if strings.ToLower(fmt.Sprint(u["username"])) == username {
-				return true
-			}
-		}
-	}
-	var paginated struct {
-		Results []map[string]interface{} `json:"results"`
-	}
-	if err := json.Unmarshal(body, &paginated); err == nil {
-		for _, u := range paginated.Results {
-			if strings.ToLower(fmt.Sprint(u["username"])) == username {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func (u *UseCaseImpl) parseCohortUsers(body []byte) []teacherclass.CohortUserDTO {
