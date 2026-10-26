@@ -327,6 +327,10 @@ func StartBanExpiryWorker(usecase UseCaseModule, lc fx.Lifecycle) {
 	modusecase.StartBanExpiryWorker(usecase.ModerationUseCase, lc)
 }
 
+func StartSb3RetentionWorker(usecase UseCaseModule, lc fx.Lifecycle) {
+	ppageusecase.StartSb3RetentionWorker(usecase.ProjectPageUseCase, lc)
+}
+
 func SetupHandler(
 	delegate DelegateModule,
 	usecase UseCaseModule,

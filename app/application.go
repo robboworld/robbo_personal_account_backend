@@ -48,6 +48,7 @@ func InvokeWith(options ...fx.Option) *fx.App {
 		fx.Invoke(modules.StartPortalOutboxWorker),
 		fx.Invoke(modules.StartUserSearchSync),
 		fx.Invoke(modules.StartBanExpiryWorker),
+		fx.Invoke(modules.StartSb3RetentionWorker),
 	}
 	for _, option := range options {
 		di = append(di, option)

@@ -232,7 +232,9 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 			}
 		}
 		sess, createErr := licensing.AcquireLoginSession(
-			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl, role,
+			h.sessions, edxUserID, "oidc_bff",
+			licensing.LoginClient{UserAgent: c.Request.UserAgent(), IPAddress: ip, DeviceID: oidc.DeviceID(c)},
+			ttl, role,
 		)
 		if createErr != nil {
 			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
@@ -577,7 +579,9 @@ func (h Handler) Callback(c *gin.Context) {
 			}
 		}
 		sess, createErr := licensing.AcquireLoginSession(
-			h.sessions, edxUserID, "oidc_bff", c.Request.UserAgent(), ip, ttl, role,
+			h.sessions, edxUserID, "oidc_bff",
+			licensing.LoginClient{UserAgent: c.Request.UserAgent(), IPAddress: ip, DeviceID: oidc.DeviceID(c)},
+			ttl, role,
 		)
 		if createErr != nil {
 			if errors.Is(createErr, licensing.ErrSessionLimitReached) {

@@ -3,6 +3,7 @@ package gateway
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"strings"
 	"time"
 
@@ -38,6 +39,7 @@ func (g *LicensingGatewayImpl) CreateSession(session *models.UserSessionCore) (*
 		AuthMode:   session.AuthMode,
 		UserAgent:  session.UserAgent,
 		IPAddress:  session.IPAddress,
+		DeviceID:   session.DeviceID,
 		LastSeenAt: session.LastSeenAt,
 		ExpiresAt:  session.ExpiresAt,
 	}
@@ -47,21 +49,12 @@ func (g *LicensingGatewayImpl) CreateSession(session *models.UserSessionCore) (*
 	return row.ToCore(), nil
 }
 
-// CountActiveSessions counts distinct client IPs among active sessions.
-// Empty IP is counted per-row (each blank IP is its own slot).
+// CountActiveSessions counts active sessions; there is one per device (browser).
 func (g *LicensingGatewayImpl) CountActiveSessions(lmsUserID string) (int64, error) {
 	var count int64
-	err := g.db.Raw(`
-		SELECT COUNT(*) FROM (
-			SELECT DISTINCT CASE
-				WHEN COALESCE(TRIM(ip_address), '') = '' THEN id::text
-				ELSE TRIM(ip_address)
-			END AS slot
-			FROM lk_user_sessions
-			WHERE lms_user_id = ? AND revoked_at IS NULL AND expires_at > ?
-		) slots`,
-		lmsUserID, time.Now().UTC(),
-	).Scan(&count).Error
+	err := g.db.Model(&models.UserSessionDB{}).
+		Where("lms_user_id = ? AND revoked_at IS NULL AND expires_at > ?", lmsUserID, time.Now().UTC()).
+		Count(&count).Error
 	return count, err
 }
 
@@ -81,16 +74,34 @@ func (g *LicensingGatewayImpl) GetActiveSession(sessionKey string) (*models.User
 	return row.ToCore(), nil
 }
 
-// FindActiveSessionByIP returns the most recently seen active session for this IP.
-func (g *LicensingGatewayImpl) FindActiveSessionByIP(lmsUserID, ipAddress string) (*models.UserSessionCore, error) {
-	ipAddress = strings.TrimSpace(ipAddress)
-	if lmsUserID == "" || ipAddress == "" {
+// FindReusableSession returns the active session of this device (browser). Without one,
+// it falls back to a legacy row from before device tracking (empty device_id) with the same
+// IP, so sessions opened before the upgrade are adopted rather than counted twice.
+func (g *LicensingGatewayImpl) FindReusableSession(lmsUserID, deviceID, ipAddress string) (*models.UserSessionCore, error) {
+	if lmsUserID == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
+	now := time.Now().UTC()
 	var row models.UserSessionDB
+	if deviceID != "" {
+		err := g.db.Where(
+			"lms_user_id = ? AND device_id = ? AND revoked_at IS NULL AND expires_at > ?",
+			lmsUserID, deviceID, now,
+		).Order("last_seen_at DESC").First(&row).Error
+		if err == nil {
+			return row.ToCore(), nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+	ipAddress = strings.TrimSpace(ipAddress)
+	if ipAddress == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
 	err := g.db.Where(
-		"lms_user_id = ? AND ip_address = ? AND revoked_at IS NULL AND expires_at > ?",
-		lmsUserID, ipAddress, time.Now().UTC(),
+		"lms_user_id = ? AND device_id = '' AND ip_address = ? AND revoked_at IS NULL AND expires_at > ?",
+		lmsUserID, ipAddress, now,
 	).Order("last_seen_at DESC").First(&row).Error
 	if err != nil {
 		return nil, err
@@ -98,19 +109,27 @@ func (g *LicensingGatewayImpl) FindActiveSessionByIP(lmsUserID, ipAddress string
 	return row.ToCore(), nil
 }
 
-// ReuseSession refreshes metadata on an existing active session (same IP login).
-func (g *LicensingGatewayImpl) ReuseSession(sessionKey, authMode, userAgent string, expiresAt, lastSeenAt time.Time) error {
+// ReuseSession refreshes an existing active session on a repeat sign-in from the same
+// device; deviceID (when set) also claims a legacy row for that device.
+func (g *LicensingGatewayImpl) ReuseSession(sessionKey, authMode, userAgent, ipAddress, deviceID string, expiresAt, lastSeenAt time.Time) error {
 	if sessionKey == "" {
 		return nil
 	}
+	updates := map[string]interface{}{
+		"auth_mode":    authMode,
+		"user_agent":   userAgent,
+		"last_seen_at": lastSeenAt,
+		"expires_at":   expiresAt,
+	}
+	if ipAddress != "" {
+		updates["ip_address"] = ipAddress
+	}
+	if deviceID != "" {
+		updates["device_id"] = deviceID
+	}
 	return g.db.Model(&models.UserSessionDB{}).
 		Where("session_key = ? AND revoked_at IS NULL AND expires_at > ?", sessionKey, time.Now().UTC()).
-		Updates(map[string]interface{}{
-			"auth_mode":    authMode,
-			"user_agent":   userAgent,
-			"last_seen_at": lastSeenAt,
-			"expires_at":   expiresAt,
-		}).Error
+		Updates(updates).Error
 }
 
 // TouchSession bumps last_seen_at, e.g. on access-token refresh. No-op (not

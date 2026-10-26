@@ -66,17 +66,18 @@ func (g *PaymentsGatewayImpl) GetProductByID(id string) (*models.ProductCore, er
 
 func (g *PaymentsGatewayImpl) CreateProduct(product *models.ProductCore) (*models.ProductCore, error) {
 	row := models.ProductDB{
-		SKU:          product.SKU,
-		Title:        product.Title,
-		Description:  product.Description,
-		Amount:       product.Amount,
-		Currency:     product.Currency,
-		SeatLimit:    product.SeatLimit,
-		Capabilities: pq.StringArray(product.Capabilities),
-		CloudQuotaMB: product.CloudQuotaMB,
-		SessionLimit: product.SessionLimit,
-		DurationDays: product.DurationDays,
-		IsActive:     product.IsActive,
+		SKU:            product.SKU,
+		Title:          product.Title,
+		Description:    product.Description,
+		Amount:         product.Amount,
+		Currency:       product.Currency,
+		SeatLimit:      product.SeatLimit,
+		Capabilities:   pq.StringArray(product.Capabilities),
+		CloudQuotaMB:   product.CloudQuotaMB,
+		StorageQuotaMB: product.StorageQuotaMB,
+		SessionLimit:   product.SessionLimit,
+		DurationDays:   product.DurationDays,
+		IsActive:       product.IsActive,
 	}
 	if err := g.db.Create(&row).Error; err != nil {
 		return nil, err

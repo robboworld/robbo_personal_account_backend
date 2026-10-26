@@ -81,11 +81,11 @@ func (h *Handler) Health(c *gin.Context) {
 }
 
 type activateRequest struct {
-	LicenseKey       string `json:"licenseKey"`
+	LicenseKey        string `json:"licenseKey"`
 	DeviceFingerprint string `json:"deviceFingerprint"`
-	DeviceID         string `json:"deviceId"`
-	PublicBase       string `json:"publicBase"`
-	Device           *struct {
+	DeviceID          string `json:"deviceId"`
+	PublicBase        string `json:"publicBase"`
+	Device            *struct {
 		Fingerprint string `json:"fingerprint"`
 	} `json:"device"`
 }
@@ -282,10 +282,10 @@ func (h *Handler) ConfirmDeviceLink(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"ok":         true,
-		"userCode":   session.UserCode,
-		"licenseId":  session.LicenseID,
-		"status":     session.Status,
+		"ok":        true,
+		"userCode":  session.UserCode,
+		"licenseId": session.LicenseID,
+		"status":    session.Status,
 	})
 }
 
@@ -313,14 +313,15 @@ func (h *Handler) AddonBundle(c *gin.Context) {
 }
 
 type issueLicenseRequest struct {
-	LmsUserID    string   `json:"lmsUserId"`
-	LmsUsername  string   `json:"lmsUsername"`
-	SeatLimit    int      `json:"seatLimit"`
-	Capabilities []string `json:"capabilities"`
-	CloudQuotaMB int      `json:"cloudQuotaMb"`
-	SessionLimit int      `json:"sessionLimit"`
-	ExpiresAt    string   `json:"expiresAt"`
-	Note         string   `json:"note"`
+	LmsUserID      string   `json:"lmsUserId"`
+	LmsUsername    string   `json:"lmsUsername"`
+	SeatLimit      int      `json:"seatLimit"`
+	Capabilities   []string `json:"capabilities"`
+	CloudQuotaMB   int      `json:"cloudQuotaMb"`
+	StorageQuotaMB int      `json:"storageQuotaMb"`
+	SessionLimit   int      `json:"sessionLimit"`
+	ExpiresAt      string   `json:"expiresAt"`
+	Note           string   `json:"note"`
 }
 
 func (h *Handler) IssueLicense(c *gin.Context) {
@@ -354,13 +355,14 @@ func (h *Handler) IssueLicense(c *gin.Context) {
 		lmsUserID = resolved
 	}
 	input := models.IssueLicenseInput{
-		LmsUserID:    lmsUserID,
-		SeatLimit:    body.SeatLimit,
-		Capabilities: body.Capabilities,
-		CloudQuotaMB: body.CloudQuotaMB,
-		SessionLimit: body.SessionLimit,
-		Note:         body.Note,
-		IssuedBy:     userID,
+		LmsUserID:      lmsUserID,
+		SeatLimit:      body.SeatLimit,
+		Capabilities:   body.Capabilities,
+		CloudQuotaMB:   body.CloudQuotaMB,
+		StorageQuotaMB: body.StorageQuotaMB,
+		SessionLimit:   body.SessionLimit,
+		Note:           body.Note,
+		IssuedBy:       userID,
 	}
 	if body.ExpiresAt != "" {
 		t, err := time.Parse(time.RFC3339, body.ExpiresAt)
@@ -427,16 +429,17 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		tariffName = "Free"
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"tariffName":         tariffName,
-		"hasLicense":         ent.HasLicense,
-		"cloudQuotaMb":       ent.MaxProjectSizeMB,
-		"maxProjectSizeMb":   ent.MaxProjectSizeMB,
-		"maxProjects":        ent.MaxProjects,
-		"projectCount":       projectCount,
-		"usedBytes":          usedBytes,
-		"sessionLimit":       ent.SessionLimit,
-		"seatLimit":          ent.SeatLimit,
-		"capabilities":       ent.Capabilities,
+		"tariffName":       tariffName,
+		"hasLicense":       ent.HasLicense,
+		"cloudQuotaMb":     ent.MaxProjectSizeMB,
+		"maxProjectSizeMb": ent.MaxProjectSizeMB,
+		"storageQuotaMb":   ent.StorageQuotaMB,
+		"maxProjects":      ent.MaxProjects,
+		"projectCount":     projectCount,
+		"usedBytes":        usedBytes,
+		"sessionLimit":     ent.SessionLimit,
+		"seatLimit":        ent.SeatLimit,
+		"capabilities":     ent.Capabilities,
 	})
 }
 
@@ -569,19 +572,20 @@ func licenseToJSON(lic *models.LicenseCore) gin.H {
 		})
 	}
 	return gin.H{
-		"id":           lic.ID,
-		"lmsUserId":    lic.LmsUserID,
-		"licenseKey":   lic.LicenseKey,
-		"status":       lic.Status,
-		"source":       lic.Source,
-		"seatLimit":    lic.SeatLimit,
-		"capabilities": lic.Capabilities,
-		"cloudQuotaMb": lic.CloudQuotaMB,
-		"sessionLimit": lic.SessionLimit,
-		"expiresAt":    lic.ExpiresAt.Format(time.RFC3339),
-		"issuedBy":     lic.IssuedBy,
-		"note":         lic.Note,
-		"createdAt":    lic.CreatedAt.Format(time.RFC3339),
-		"seats":        seats,
+		"id":             lic.ID,
+		"lmsUserId":      lic.LmsUserID,
+		"licenseKey":     lic.LicenseKey,
+		"status":         lic.Status,
+		"source":         lic.Source,
+		"seatLimit":      lic.SeatLimit,
+		"capabilities":   lic.Capabilities,
+		"cloudQuotaMb":   lic.CloudQuotaMB,
+		"storageQuotaMb": lic.StorageQuotaMB,
+		"sessionLimit":   lic.SessionLimit,
+		"expiresAt":      lic.ExpiresAt.Format(time.RFC3339),
+		"issuedBy":       lic.IssuedBy,
+		"note":           lic.Note,
+		"createdAt":      lic.CreatedAt.Format(time.RFC3339),
+		"seats":          seats,
 	}
 }

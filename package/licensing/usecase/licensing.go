@@ -63,6 +63,10 @@ func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*mo
 	if cloudQuotaMB <= 0 {
 		cloudQuotaMB = licensing.FreeCloudQuotaMB
 	}
+	storageQuotaMB := input.StorageQuotaMB
+	if storageQuotaMB <= 0 {
+		storageQuotaMB = licensing.DefaultLicenseStorageQuotaMB
+	}
 	sessionLimit := input.SessionLimit
 	expiresAt := input.ExpiresAt
 	if expiresAt.IsZero() {
@@ -81,18 +85,19 @@ func (u *LicensingUseCaseImpl) IssueLicense(input models.IssueLicenseInput) (*mo
 		source = models.LicenseSourceAdmin
 	}
 	license := &models.LicenseCore{
-		LmsUserID:    input.LmsUserID,
-		LicenseKey:   key,
-		Status:       models.LicenseStatusActive,
-		Source:       source,
-		SeatLimit:    seatLimit,
-		Capabilities: caps,
-		CloudQuotaMB: cloudQuotaMB,
-		SessionLimit: sessionLimit,
-		ExpiresAt:    expiresAt.UTC(),
-		IssuedBy:     input.IssuedBy,
-		Note:         input.Note,
-		ProductID:    input.ProductID,
+		LmsUserID:      input.LmsUserID,
+		LicenseKey:     key,
+		Status:         models.LicenseStatusActive,
+		Source:         source,
+		SeatLimit:      seatLimit,
+		Capabilities:   caps,
+		CloudQuotaMB:   cloudQuotaMB,
+		StorageQuotaMB: storageQuotaMB,
+		SessionLimit:   sessionLimit,
+		ExpiresAt:      expiresAt.UTC(),
+		IssuedBy:       input.IssuedBy,
+		Note:           input.Note,
+		ProductID:      input.ProductID,
 	}
 	return u.gateway.CreateLicense(license)
 }

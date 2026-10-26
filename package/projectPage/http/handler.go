@@ -418,6 +418,11 @@ func (h *Handler) DownloadProjectSb3(c *gin.Context) {
 	c.Data(http.StatusOK, "application/zip", data)
 }
 
+const (
+	sb3MultipartSlackBytes  = 1 << 20
+	sb3MultipartMemoryBytes = 32 << 20 // larger parts go to a temp file
+)
+
 func (h *Handler) UploadProjectSb3(c *gin.Context) {
 	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
@@ -429,7 +434,19 @@ func (h *Handler) UploadProjectSb3(c *gin.Context) {
 		return
 	}
 	projectPageId := c.Param("projectPageId")
-	if err := c.Request.ParseMultipartForm(128 << 20); err != nil {
+	maxBytes, err := h.projectPageDelegate.MaxSb3UploadBytes(userId)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	// Cut the body off while it streams in; the slack covers multipart headers and boundaries.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes+sb3MultipartSlackBytes)
+	if err := c.Request.ParseMultipartForm(sb3MultipartMemoryBytes); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
+			return
+		}
 		c.AbortWithStatusJSON(http.StatusBadRequest, "invalid multipart form")
 		return
 	}
@@ -442,15 +459,23 @@ func (h *Handler) UploadProjectSb3(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, "only .sb3 files are supported")
 		return
 	}
+	if fileHeader.Size > maxBytes {
+		ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
+		return
+	}
 	file, err := fileHeader.Open()
 	if err != nil {
 		ErrorHandling(err, c)
 		return
 	}
 	defer file.Close()
-	data, err := io.ReadAll(file)
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
 	if err != nil {
 		ErrorHandling(err, c)
+		return
+	}
+	if int64(len(data)) > maxBytes {
+		ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
 		return
 	}
 	if err := h.projectPageDelegate.UploadProjectSb3(projectPageId, userId, data); err != nil {
@@ -853,6 +878,11 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
 			"error": err.Error(),
 			"code":  "PROJECT_SIZE_EXCEEDED",
+		})
+	case errors.Is(err, projectPage.ErrStorageQuotaExceeded):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "STORAGE_QUOTA_EXCEEDED",
 		})
 	case errors.Is(err, projectPage.ErrInvalidProjectFile):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{

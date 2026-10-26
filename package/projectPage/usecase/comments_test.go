@@ -73,6 +73,12 @@ func (s *stubCommentGateway) GetLatestSb3Archive(string) ([]byte, error)     { p
 func (s *stubCommentGateway) SaveSb3Archive(string, string, []byte, string) error {
 	panic("unused")
 }
+func (s *stubCommentGateway) ListSb3PruneCandidates(projectPage.Sb3RetentionPolicy, int) ([]string, error) {
+	panic("unused")
+}
+func (s *stubCommentGateway) PruneSb3Versions(string, projectPage.Sb3RetentionPolicy) (int64, error) {
+	panic("unused")
+}
 func (s *stubCommentGateway) GetTotalStorageBytesForOwner(string) (int64, error) { panic("unused") }
 func (s *stubCommentGateway) GetCurrentVersionSizeBytes(string) (int64, error)   { panic("unused") }
 func (s *stubCommentGateway) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {
