@@ -538,6 +538,8 @@ type featureInterestRequest struct {
 	Role    string `json:"role"`
 	Feature string `json:"feature"`
 	Other   string `json:"other"`
+	Pain    string `json:"pain"`
+	Org     string `json:"org"`
 	Notify  bool   `json:"notify"`
 	Source  string `json:"source"`
 }
@@ -563,6 +565,8 @@ func (h *Handler) GetFeatureInterest(c *gin.Context) {
 		"role":      answer.Role,
 		"feature":   answer.Feature,
 		"other":     answer.Other,
+		"pain":      answer.Pain,
+		"org":       answer.Org,
 		"notify":    answer.Notify,
 		"updatedAt": answer.UpdatedAt.UTC().Format(time.RFC3339),
 	}})
@@ -586,6 +590,8 @@ func (h *Handler) SaveFeatureInterest(c *gin.Context) {
 		Role:      body.Role,
 		Feature:   body.Feature,
 		Other:     body.Other,
+		Pain:      body.Pain,
+		Org:       body.Org,
 		Notify:    body.Notify,
 		Source:    body.Source,
 	})

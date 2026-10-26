@@ -14,13 +14,15 @@ func (g *LicensingGatewayImpl) SaveFeatureInterest(answer *models.FeatureInteres
 		Role:      answer.Role,
 		Feature:   answer.Feature,
 		Other:     answer.Other,
+		Pain:      answer.Pain,
+		Org:       answer.Org,
 		Notify:    answer.Notify,
 		Source:    answer.Source,
 		UpdatedAt: time.Now().UTC(),
 	}
 	return g.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "lms_user_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"role", "feature", "other", "notify", "source", "updated_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"role", "feature", "other", "pain", "org", "notify", "source", "updated_at"}),
 	}).Create(&row).Error
 }
 

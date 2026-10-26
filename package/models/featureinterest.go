@@ -9,6 +9,8 @@ type FeatureInterestDB struct {
 	Role      string    `gorm:"column:role;not null"`
 	Feature   string    `gorm:"column:feature;not null"`
 	Other     string    `gorm:"column:other;not null;default:''"`
+	Pain      string    `gorm:"column:pain;not null;default:''"`
+	Org       string    `gorm:"column:org;not null;default:''"`
 	Notify    bool      `gorm:"column:notify;not null;default:false"`
 	Source    string    `gorm:"column:source;not null;default:''"`
 	CreatedAt time.Time `gorm:"column:created_at;autoCreateTime"`
@@ -23,6 +25,8 @@ type FeatureInterestCore struct {
 	Role      string
 	Feature   string
 	Other     string
+	Pain      string
+	Org       string
 	Notify    bool
 	Source    string
 	UpdatedAt time.Time
@@ -34,6 +38,8 @@ func (db *FeatureInterestDB) ToCore() *FeatureInterestCore {
 		Role:      db.Role,
 		Feature:   db.Feature,
 		Other:     db.Other,
+		Pain:      db.Pain,
+		Org:       db.Org,
 		Notify:    db.Notify,
 		Source:    db.Source,
 		UpdatedAt: db.UpdatedAt,
