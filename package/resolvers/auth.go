@@ -12,6 +12,7 @@ import (
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
@@ -36,6 +37,7 @@ func (r *mutationResolver) SingIn(ctx context.Context, input models.SignInInput)
 	if ginContext != nil && ginContext.Request != nil {
 		client.UserAgent = ginContext.Request.UserAgent()
 		client.IPAddress = ginContext.ClientIP()
+		client.DeviceID = oidc.DeviceID(ginContext)
 	}
 	accessToken, refreshToken, err := r.authDelegate.SignIn(input.Email, input.Password, uint(input.UserRole), client)
 	if err != nil {

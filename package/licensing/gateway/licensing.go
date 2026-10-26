@@ -44,16 +44,17 @@ func SetupLicensingGateway(postgresClient db_client.PostgresClient) (LicensingGa
 
 func (g *LicensingGatewayImpl) CreateLicense(license *models.LicenseCore) (*models.LicenseCore, error) {
 	dbRow := models.LicenseDB{
-		LmsUserID:    license.LmsUserID,
-		LicenseKey:   license.LicenseKey,
-		Status:       license.Status,
-		Source:       license.Source,
-		SeatLimit:    license.SeatLimit,
-		Capabilities: pq.StringArray(license.Capabilities),
-		CloudQuotaMB: license.CloudQuotaMB,
-		SessionLimit: license.SessionLimit,
-		ExpiresAt:    license.ExpiresAt,
-		Note:         license.Note,
+		LmsUserID:      license.LmsUserID,
+		LicenseKey:     license.LicenseKey,
+		Status:         license.Status,
+		Source:         license.Source,
+		SeatLimit:      license.SeatLimit,
+		Capabilities:   pq.StringArray(license.Capabilities),
+		CloudQuotaMB:   license.CloudQuotaMB,
+		StorageQuotaMB: license.StorageQuotaMB,
+		SessionLimit:   license.SessionLimit,
+		ExpiresAt:      license.ExpiresAt,
+		Note:           license.Note,
 	}
 	if license.IssuedBy != "" {
 		dbRow.IssuedBy = &license.IssuedBy

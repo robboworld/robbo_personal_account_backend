@@ -36,6 +36,8 @@ func (r *mutationResolver) CreateProjectPage(ctx context.Context) (models.Projec
 		code := "500"
 		if createProjectPageErr == projectPage.ErrProjectLimitReached {
 			code = "PROJECT_LIMIT_REACHED"
+		} else if createProjectPageErr == projectPage.ErrStorageQuotaExceeded {
+			code = "STORAGE_QUOTA_EXCEEDED"
 		}
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),

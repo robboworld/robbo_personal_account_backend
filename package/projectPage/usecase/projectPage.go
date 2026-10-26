@@ -95,6 +95,9 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale strin
 	if err := p.enforceProjectCountLimit(authorId); err != nil {
 		return nil, err
 	}
+	if err := p.enforceStorageQuota(authorId, "", 0); err != nil {
+		return nil, err
+	}
 	defaultTitle := projectPage.DefaultProjectTitle(locale)
 	project := models.ProjectCore{}
 	project.AuthorId = authorId
@@ -645,12 +648,16 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if err := p.enforceProjectSizeLimit(ownerId, int64(len(data))); err != nil {
 		return err
 	}
+	if err := p.enforceStorageQuota(row.OwnerUserID, projectPageId, int64(len(data))); err != nil {
+		return err
+	}
 	if err := validateSb3Archive(data); err != nil {
 		return err
 	}
 	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
 		return err
 	}
+	p.pruneAfterSave(row.ID)
 	if vmJSON, extractErr := extractProjectJSONFromSb3(data); extractErr == nil && strings.TrimSpace(vmJSON) != "" {
 		updateErr := p.projectGateway.UpdateProject(&models.ProjectCore{
 			ID:   row.ID,
@@ -700,6 +707,73 @@ func (p *ProjectPageUseCaseImpl) enforceProjectSizeLimit(ownerId string, newSize
 		return projectPage.ErrProjectSizeExceeded
 	}
 	return nil
+}
+
+// enforceStorageQuota refuses only growth past the owner's account total: a save that
+// keeps or shrinks a project always passes, even over the quota (e.g. after a paid
+// license expired), so nothing is ever lost. projectPageId "" with newSize 0 is
+// a new project, refused once the quota is used up.
+func (p *ProjectPageUseCaseImpl) enforceStorageQuota(ownerUserID, projectPageId string, newSize int64) error {
+	if p.licensingGateway == nil {
+		return nil
+	}
+	var currentSize int64
+	if projectPageId != "" {
+		size, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
+		if err != nil {
+			return err
+		}
+		currentSize = size
+		if newSize <= currentSize {
+			return nil
+		}
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, ownerUserID)
+	if err != nil {
+		return err
+	}
+	if ent.StorageQuotaMB <= 0 {
+		return nil
+	}
+	used, err := p.projectPageGateway.GetTotalStorageBytesForOwner(ownerUserID)
+	if err != nil {
+		return err
+	}
+	quota := int64(ent.StorageQuotaMB) << 20
+	if projectPageId == "" {
+		if used >= quota {
+			return projectPage.ErrStorageQuotaExceeded
+		}
+		return nil
+	}
+	if used-currentSize+newSize > quota {
+		return projectPage.ErrStorageQuotaExceeded
+	}
+	return nil
+}
+
+const defaultMaxUploadMB = 50
+
+// MaxSb3UploadBytes is the largest .sb3 the owner may upload: the tariff's per-project
+// size, capped by projectPage.maxUploadMB (which is also the cap for unlimited tariffs).
+// The HTTP layer limits the request body with it, so oversized files are never read into memory.
+func (p *ProjectPageUseCaseImpl) MaxSb3UploadBytes(ownerId string) (int64, error) {
+	ceilingMB := viper.GetInt64("projectPage.maxUploadMB")
+	if ceilingMB <= 0 {
+		ceilingMB = defaultMaxUploadMB
+	}
+	ceiling := ceilingMB << 20
+	if p.licensingGateway == nil {
+		return ceiling, nil
+	}
+	ent, err := licensing.ResolveEntitlements(p.licensingGateway, ownerId)
+	if err != nil {
+		return 0, err
+	}
+	if ent.MaxProjectSizeMB <= 0 {
+		return ceiling, nil
+	}
+	return min(int64(ent.MaxProjectSizeMB)<<20, ceiling), nil
 }
 
 func (p *ProjectPageUseCaseImpl) enforcePublishSizeLimit(authorId, projectPageId string) error {

@@ -51,22 +51,23 @@ type PricingConfig struct {
 
 // ProductDB is the GORM model for products table.
 type ProductDB struct {
-	ID            string          `gorm:"column:id;type:uuid;primaryKey;default:gen_random_uuid()"`
-	SKU           string          `gorm:"column:sku;uniqueIndex;not null"`
-	Title         string          `gorm:"column:title;not null"`
-	Description   string          `gorm:"column:description;not null;default:''"`
-	Amount        float64         `gorm:"column:amount;type:numeric(12,2);not null"`
-	Currency      string          `gorm:"column:currency;not null;default:RUB"`
-	SeatLimit     int             `gorm:"column:seat_limit;not null;default:1"`
-	Capabilities  pq.StringArray  `gorm:"column:capabilities;type:text[];not null"`
-	CloudQuotaMB  int             `gorm:"column:cloud_quota_mb;not null;default:10"`
-	SessionLimit  int             `gorm:"column:session_limit;not null;default:0"`
-	DurationDays  int             `gorm:"column:duration_days;not null;default:365"`
-	Kind          string          `gorm:"column:kind;not null;default:fixed"`
-	PricingConfig json.RawMessage `gorm:"column:pricing_config;type:jsonb"`
-	IsActive      bool            `gorm:"column:is_active;not null;default:true"`
-	CreatedAt     time.Time       `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt     time.Time       `gorm:"column:updated_at;autoUpdateTime"`
+	ID             string          `gorm:"column:id;type:uuid;primaryKey;default:gen_random_uuid()"`
+	SKU            string          `gorm:"column:sku;uniqueIndex;not null"`
+	Title          string          `gorm:"column:title;not null"`
+	Description    string          `gorm:"column:description;not null;default:''"`
+	Amount         float64         `gorm:"column:amount;type:numeric(12,2);not null"`
+	Currency       string          `gorm:"column:currency;not null;default:RUB"`
+	SeatLimit      int             `gorm:"column:seat_limit;not null;default:1"`
+	Capabilities   pq.StringArray  `gorm:"column:capabilities;type:text[];not null"`
+	CloudQuotaMB   int             `gorm:"column:cloud_quota_mb;not null;default:10"`
+	StorageQuotaMB int             `gorm:"column:storage_quota_mb;not null;default:1024"`
+	SessionLimit   int             `gorm:"column:session_limit;not null;default:0"`
+	DurationDays   int             `gorm:"column:duration_days;not null;default:365"`
+	Kind           string          `gorm:"column:kind;not null;default:fixed"`
+	PricingConfig  json.RawMessage `gorm:"column:pricing_config;type:jsonb"`
+	IsActive       bool            `gorm:"column:is_active;not null;default:true"`
+	CreatedAt      time.Time       `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt      time.Time       `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (ProductDB) TableName() string { return "products" }
@@ -108,22 +109,23 @@ func (PaymentAttemptDB) TableName() string { return "payment_attempts" }
 
 // ProductCore is the domain product model.
 type ProductCore struct {
-	ID            string
-	SKU           string
-	Title         string
-	Description   string
-	Amount        float64
-	Currency      string
-	SeatLimit     int
-	Capabilities  []string
-	CloudQuotaMB  int
-	SessionLimit  int
-	DurationDays  int
-	Kind          string
-	PricingConfig *PricingConfig
-	IsActive      bool
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID             string
+	SKU            string
+	Title          string
+	Description    string
+	Amount         float64
+	Currency       string
+	SeatLimit      int
+	Capabilities   []string
+	CloudQuotaMB   int
+	StorageQuotaMB int
+	SessionLimit   int
+	DurationDays   int
+	Kind           string
+	PricingConfig  *PricingConfig
+	IsActive       bool
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 func (p *ProductCore) IsConstructor() bool {
@@ -168,17 +170,18 @@ type PaymentAttemptCore struct {
 
 // CreateProductInput is used by SuperAdmin to seed catalog entries.
 type CreateProductInput struct {
-	SKU          string
-	Title        string
-	Description  string
-	Amount       float64
-	Currency     string
-	SeatLimit    int
-	Capabilities []string
-	CloudQuotaMB int
-	SessionLimit int
-	DurationDays int
-	IsActive     bool
+	SKU            string
+	Title          string
+	Description    string
+	Amount         float64
+	Currency       string
+	SeatLimit      int
+	Capabilities   []string
+	CloudQuotaMB   int
+	StorageQuotaMB int
+	SessionLimit   int
+	DurationDays   int
+	IsActive       bool
 }
 
 func (db *ProductDB) ToCore() *ProductCore {
@@ -193,22 +196,23 @@ func (db *ProductDB) ToCore() *ProductCore {
 		kind = ProductKindFixed
 	}
 	return &ProductCore{
-		ID:            db.ID,
-		SKU:           db.SKU,
-		Title:         db.Title,
-		Description:   db.Description,
-		Amount:        db.Amount,
-		Currency:      db.Currency,
-		SeatLimit:     db.SeatLimit,
-		Capabilities:  caps,
-		CloudQuotaMB:  db.CloudQuotaMB,
-		SessionLimit:  db.SessionLimit,
-		DurationDays:  db.DurationDays,
-		Kind:          kind,
-		PricingConfig: pricing,
-		IsActive:      db.IsActive,
-		CreatedAt:     db.CreatedAt,
-		UpdatedAt:     db.UpdatedAt,
+		ID:             db.ID,
+		SKU:            db.SKU,
+		Title:          db.Title,
+		Description:    db.Description,
+		Amount:         db.Amount,
+		Currency:       db.Currency,
+		SeatLimit:      db.SeatLimit,
+		Capabilities:   caps,
+		CloudQuotaMB:   db.CloudQuotaMB,
+		StorageQuotaMB: db.StorageQuotaMB,
+		SessionLimit:   db.SessionLimit,
+		DurationDays:   db.DurationDays,
+		Kind:           kind,
+		PricingConfig:  pricing,
+		IsActive:       db.IsActive,
+		CreatedAt:      db.CreatedAt,
+		UpdatedAt:      db.UpdatedAt,
 	}
 }
 

@@ -14,13 +14,20 @@ import (
 
 // Free/Standard tariff defaults, used when the account has no active license.
 // SessionLimit=0 / SeatLimit=0 / MaxProjects=0 means unlimited.
-// FreeCloudQuotaMB is the max size of a single .sb3 project (not a total storage quota).
+// FreeCloudQuotaMB is the max size of a single .sb3 project; FreeStorageQuotaMB is the
+// total for the whole account (all projects; later also cloud files).
+// Free has no seat limit: seats are RS3 Desktop activations by license key, and a Free
+// account has no license to activate (Entitlements.SeatLimit stays 0, HasLicense false).
 const (
-	FreeCloudQuotaMB = 10
-	FreeSessionLimit = 2
-	FreeSeatLimit    = 1
-	FreeMaxProjects  = 20
+	FreeCloudQuotaMB   = 10
+	FreeStorageQuotaMB = 100
+	FreeSessionLimit   = 2
+	FreeMaxProjects    = 10
 )
+
+// DefaultLicenseStorageQuotaMB is the account total for a license or product created
+// without one (admin grants); it matches the Individual tariff.
+const DefaultLicenseStorageQuotaMB = 1024
 
 // Entitlements is the resolved set of limits/capabilities for an account,
 // derived from its active license (if any) or the Free/Standard defaults.
@@ -30,6 +37,7 @@ type Entitlements struct {
 	CloudQuotaMB     int // alias / legacy: same as MaxProjectSizeMB
 	MaxProjectSizeMB int // max .sb3 size per project in MB
 	MaxProjects      int // max total projects (published + drafts); 0 = unlimited
+	StorageQuotaMB   int // total for all the account's projects in MB
 	SessionLimit     int
 	SeatLimit        int
 	Capabilities     []string
@@ -54,12 +62,17 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 			if sizeMB <= 0 {
 				sizeMB = FreeCloudQuotaMB
 			}
+			storageMB := lic.StorageQuotaMB
+			if storageMB <= 0 {
+				storageMB = DefaultLicenseStorageQuotaMB
+			}
 			return Entitlements{
 				HasLicense:       true,
 				TariffName:       name,
 				CloudQuotaMB:     sizeMB,
 				MaxProjectSizeMB: sizeMB,
-				MaxProjects:      0, // unlimited for paid
+				MaxProjects:      0, // unlimited for paid, bounded by StorageQuotaMB
+				StorageQuotaMB:   storageMB,
 				SessionLimit:     lic.SessionLimit,
 				SeatLimit:        lic.SeatLimit,
 				Capabilities:     lic.Capabilities,
@@ -91,8 +104,8 @@ func freeEntitlements() Entitlements {
 		CloudQuotaMB:     FreeCloudQuotaMB,
 		MaxProjectSizeMB: FreeCloudQuotaMB,
 		MaxProjects:      FreeMaxProjects,
+		StorageQuotaMB:   FreeStorageQuotaMB,
 		SessionLimit:     FreeSessionLimit,
-		SeatLimit:        FreeSeatLimit,
 	}
 }
 
@@ -140,7 +153,7 @@ func LMSUserHasUnlimitedSessionsAndSeats(lmsUserID string) bool {
 // (non-revoked) session count has already reached its tariff's session_limit.
 // SessionLimit<=0 means unlimited and is never enforced.
 // Admins (SuperAdmin / UnitAdmin) are always exempt.
-// Same client IP counts as a single session slot (see CountActiveSessions).
+// Each device (browser) is one session slot (see CountActiveSessions).
 func CheckSessionLimit(gateway Gateway, lmsUserID string, role models.Role) error {
 	if UnlimitedSessionsAndSeats(role) {
 		return nil
@@ -176,17 +189,27 @@ func KickOtherSessions(gateway Gateway, lmsUserID string) error {
 	return err
 }
 
-// AcquireLoginSession reuses an active session for the same IP when present;
-// otherwise enforces the tariff limit and creates a new row.
+// LoginClient describes where a sign-in comes from. DeviceID is the lk_device cookie
+// (one per browser); IPAddress is kept for "My sessions" and legacy-row adoption.
+type LoginClient struct {
+	UserAgent string
+	IPAddress string
+	DeviceID  string
+}
+
+// AcquireLoginSession reuses the device's active session when present; otherwise
+// enforces the tariff limit and creates a new row for the device.
 // role is used to exempt SuperAdmin / UnitAdmin from the concurrent-session cap.
 func AcquireLoginSession(
 	gateway Gateway,
-	lmsUserID, authMode, userAgent, ipAddress string,
+	lmsUserID, authMode string,
+	client LoginClient,
 	ttl time.Duration,
 	role models.Role,
 ) (*models.UserSessionCore, error) {
 	lmsUserID = strings.TrimSpace(lmsUserID)
-	ipAddress = strings.TrimSpace(ipAddress)
+	ipAddress := strings.TrimSpace(client.IPAddress)
+	deviceID := strings.TrimSpace(client.DeviceID)
 	if lmsUserID == "" {
 		return nil, ErrBadRequest
 	}
@@ -196,22 +219,27 @@ func AcquireLoginSession(
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl)
 
-	if ipAddress != "" {
-		existing, err := gateway.FindActiveSessionByIP(lmsUserID, ipAddress)
-		if err == nil && existing != nil {
-			if reuseErr := gateway.ReuseSession(existing.SessionKey, authMode, userAgent, expiresAt, now); reuseErr != nil {
-				return nil, reuseErr
-			}
-			existing.AuthMode = authMode
-			existing.UserAgent = userAgent
-			existing.LastSeenAt = now
-			existing.ExpiresAt = expiresAt
+	existing, err := gateway.FindReusableSession(lmsUserID, deviceID, ipAddress)
+	if err == nil && existing != nil {
+		if reuseErr := gateway.ReuseSession(
+			existing.SessionKey, authMode, client.UserAgent, ipAddress, deviceID, expiresAt, now,
+		); reuseErr != nil {
+			return nil, reuseErr
+		}
+		existing.AuthMode = authMode
+		existing.UserAgent = client.UserAgent
+		existing.LastSeenAt = now
+		existing.ExpiresAt = expiresAt
+		if ipAddress != "" {
 			existing.IPAddress = ipAddress
-			return existing, nil
 		}
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, err
+		if deviceID != "" {
+			existing.DeviceID = deviceID
 		}
+		return existing, nil
+	}
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
 	}
 
 	if err := CheckSessionLimit(gateway, lmsUserID, role); err != nil {
@@ -220,8 +248,9 @@ func AcquireLoginSession(
 	return gateway.CreateSession(&models.UserSessionCore{
 		LmsUserID:  lmsUserID,
 		AuthMode:   authMode,
-		UserAgent:  userAgent,
+		UserAgent:  client.UserAgent,
 		IPAddress:  ipAddress,
+		DeviceID:   deviceID,
 		LastSeenAt: now,
 		ExpiresAt:  expiresAt,
 	})

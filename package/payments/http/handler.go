@@ -52,24 +52,25 @@ func (h *Handler) ListProducts(c *gin.Context) {
 func freeTariffJSON() gin.H {
 	return gin.H{
 		"maxProjectSizeMb": licensing.FreeCloudQuotaMB,
+		"storageQuotaMb":   licensing.FreeStorageQuotaMB,
 		"maxProjects":      licensing.FreeMaxProjects,
 		"sessionLimit":     licensing.FreeSessionLimit,
-		"seatLimit":        licensing.FreeSeatLimit,
 	}
 }
 
 type createProductRequest struct {
-	SKU          string   `json:"sku"`
-	Title        string   `json:"title"`
-	Description  string   `json:"description"`
-	Amount       float64  `json:"amount"`
-	Currency     string   `json:"currency"`
-	SeatLimit    int      `json:"seatLimit"`
-	Capabilities []string `json:"capabilities"`
-	CloudQuotaMB int      `json:"cloudQuotaMb"`
-	SessionLimit int      `json:"sessionLimit"`
-	DurationDays int      `json:"durationDays"`
-	IsActive     *bool    `json:"isActive"`
+	SKU            string   `json:"sku"`
+	Title          string   `json:"title"`
+	Description    string   `json:"description"`
+	Amount         float64  `json:"amount"`
+	Currency       string   `json:"currency"`
+	SeatLimit      int      `json:"seatLimit"`
+	Capabilities   []string `json:"capabilities"`
+	CloudQuotaMB   int      `json:"cloudQuotaMb"`
+	StorageQuotaMB int      `json:"storageQuotaMb"`
+	SessionLimit   int      `json:"sessionLimit"`
+	DurationDays   int      `json:"durationDays"`
+	IsActive       *bool    `json:"isActive"`
 }
 
 func (h *Handler) CreateProduct(c *gin.Context) {
@@ -92,17 +93,18 @@ func (h *Handler) CreateProduct(c *gin.Context) {
 		active = *body.IsActive
 	}
 	product, err := h.paymentsDelegate.CreateProduct(models.CreateProductInput{
-		SKU:          body.SKU,
-		Title:        body.Title,
-		Description:  body.Description,
-		Amount:       body.Amount,
-		Currency:     body.Currency,
-		SeatLimit:    body.SeatLimit,
-		Capabilities: body.Capabilities,
-		CloudQuotaMB: body.CloudQuotaMB,
-		SessionLimit: body.SessionLimit,
-		DurationDays: body.DurationDays,
-		IsActive:     active,
+		SKU:            body.SKU,
+		Title:          body.Title,
+		Description:    body.Description,
+		Amount:         body.Amount,
+		Currency:       body.Currency,
+		SeatLimit:      body.SeatLimit,
+		Capabilities:   body.Capabilities,
+		CloudQuotaMB:   body.CloudQuotaMB,
+		StorageQuotaMB: body.StorageQuotaMB,
+		SessionLimit:   body.SessionLimit,
+		DurationDays:   body.DurationDays,
+		IsActive:       active,
 	})
 	if err != nil {
 		writePaymentsError(c, err)
@@ -222,19 +224,20 @@ func writePaymentsError(c *gin.Context, err error) {
 
 func productToJSON(p *models.ProductCore) gin.H {
 	out := gin.H{
-		"id":           p.ID,
-		"sku":          p.SKU,
-		"title":        p.Title,
-		"description":  p.Description,
-		"amount":       p.Amount,
-		"currency":     p.Currency,
-		"seatLimit":    p.SeatLimit,
-		"capabilities": p.Capabilities,
-		"cloudQuotaMb": p.CloudQuotaMB,
-		"sessionLimit": p.SessionLimit,
-		"durationDays": p.DurationDays,
-		"kind":         p.Kind,
-		"isActive":     p.IsActive,
+		"id":             p.ID,
+		"sku":            p.SKU,
+		"title":          p.Title,
+		"description":    p.Description,
+		"amount":         p.Amount,
+		"currency":       p.Currency,
+		"seatLimit":      p.SeatLimit,
+		"capabilities":   p.Capabilities,
+		"cloudQuotaMb":   p.CloudQuotaMB,
+		"storageQuotaMb": p.StorageQuotaMB,
+		"sessionLimit":   p.SessionLimit,
+		"durationDays":   p.DurationDays,
+		"kind":           p.Kind,
+		"isActive":       p.IsActive,
 	}
 	if p.PricingConfig != nil {
 		out["pricingConfig"] = p.PricingConfig

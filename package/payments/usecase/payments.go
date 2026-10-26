@@ -71,18 +71,23 @@ func (u *PaymentsUseCaseImpl) CreateProduct(input models.CreateProductInput) (*m
 	if cloudQuotaMB <= 0 {
 		cloudQuotaMB = 10
 	}
+	storageQuotaMB := input.StorageQuotaMB
+	if storageQuotaMB <= 0 {
+		storageQuotaMB = licensing.DefaultLicenseStorageQuotaMB
+	}
 	return u.gateway.CreateProduct(&models.ProductCore{
-		SKU:          strings.TrimSpace(input.SKU),
-		Title:        strings.TrimSpace(input.Title),
-		Description:  input.Description,
-		Amount:       input.Amount,
-		Currency:     currency,
-		SeatLimit:    seatLimit,
-		Capabilities: caps,
-		CloudQuotaMB: cloudQuotaMB,
-		SessionLimit: input.SessionLimit,
-		DurationDays: duration,
-		IsActive:     input.IsActive,
+		SKU:            strings.TrimSpace(input.SKU),
+		Title:          strings.TrimSpace(input.Title),
+		Description:    input.Description,
+		Amount:         input.Amount,
+		Currency:       currency,
+		SeatLimit:      seatLimit,
+		Capabilities:   caps,
+		CloudQuotaMB:   cloudQuotaMB,
+		StorageQuotaMB: storageQuotaMB,
+		SessionLimit:   input.SessionLimit,
+		DurationDays:   duration,
+		IsActive:       input.IsActive,
 	})
 }
 
@@ -375,15 +380,16 @@ func (u *PaymentsUseCaseImpl) fulfillOrder(orderID string) error {
 		}
 		expiresAt := time.Now().UTC().AddDate(0, 0, product.DurationDays)
 		lic, err := u.licensing.IssueLicense(models.IssueLicenseInput{
-			LmsUserID:    order.LmsUserID,
-			SeatLimit:    product.SeatLimit,
-			Capabilities: product.Capabilities,
-			CloudQuotaMB: product.CloudQuotaMB,
-			SessionLimit: product.SessionLimit,
-			ExpiresAt:    expiresAt,
-			Note:         fmt.Sprintf("order %s", order.OrderNumber),
-			ProductID:    product.ID,
-			Source:       models.LicenseSourceOrder,
+			LmsUserID:      order.LmsUserID,
+			SeatLimit:      product.SeatLimit,
+			Capabilities:   product.Capabilities,
+			CloudQuotaMB:   product.CloudQuotaMB,
+			StorageQuotaMB: product.StorageQuotaMB,
+			SessionLimit:   product.SessionLimit,
+			ExpiresAt:      expiresAt,
+			Note:           fmt.Sprintf("order %s", order.OrderNumber),
+			ProductID:      product.ID,
+			Source:         models.LicenseSourceOrder,
 		})
 		if err != nil {
 			return err

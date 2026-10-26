@@ -62,6 +62,7 @@ func clientInfoFromRequest(c *gin.Context) auth.ClientInfo {
 	return auth.ClientInfo{
 		UserAgent: c.Request.UserAgent(),
 		IPAddress: c.ClientIP(),
+		DeviceID:  oidc.DeviceID(c),
 	}
 }
 

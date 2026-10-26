@@ -58,6 +58,17 @@ portalOutbox:
 
 projectPage:
   scratchLink: "0.0.0.0:8601/"
+  # Hard cap for an .sb3 upload in MB; the tariff's per-project size applies below it.
+  maxUploadMB: 50
+  # Deletes old .sb3 versions for good: keeps the keepLast newest, the newest per UTC day
+  # for keepDailyDays days (0 = none), and the current one. On by default with keepLast 1,
+  # i.e. only the latest version (no history). Raise the numbers to keep history again;
+  # enabled: false stops deleting altogether.
+  versionRetention:
+    enabled: true
+    keepLast: 1
+    keepDailyDays: 0
+    interval: 1h
 
 postgres:
   postgresDsn: "host=localhost port=5432 user=robbo password=robbo_pwd dbname=robbo_db sslmode=disable"

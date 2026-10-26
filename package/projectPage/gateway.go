@@ -28,6 +28,8 @@ type Gateway interface {
 	SavePreviewImage(projectPageId string, data []byte, mime string) error
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
+	ListSb3PruneCandidates(policy Sb3RetentionPolicy, limit int) (projectIDs []string, err error)
+	PruneSb3Versions(projectID string, policy Sb3RetentionPolicy) (deleted int64, err error)
 	GetTotalStorageBytesForOwner(ownerUserID string) (int64, error)
 	GetCurrentVersionSizeBytes(projectPageId string) (int64, error)
 	CountProjectsByOwner(ownerUserID string) (int64, error)
@@ -45,6 +47,15 @@ type Gateway interface {
 	DeleteCommentReaction(commentId, userId string) error
 	SetLandingFeatured(projectPageId string, featured bool, sortOrder int) (*models.ProjectPageCore, error)
 	ReorderLandingFeatured(items []LandingFeaturedOrderItem) error
+}
+
+// Sb3RetentionPolicy says which .sb3 versions of a project survive pruning:
+// the KeepLast newest, the newest of each UTC day for the last KeepDailyDays days
+// (0 = no daily snapshots), and always the current version.
+// KeepLast=1 with KeepDailyDays=0 keeps no history, like Scratch.
+type Sb3RetentionPolicy struct {
+	KeepLast      int
+	KeepDailyDays int
 }
 
 // LandingFeaturedOrderItem is one row for batch showcase reorder.

@@ -19,6 +19,8 @@ type UseCase interface {
 	PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error)
 	GetProjectJSONByToken(projectId string, token string) (json string, err error)
 	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
+	MaxSb3UploadBytes(ownerId string) (int64, error)
+	PruneSb3Versions(policy Sb3RetentionPolicy) (deleted int64, err error)
 	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)
 	GetProjectReactions(projectPageId, viewerId string) (*models.ProjectReactionsHTTP, error)
 	PutProjectReaction(projectPageId, userId, reactionCode string) (*models.ProjectReactionsHTTP, error)

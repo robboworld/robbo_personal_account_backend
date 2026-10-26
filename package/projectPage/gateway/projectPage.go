@@ -459,6 +459,66 @@ func (r *ProjectPageGatewayImpl) SaveSb3Archive(projectPageId, userID string, ar
 	})
 }
 
+// sb3RankedVersions numbers each project's versions newest first (rn), and within
+// each UTC day (day_rn), for the retention policy filter sb3NotKept.
+const sb3RankedVersions = `
+	SELECT id, project_id, created_at,
+	  row_number() OVER (PARTITION BY project_id ORDER BY version_seq DESC) AS rn,
+	  row_number() OVER (
+	    PARTITION BY project_id, (created_at AT TIME ZONE 'UTC')::date
+	    ORDER BY version_seq DESC
+	  ) AS day_rn
+	FROM scratch_project_versions`
+
+// sb3NotKept: older than the KeepLast newest and not a kept daily snapshot.
+// Params: KeepLast, KeepDailyDays, KeepDailyDays.
+const sb3NotKept = `ranked.rn > ?
+	AND NOT (? > 0 AND ranked.day_rn = 1 AND ranked.created_at >= now() - make_interval(days => ?))`
+
+// ListSb3PruneCandidates returns projects that have at least one version the policy drops.
+func (r *ProjectPageGatewayImpl) ListSb3PruneCandidates(policy projectPage.Sb3RetentionPolicy, limit int) ([]string, error) {
+	var ids []string
+	err := r.projectStorageDB.Raw(`
+		SELECT DISTINCT ranked.project_id
+		FROM (`+sb3RankedVersions+`) ranked
+		JOIN scratch_projects p ON p.id = ranked.project_id
+		WHERE ranked.id IS DISTINCT FROM p.current_version_id
+		  AND `+sb3NotKept+`
+		LIMIT ?
+	`, policy.KeepLast, policy.KeepDailyDays, policy.KeepDailyDays, limit).Scan(&ids).Error
+	return ids, err
+}
+
+// PruneSb3Versions deletes the project's .sb3 versions the policy does not keep.
+// The project row is locked so a concurrent save cannot point current_version_id
+// at a version being deleted (the FK would silently reset it to NULL).
+func (r *ProjectPageGatewayImpl) PruneSb3Versions(projectID string, policy projectPage.Sb3RetentionPolicy) (int64, error) {
+	var deleted int64
+	err := r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
+		var current struct{ CurrentVersionID *string }
+		lockErr := tx.Raw(`
+			SELECT current_version_id FROM scratch_projects WHERE id = ? FOR UPDATE
+		`, projectID).Scan(&current).Error
+		if lockErr != nil {
+			return lockErr
+		}
+		res := tx.Exec(`
+			DELETE FROM scratch_project_versions
+			WHERE project_id = ?
+			  AND id IS DISTINCT FROM ?
+			  AND id IN (
+			    SELECT ranked.id
+			    FROM (`+sb3RankedVersions+` WHERE project_id = ?) ranked
+			    WHERE `+sb3NotKept+`
+			  )
+		`, projectID, current.CurrentVersionID, projectID,
+			policy.KeepLast, policy.KeepDailyDays, policy.KeepDailyDays)
+		deleted = res.RowsAffected
+		return res.Error
+	})
+	return deleted, err
+}
+
 // GetTotalStorageBytesForOwner sums size_bytes of each project's current version.
 func (r *ProjectPageGatewayImpl) GetTotalStorageBytesForOwner(ownerUserID string) (int64, error) {
 	if strings.TrimSpace(ownerUserID) == "" {

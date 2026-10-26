@@ -10,6 +10,7 @@ import (
 type ClientInfo struct {
 	UserAgent         string
 	IPAddress         string
+	DeviceID          string // lk_device cookie: one concurrent-session slot per browser
 	KickOtherSessions bool
 }
 

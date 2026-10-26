@@ -206,7 +206,9 @@ func (a *AuthUseCaseImpl) issueTokensWithSession(
 			}
 		}
 		sess, createErr := licensing.AcquireLoginSession(
-			a.sessions, user.Id, authMode, client.UserAgent, client.IPAddress, ttl, user.Role,
+			a.sessions, user.Id, authMode,
+			licensing.LoginClient{UserAgent: client.UserAgent, IPAddress: client.IPAddress, DeviceID: client.DeviceID},
+			ttl, user.Role,
 		)
 		if createErr != nil {
 			if errors.Is(createErr, licensing.ErrSessionLimitReached) {

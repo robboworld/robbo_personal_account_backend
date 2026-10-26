@@ -15,6 +15,7 @@ type Delegate interface {
 	PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error)
 	GetProjectJSONByToken(projectId string, token string) (json string, err error)
 	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
+	MaxSb3UploadBytes(ownerId string) (int64, error)
 	GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error)
 	SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error
 	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)

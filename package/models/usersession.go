@@ -12,6 +12,7 @@ type UserSessionDB struct {
 	AuthMode   string     `gorm:"column:auth_mode;not null;default:''"`
 	UserAgent  string     `gorm:"column:user_agent;not null;default:''"`
 	IPAddress  string     `gorm:"column:ip_address;not null;default:''"`
+	DeviceID   string     `gorm:"column:device_id;not null;default:''"`
 	CreatedAt  time.Time  `gorm:"column:created_at;autoCreateTime"`
 	LastSeenAt time.Time  `gorm:"column:last_seen_at;not null"`
 	ExpiresAt  time.Time  `gorm:"column:expires_at;not null"`
@@ -28,6 +29,7 @@ type UserSessionCore struct {
 	AuthMode   string
 	UserAgent  string
 	IPAddress  string
+	DeviceID   string
 	CreatedAt  time.Time
 	LastSeenAt time.Time
 	ExpiresAt  time.Time
@@ -42,6 +44,7 @@ func (db *UserSessionDB) ToCore() *UserSessionCore {
 		AuthMode:   db.AuthMode,
 		UserAgent:  db.UserAgent,
 		IPAddress:  db.IPAddress,
+		DeviceID:   db.DeviceID,
 		CreatedAt:  db.CreatedAt,
 		LastSeenAt: db.LastSeenAt,
 		ExpiresAt:  db.ExpiresAt,
