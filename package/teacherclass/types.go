@@ -94,29 +94,16 @@ type SubmissionDTO struct {
 	PreviewURL    string     `json:"previewUrl,omitempty"`
 }
 
-type LiveStudentDTO struct {
-	UserID       string     `json:"userId"`
-	Username     string     `json:"username"`
-	Name         string     `json:"name,omitempty"`
-	Email        string     `json:"email,omitempty"`
-	ProjectID    string     `json:"projectId,omitempty"`
-	ProjectTitle string     `json:"projectTitle,omitempty"`
-	UpdatedAt    *time.Time `json:"updatedAt,omitempty"`
-	ReviewStatus string     `json:"reviewStatus,omitempty"`
-	SavedToday   bool       `json:"savedToday"`
-}
-
 type ProgressCellDTO struct {
 	AssignmentID string `json:"assignmentId"`
 	Status       string `json:"status"` // empty|draft|submitted|returned|accepted|shown_in_class|missing
 	ProjectID    string `json:"projectId,omitempty"`
 }
 
+// ProgressRowDTO holds one project owner's cells; assignments without a project are omitted.
 type ProgressRowDTO struct {
-	UserID   string            `json:"userId"`
-	Username string            `json:"username"`
-	Name     string            `json:"name,omitempty"`
-	Cells    []ProgressCellDTO `json:"cells"`
+	UserID string            `json:"userId"`
+	Cells  []ProgressCellDTO `json:"cells"`
 }
 
 type Gateway interface {
@@ -127,6 +114,7 @@ type Gateway interface {
 	GetInviteByCode(code string) (*models.ClassInviteDB, error)
 	GetInviteByCourseCohort(courseID, cohortID string) (*models.ClassInviteDB, error)
 	ListInvitesByOwner(ownerTeacherID string) ([]models.ClassInviteDB, error)
+	ListAllInvites() ([]models.ClassInviteDB, error)
 	ListActiveInvites() ([]models.ClassInviteDB, error)
 
 	CreateAssignment(a *models.ClassAssignmentDB) error
@@ -144,27 +132,26 @@ type Gateway interface {
 
 type UseCase interface {
 	CreateClass(teacherID string, in CreateClassInput) (*ClassDTO, error)
-	ListMyClasses(teacherID string) ([]ClassDTO, error)
+	ListMyClasses(teacherID string, role models.Role) ([]ClassDTO, error)
 	ListCourses() ([]CourseDTO, error)
-	GetClass(teacherID, classID string) (*ClassDTO, error)
-	RenameClass(teacherID, classID, displayName string) (*ClassDTO, error)
-	ArchiveClass(teacherID, classID string) error
-	RotateInvite(teacherID, classID string) (*ClassDTO, error)
+	GetClass(teacherID string, role models.Role, classID string) (*ClassDTO, error)
+	RenameClass(teacherID string, role models.Role, classID, displayName string) (*ClassDTO, error)
+	ArchiveClass(teacherID string, role models.Role, classID string) error
+	RotateInvite(teacherID string, role models.Role, classID string) (*ClassDTO, error)
 
 	PreviewJoin(codeOrSlug string) (*JoinPreviewDTO, error)
 	JoinClass(studentID string, codeOrSlug string) (*ClassDTO, error)
 	ListStudentClasses(studentID string) ([]ClassDTO, error)
 
-	ListMembers(teacherID, classID string) ([]CohortUserDTO, error)
-	AddMembersByEmail(teacherID, classID string, emails []string) (added []string, missing []string, err error)
-	RemoveMember(teacherID, classID, username string) error
+	ListMembers(teacherID string, role models.Role, classID string) ([]CohortUserDTO, error)
+	AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error)
+	RemoveMember(teacherID string, role models.Role, classID, username string) error
 
-	CreateAssignment(teacherID, classID string, in CreateAssignmentInput) (*AssignmentDTO, error)
+	CreateAssignment(teacherID string, role models.Role, classID string, in CreateAssignmentInput) (*AssignmentDTO, error)
 	ListAssignments(viewerID string, role models.Role, classID string) ([]AssignmentDTO, error)
-	IssueToLatecomers(teacherID, classID, assignmentID string) (issued int, err error)
+	IssueToLatecomers(teacherID string, role models.Role, classID, assignmentID string) (issued int, err error)
 	SubmitAssignment(studentID, projectID string) error
-	ReviewSubmission(teacherID, projectID, status, comment string) error
-	ListSubmissions(teacherID, classID, assignmentID string) ([]SubmissionDTO, error)
-	LiveRoster(teacherID, classID, assignmentID string) ([]LiveStudentDTO, error)
-	ProgressMatrix(teacherID, classID string) (assignments []AssignmentDTO, rows []ProgressRowDTO, err error)
+	ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error
+	ListSubmissions(teacherID string, role models.Role, classID, assignmentID string) ([]SubmissionDTO, error)
+	ProgressMatrix(teacherID string, role models.Role, classID string) (assignments []AssignmentDTO, rows []ProgressRowDTO, err error)
 }

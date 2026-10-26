@@ -52,7 +52,7 @@ func (u *UseCaseImpl) toDTO(inv *models.ClassInviteDB) *teacherclass.ClassDTO {
 	}
 }
 
-func (u *UseCaseImpl) requireOwner(teacherID, classID string) (*models.ClassInviteDB, error) {
+func (u *UseCaseImpl) requireOwner(teacherID string, role models.Role, classID string) (*models.ClassInviteDB, error) {
 	inv, err := u.gw.GetInviteByID(classID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -60,10 +60,15 @@ func (u *UseCaseImpl) requireOwner(teacherID, classID string) (*models.ClassInvi
 		}
 		return nil, err
 	}
-	if inv.OwnerTeacherID != teacherID {
+	if !canManage(inv, teacherID, role) {
 		return nil, teacherclass.ErrForbidden
 	}
 	return inv, nil
+}
+
+// canManage: the class owner, or SuperAdmin for any class.
+func canManage(inv *models.ClassInviteDB, teacherID string, role models.Role) bool {
+	return role == models.SuperAdmin || inv.OwnerTeacherID == teacherID
 }
 
 func genInviteCode() (string, error) {
@@ -169,18 +174,38 @@ func (u *UseCaseImpl) CreateClass(teacherID string, in teacherclass.CreateClassI
 }
 
 func (u *UseCaseImpl) fillOwnerName(dto *teacherclass.ClassDTO) {
-	id, err := lmsdb.ParseLMSUserID(dto.OwnerTeacherID)
+	dto.OwnerName = ownerDisplayName(dto.OwnerTeacherID)
+}
+
+// fillOwnerNames looks each teacher up once, however many of their classes are listed.
+func (u *UseCaseImpl) fillOwnerNames(dtos []teacherclass.ClassDTO) {
+	names := make(map[string]string)
+	for i := range dtos {
+		id := dtos[i].OwnerTeacherID
+		name, ok := names[id]
+		if !ok {
+			name = ownerDisplayName(id)
+			names[id] = name
+		}
+		dtos[i].OwnerName = name
+	}
+}
+
+// ownerDisplayName returns the teacher's name from the LMS profile, "" when unknown.
+// A variable so tests can stand in for LMS MySQL.
+var ownerDisplayName = func(ownerID string) string {
+	id, err := lmsdb.ParseLMSUserID(ownerID)
 	if err != nil {
-		return
+		return ""
 	}
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil || reader == nil {
-		return
+		return ""
 	}
 	defer reader.Close()
 	profile, err := reader.LookupAuthUserProfileByID(id)
 	if err != nil || profile == nil {
-		return
+		return ""
 	}
 	name := strings.TrimSpace(profile.ProfileName)
 	if name == "" {
@@ -189,20 +214,25 @@ func (u *UseCaseImpl) fillOwnerName(dto *teacherclass.ClassDTO) {
 	if name == "" {
 		name = profile.Username
 	}
-	dto.OwnerName = name
+	return name
 }
 
-func (u *UseCaseImpl) ListMyClasses(teacherID string) ([]teacherclass.ClassDTO, error) {
-	list, err := u.gw.ListInvitesByOwner(teacherID)
+func (u *UseCaseImpl) ListMyClasses(teacherID string, role models.Role) ([]teacherclass.ClassDTO, error) {
+	var list []models.ClassInviteDB
+	var err error
+	if role == models.SuperAdmin {
+		list, err = u.gw.ListAllInvites()
+	} else {
+		list, err = u.gw.ListInvitesByOwner(teacherID)
+	}
 	if err != nil {
 		return nil, err
 	}
 	out := make([]teacherclass.ClassDTO, 0, len(list))
 	for i := range list {
-		dto := u.toDTO(&list[i])
-		u.fillOwnerName(dto)
-		out = append(out, *dto)
+		out = append(out, *u.toDTO(&list[i]))
 	}
+	u.fillOwnerNames(out)
 	return out, nil
 }
 
@@ -224,8 +254,8 @@ func (u *UseCaseImpl) ListCourses() ([]teacherclass.CourseDTO, error) {
 	return out, nil
 }
 
-func (u *UseCaseImpl) GetClass(teacherID, classID string) (*teacherclass.ClassDTO, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) GetClass(teacherID string, role models.Role, classID string) (*teacherclass.ClassDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -234,12 +264,12 @@ func (u *UseCaseImpl) GetClass(teacherID, classID string) (*teacherclass.ClassDT
 	return dto, nil
 }
 
-func (u *UseCaseImpl) RenameClass(teacherID, classID, displayName string) (*teacherclass.ClassDTO, error) {
+func (u *UseCaseImpl) RenameClass(teacherID string, role models.Role, classID, displayName string) (*teacherclass.ClassDTO, error) {
 	displayName = strings.TrimSpace(displayName)
 	if displayName == "" {
 		return nil, teacherclass.ErrBadRequest
 	}
-	inv, err := u.requireOwner(teacherID, classID)
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -255,8 +285,8 @@ func (u *UseCaseImpl) RenameClass(teacherID, classID, displayName string) (*teac
 	return u.toDTO(inv), nil
 }
 
-func (u *UseCaseImpl) ArchiveClass(teacherID, classID string) error {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) ArchiveClass(teacherID string, role models.Role, classID string) error {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return err
 	}
@@ -266,8 +296,8 @@ func (u *UseCaseImpl) ArchiveClass(teacherID, classID string) error {
 	return u.gw.UpdateInvite(inv)
 }
 
-func (u *UseCaseImpl) RotateInvite(teacherID, classID string) (*teacherclass.ClassDTO, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) RotateInvite(teacherID string, role models.Role, classID string) (*teacherclass.ClassDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -406,10 +436,9 @@ func (u *UseCaseImpl) ListStudentClasses(studentID string) ([]teacherclass.Class
 		if !cohorts[strings.TrimSpace(inv.EdxCohortID)] {
 			continue
 		}
-		dto := u.toDTO(inv)
-		u.fillOwnerName(dto)
-		out = append(out, *dto)
+		out = append(out, *u.toDTO(inv))
 	}
+	u.fillOwnerNames(out)
 	return out, nil
 }
 
@@ -436,6 +465,18 @@ var studentCohortIDs = func(userID string) (map[string]bool, error) {
 	return out, nil
 }
 
+// profileName is the LMS display name: profile name, else "first last"; empty when unknown.
+func profileName(reader *lmsdb.Reader, id int64) string {
+	profile, err := reader.LookupAuthUserProfileByID(id)
+	if err != nil || profile == nil {
+		return ""
+	}
+	if name := strings.TrimSpace(profile.ProfileName); name != "" {
+		return name
+	}
+	return strings.TrimSpace(strings.TrimSpace(profile.FirstName) + " " + strings.TrimSpace(profile.LastName))
+}
+
 func (u *UseCaseImpl) parseCohortUsers(body []byte) []teacherclass.CohortUserDTO {
 	extract := func(items []map[string]interface{}) []teacherclass.CohortUserDTO {
 		out := make([]teacherclass.CohortUserDTO, 0, len(items))
@@ -454,13 +495,7 @@ func (u *UseCaseImpl) parseCohortUsers(body []byte) []teacherclass.CohortUserDTO
 				if row, err := reader.LookupAuthUserByUsername(username); err == nil && row != nil {
 					dto.UserID = strconv.FormatInt(row.ID, 10)
 					dto.Email = row.Email
-					if profile, err := reader.LookupAuthUserProfileByID(row.ID); err == nil && profile != nil {
-						name := strings.TrimSpace(profile.ProfileName)
-						if name == "" {
-							name = strings.TrimSpace(strings.TrimSpace(profile.FirstName) + " " + strings.TrimSpace(profile.LastName))
-						}
-						dto.Name = name
-					}
+					dto.Name = profileName(reader, row.ID)
 				}
 			}
 			out = append(out, dto)
@@ -480,8 +515,8 @@ func (u *UseCaseImpl) parseCohortUsers(body []byte) []teacherclass.CohortUserDTO
 	return nil
 }
 
-func (u *UseCaseImpl) ListMembers(teacherID, classID string) ([]teacherclass.CohortUserDTO, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) ListMembers(teacherID string, role models.Role, classID string) ([]teacherclass.CohortUserDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -509,8 +544,8 @@ func (u *UseCaseImpl) ListMembers(teacherID, classID string) ([]teacherclass.Coh
 	}
 }
 
-func (u *UseCaseImpl) AddMembersByEmail(teacherID, classID string, emails []string) (added []string, missing []string, err error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -538,8 +573,8 @@ func (u *UseCaseImpl) AddMembersByEmail(teacherID, classID string, emails []stri
 	return added, missing, nil
 }
 
-func (u *UseCaseImpl) RemoveMember(teacherID, classID, username string) error {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) RemoveMember(teacherID string, role models.Role, classID, username string) error {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return err
 	}
@@ -563,8 +598,8 @@ func assignmentDTO(a *models.ClassAssignmentDB) teacherclass.AssignmentDTO {
 	}
 }
 
-func (u *UseCaseImpl) CreateAssignment(teacherID, classID string, in teacherclass.CreateAssignmentInput) (*teacherclass.AssignmentDTO, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, classID string, in teacherclass.CreateAssignmentInput) (*teacherclass.AssignmentDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -594,7 +629,7 @@ func (u *UseCaseImpl) CreateAssignment(teacherID, classID string, in teacherclas
 	if err := u.gw.CreateAssignment(a); err != nil {
 		return nil, err
 	}
-	members, err := u.ListMembers(teacherID, classID)
+	members, err := u.ListMembers(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -673,8 +708,8 @@ var studentInCohort = func(userID, cohortID string) (bool, error) {
 	return reader.IsUserInAnyCohort(uid, []int64{cid})
 }
 
-func (u *UseCaseImpl) IssueToLatecomers(teacherID, classID, assignmentID string) (int, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, classID, assignmentID string) (int, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return 0, err
 	}
@@ -689,7 +724,7 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID, classID, assignmentID string)
 	if err != nil {
 		return 0, err
 	}
-	members, err := u.ListMembers(teacherID, classID)
+	members, err := u.ListMembers(teacherID, role, classID)
 	if err != nil {
 		return 0, err
 	}
@@ -726,7 +761,7 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	return u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now)
 }
 
-func (u *UseCaseImpl) ReviewSubmission(teacherID, projectID, status, comment string) error {
+func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error {
 	switch status {
 	case models.ReviewAccepted, models.ReviewReturned, models.ReviewShownInClass, models.ReviewDraft, models.ReviewSubmitted:
 	default:
@@ -740,7 +775,7 @@ func (u *UseCaseImpl) ReviewSubmission(teacherID, projectID, status, comment str
 		return teacherclass.ErrForbidden
 	}
 	inv, err := u.gw.GetInviteByCourseCohort(deref(p.EdxCourseID), *p.EdxCohortID)
-	if err != nil || inv.OwnerTeacherID != teacherID {
+	if err != nil || !canManage(inv, teacherID, role) {
 		return teacherclass.ErrForbidden
 	}
 	return u.gw.UpdateReview(projectID, status, comment, nil)
@@ -753,8 +788,8 @@ func deref(s *string) string {
 	return *s
 }
 
-func (u *UseCaseImpl) ListSubmissions(teacherID, classID, assignmentID string) ([]teacherclass.SubmissionDTO, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classID, assignmentID string) ([]teacherclass.SubmissionDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -791,70 +826,10 @@ func (u *UseCaseImpl) ListSubmissions(teacherID, classID, assignmentID string) (
 	return out, nil
 }
 
-func (u *UseCaseImpl) LiveRoster(teacherID, classID, assignmentID string) ([]teacherclass.LiveStudentDTO, error) {
-	members, err := u.ListMembers(teacherID, classID)
-	if err != nil {
-		return nil, err
-	}
-	var projects []models.ScratchProjectDB
-	if assignmentID != "" {
-		projects, err = u.gw.ListSubmissions(assignmentID)
-	} else {
-		projects, err = u.gw.ListProjectsByCohortAssignment("", assignmentID)
-	}
-	if err != nil {
-		return nil, err
-	}
-	byOwner := map[string]*models.ScratchProjectDB{}
-	for i := range projects {
-		byOwner[projects[i].OwnerUserID] = &projects[i]
-	}
-	today := time.Now().UTC().Truncate(24 * time.Hour)
-	out := make([]teacherclass.LiveStudentDTO, 0, len(members))
-	for _, m := range members {
-		row := teacherclass.LiveStudentDTO{
-			UserID:   m.UserID,
-			Username: m.Username,
-			Name:     m.Name,
-			Email:    m.Email,
-		}
-		if p, ok := byOwner[m.UserID]; ok {
-			row.ProjectID = p.ID
-			row.ProjectTitle = p.Title
-			t := p.UpdatedAt
-			row.UpdatedAt = &t
-			if p.ReviewStatus != nil {
-				row.ReviewStatus = *p.ReviewStatus
-			}
-			row.SavedToday = !p.UpdatedAt.Before(today)
-		}
-		out = append(out, row)
-	}
-	// Offline / EdX down: still show students who already have assignment projects.
-	if len(out) == 0 {
-		for i := range projects {
-			p := &projects[i]
-			row := teacherclass.LiveStudentDTO{
-				UserID:       p.OwnerUserID,
-				Username:     p.OwnerUserID,
-				Name:         p.OwnerUserID,
-				ProjectID:    p.ID,
-				ProjectTitle: p.Title,
-				SavedToday:   !p.UpdatedAt.Before(today),
-			}
-			t := p.UpdatedAt
-			row.UpdatedAt = &t
-			if p.ReviewStatus != nil {
-				row.ReviewStatus = *p.ReviewStatus
-			}
-			out = append(out, row)
-		}
-	}
-	return out, nil
-}
-
-func (u *UseCaseImpl) ProgressMatrix(teacherID, classID string) ([]teacherclass.AssignmentDTO, []teacherclass.ProgressRowDTO, error) {
-	inv, err := u.requireOwner(teacherID, classID)
+// ProgressMatrix returns each assignment's status per project owner. It does not call
+// Open edX: the board joins these rows with the roster it already loaded from /members.
+func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID string) ([]teacherclass.AssignmentDTO, []teacherclass.ProgressRowDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -862,60 +837,40 @@ func (u *UseCaseImpl) ProgressMatrix(teacherID, classID string) ([]teacherclass.
 	if err != nil {
 		return nil, nil, err
 	}
-	members, err := u.ListMembers(teacherID, classID)
-	if err != nil {
-		return nil, nil, err
-	}
 	assignDTOs := make([]teacherclass.AssignmentDTO, 0, len(assignments))
+	rows := []teacherclass.ProgressRowDTO{}
+	rowOf := map[string]int{}
 	for i := range assignments {
-		assignDTOs = append(assignDTOs, assignmentDTO(&assignments[i]))
-	}
-	// Offline: synthesize members from anyone who has a project for these assignments.
-	if len(members) == 0 {
+		a := &assignments[i]
+		assignDTOs = append(assignDTOs, assignmentDTO(a))
+		subs, err := u.gw.ListSubmissions(a.ID)
+		if err != nil {
+			return nil, nil, err
+		}
 		seen := map[string]struct{}{}
-		for i := range assignments {
-			subs, subErr := u.gw.ListSubmissions(assignments[i].ID)
-			if subErr != nil {
+		// Newest first: the latest project wins if a student somehow has two.
+		for j := range subs {
+			p := &subs[j]
+			if _, ok := seen[p.OwnerUserID]; ok {
 				continue
 			}
-			for j := range subs {
-				uid := subs[j].OwnerUserID
-				if _, ok := seen[uid]; ok {
-					continue
-				}
-				seen[uid] = struct{}{}
-				members = append(members, teacherclass.CohortUserDTO{
-					UserID:   uid,
-					Username: uid,
-					Name:     uid,
-				})
+			seen[p.OwnerUserID] = struct{}{}
+			status := "draft"
+			if p.ReviewStatus != nil {
+				status = *p.ReviewStatus
 			}
-		}
-	}
-	rows := make([]teacherclass.ProgressRowDTO, 0, len(members))
-	for _, m := range members {
-		cells := make([]teacherclass.ProgressCellDTO, 0, len(assignments))
-		for i := range assignments {
-			a := &assignments[i]
-			cell := teacherclass.ProgressCellDTO{AssignmentID: a.ID, Status: "missing"}
-			if m.UserID != "" {
-				if p, err := u.gw.FindStudentAssignmentProject(a.ID, m.UserID); err == nil {
-					cell.ProjectID = p.ID
-					if p.ReviewStatus != nil {
-						cell.Status = *p.ReviewStatus
-					} else {
-						cell.Status = "draft"
-					}
-				}
+			idx, ok := rowOf[p.OwnerUserID]
+			if !ok {
+				idx = len(rows)
+				rowOf[p.OwnerUserID] = idx
+				rows = append(rows, teacherclass.ProgressRowDTO{UserID: p.OwnerUserID})
 			}
-			cells = append(cells, cell)
+			rows[idx].Cells = append(rows[idx].Cells, teacherclass.ProgressCellDTO{
+				AssignmentID: a.ID,
+				Status:       status,
+				ProjectID:    p.ID,
+			})
 		}
-		rows = append(rows, teacherclass.ProgressRowDTO{
-			UserID:   m.UserID,
-			Username: m.Username,
-			Name:     m.Name,
-			Cells:    cells,
-		})
 	}
 	return assignDTOs, rows, nil
 }

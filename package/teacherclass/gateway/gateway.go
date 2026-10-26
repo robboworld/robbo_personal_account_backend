@@ -93,6 +93,12 @@ func (g *GatewayImpl) ListInvitesByOwner(ownerTeacherID string) ([]models.ClassI
 	return list, err
 }
 
+func (g *GatewayImpl) ListAllInvites() ([]models.ClassInviteDB, error) {
+	var list []models.ClassInviteDB
+	err := g.db.Where("archived_at IS NULL").Order("created_at DESC").Find(&list).Error
+	return list, err
+}
+
 func (g *GatewayImpl) ListActiveInvites() ([]models.ClassInviteDB, error) {
 	var list []models.ClassInviteDB
 	err := g.db.Where("is_active = TRUE AND archived_at IS NULL").Find(&list).Error
