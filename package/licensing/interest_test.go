@@ -26,6 +26,8 @@ func TestNormalizeInterestRefusesBadAnswers(t *testing.T) {
 		{Role: "club_teacher", Feature: "free_robots"},
 		{Role: "club_teacher", Feature: "other"}, // "other" needs a text
 		{Role: "club_teacher", Feature: "other", Other: strings.Repeat("я", InterestOtherMaxRunes+1)},
+		{Role: "club_teacher", Feature: "club_showcase", Pain: strings.Repeat("я", InterestPainMaxRunes+1)},
+		{Role: "club_teacher", Feature: "club_showcase", Org: strings.Repeat("я", InterestOrgMaxRunes+1)},
 	}
 	for _, in := range bad {
 		if _, err := NormalizeInterest(in); !errors.Is(err, ErrBadInterest) {

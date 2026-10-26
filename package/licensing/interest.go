@@ -21,11 +21,15 @@ var (
 		"lesson_mode",     // one starting project for the group, fewer menus
 		"other",
 	}
-	InterestSources = []string{"landing", "licenses", "rs-desktop", "rs-web"}
+	InterestSources = []string{"landing", "licenses", "home", "rs-desktop", "rs-web"}
 )
 
-// InterestOtherMaxRunes caps the free-text answer.
-const InterestOtherMaxRunes = 300
+// Caps of the free-text answers: "other" feature, what gets in the way, club or school.
+const (
+	InterestOtherMaxRunes = 300
+	InterestPainMaxRunes  = 1000
+	InterestOrgMaxRunes   = 120
+)
 
 var ErrBadInterest = errors.New("BAD_INTEREST")
 
@@ -43,11 +47,15 @@ func NormalizeInterest(in models.FeatureInterestCore) (models.FeatureInterestCor
 	in.Role = strings.TrimSpace(in.Role)
 	in.Feature = strings.TrimSpace(in.Feature)
 	in.Other = strings.TrimSpace(in.Other)
+	in.Pain = strings.TrimSpace(in.Pain)
+	in.Org = strings.TrimSpace(in.Org)
 	in.Source = strings.TrimSpace(in.Source)
 	if !oneOf(in.Role, InterestRoles) || !oneOf(in.Feature, InterestFeatures) {
 		return in, ErrBadInterest
 	}
-	if utf8.RuneCountInString(in.Other) > InterestOtherMaxRunes {
+	if utf8.RuneCountInString(in.Other) > InterestOtherMaxRunes ||
+		utf8.RuneCountInString(in.Pain) > InterestPainMaxRunes ||
+		utf8.RuneCountInString(in.Org) > InterestOrgMaxRunes {
 		return in, ErrBadInterest
 	}
 	if in.Feature == "other" && in.Other == "" {
