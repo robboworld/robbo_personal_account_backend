@@ -3,6 +3,7 @@ package gateway
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
@@ -66,6 +67,52 @@ func (g *NotificationGateway) CreateOrUpdateByDedupe(notification *models.UserNo
 
 func (g *NotificationGateway) CreatePersonal(notification *models.UserNotificationDB) error {
 	return g.db.Create(notification).Error
+}
+
+// Teacher sends keep the sender in dedupe_key as "teacher:<sender>:<send>:<recipient>": the table
+// has no sender column, and one send to a class is a row per student sharing the send id.
+func teacherSendKey(senderID, sendID, recipientID string) string {
+	return "teacher:" + senderID + ":" + sendID + ":" + recipientID
+}
+
+func countTeacherSends(db *gorm.DB, senderID string, since time.Time) (int, error) {
+	prefix := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace("teacher:" + senderID + ":")
+	var count int
+	err := db.Raw(`
+		SELECT COUNT(DISTINCT split_part(dedupe_key, ':', 3))
+		FROM user_notifications
+		WHERE source = 'teacher' AND created_at >= ? AND dedupe_key LIKE ?
+	`, since, prefix+"%").Scan(&count).Error
+	return count, err
+}
+
+func (g *NotificationGateway) CountTeacherSends(senderID string, since time.Time) (int, error) {
+	return countTeacherSends(g.db, senderID, since)
+}
+
+// CreateTeacherSend counts and inserts under one per-sender lock, so two sends at once cannot
+// both see 4 of 5 used. Every recipient gets the message or none does.
+func (g *NotificationGateway) CreateTeacherSend(senderID, sendID string, rows []models.UserNotificationDB, dailyLimit int, since time.Time) (int, error) {
+	var used int
+	err := g.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "teacher_send:"+senderID).Error; err != nil {
+			return err
+		}
+		n, err := countTeacherSends(tx, senderID, since)
+		if err != nil {
+			return err
+		}
+		used = n
+		if dailyLimit > 0 && n >= dailyLimit {
+			return notifications.ErrTeacherDailyLimit
+		}
+		for i := range rows {
+			key := teacherSendKey(senderID, sendID, rows[i].RecipientUserID)
+			rows[i].DedupeKey = &key
+		}
+		return tx.Create(&rows).Error
+	})
+	return used, err
 }
 
 func (g *NotificationGateway) ListFeed(userID string, limit int) ([]models.NotificationFeedItemHTTP, error) {

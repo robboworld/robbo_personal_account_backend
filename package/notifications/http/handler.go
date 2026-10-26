@@ -32,6 +32,8 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 	group.POST("/mark-all-read", h.MarkAllRead)
 	group.POST("/admin/personal", h.AdminPersonal)
 	group.POST("/admin/announcement", h.AdminAnnouncement)
+	group.POST("/teacher/send", h.TeacherSend)
+	group.GET("/teacher/quota", h.TeacherQuota)
 }
 
 func allRoles() []models.Role {
@@ -46,16 +48,21 @@ func allRoles() []models.Role {
 }
 
 func (h *Handler) identity(c *gin.Context, roles []models.Role) (string, bool) {
+	userID, _, ok := h.identityWithRole(c, roles)
+	return userID, ok
+}
+
+func (h *Handler) identityWithRole(c *gin.Context, roles []models.Role) (string, models.Role, bool) {
 	userID, role, err := h.authDelegate.UserIdentity(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return "", false
+		return "", role, false
 	}
 	if err := h.authDelegate.UserAccess(role, roles, c); err != nil {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		return "", false
+		return "", role, false
 	}
-	return userID, true
+	return userID, role, true
 }
 
 func writeError(c *gin.Context, err error) {
@@ -65,6 +72,12 @@ func writeError(c *gin.Context, err error) {
 	}
 	if errors.Is(err, notificationusecase.ErrUserNotFound) {
 		status = http.StatusBadRequest
+	}
+	if errors.Is(err, notificationusecase.ErrNotYourStudent) {
+		status = http.StatusForbidden
+	}
+	if errors.Is(err, notifications.ErrTeacherDailyLimit) {
+		status = http.StatusTooManyRequests
 	}
 	c.AbortWithStatusJSON(status, gin.H{"error": err.Error()})
 }
@@ -221,4 +234,49 @@ func (h *Handler) AdminAnnouncement(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+type teacherSendRequest struct {
+	RecipientUserIDs []string `json:"recipientUserIds"`
+	Title            string   `json:"title"`
+	Body             string   `json:"body"`
+}
+
+// TeacherSend: a teacher messages students of their own classes (SuperAdmin: anyone).
+// No kind, severity or link from the client: a teacher must not be able to put an arbitrary URL in front of children.
+func (h *Handler) TeacherSend(c *gin.Context) {
+	userID, role, ok := h.identityWithRole(c, []models.Role{models.Teacher, models.SuperAdmin})
+	if !ok {
+		return
+	}
+	var request teacherSendRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		writeError(c, notificationusecase.ErrInvalidInput)
+		return
+	}
+	sent, quota, err := h.useCase.SendFromTeacher(notifications.TeacherMessageInput{
+		SenderUserID:     userID,
+		SenderRole:       role,
+		RecipientUserIDs: request.RecipientUserIDs,
+		Title:            request.Title,
+		Body:             request.Body,
+	})
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"sent": sent, "quota": quota})
+}
+
+func (h *Handler) TeacherQuota(c *gin.Context) {
+	userID, role, ok := h.identityWithRole(c, []models.Role{models.Teacher, models.SuperAdmin})
+	if !ok {
+		return
+	}
+	quota, err := h.useCase.TeacherQuota(userID, role)
+	if err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, quota)
 }
