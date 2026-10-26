@@ -23,18 +23,6 @@ func SetupProjectUseCase(gateway projects.Gateway) ProjectUseCaseModule {
 	}
 }
 
-func (p *ProjectUseCaseImpl) CreateProject(project *models.ProjectCore) (id string, err error) {
-	return p.Gateway.CreateProject(project)
-}
-
-func (p *ProjectUseCaseImpl) UpdateProject(project *models.ProjectCore, userId string) (err error) {
-	_, err = p.GetProjectById(project.ID, userId)
-	if err != nil {
-		return err
-	}
-	return p.Gateway.UpdateProject(project)
-}
-
 func (p *ProjectUseCaseImpl) GetProjectById(projectId, userId string) (project *models.ProjectCore, err error) {
 	project, getProjectErr := p.Gateway.GetProjectById(projectId, userId)
 	if getProjectErr != nil {

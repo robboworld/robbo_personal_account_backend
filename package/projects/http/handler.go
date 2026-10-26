@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"io/ioutil"
 	"net/http"
 	"strings"
 
@@ -32,48 +31,12 @@ func NewProjectsHandler(
 }
 
 func (h *Handler) InitProjectRoutes(router *gin.Engine) {
+	// Read-only: the player loads project.json here by play token. Projects are saved
+	// as .sb3 via POST /projectPage/:id/upload (size limit + account quota).
 	project := router.Group("/project")
 	{
-		project.POST("/", h.CreateProject)
 		project.GET("/:projectId", h.GetProject)
-		project.POST("/:projectId", h.UpdateProject)
 	}
-}
-
-type testResponse struct {
-	Id string `json:"id"`
-}
-
-func (h *Handler) CreateProject(c *gin.Context) {
-	userId, userRole, userIdentityErr := h.authDelegate.UserIdentity(c)
-	if userIdentityErr != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, userIdentityErr.Error())
-		return
-	}
-	allowedRoles := []models.Role{models.Student}
-	accessErr := h.authDelegate.UserAccess(userRole, allowedRoles, c)
-	if accessErr != nil {
-		c.AbortWithStatusJSON(http.StatusForbidden, accessErr.Error())
-		return
-	}
-
-	jsonDataBytes, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	projectHTTP := models.ProjectHTTP{}
-	projectHTTP.Json = string(jsonDataBytes)
-	projectHTTP.AuthorId = userId
-
-	projectId, err := h.projectsDelegate.CreateProject(&projectHTTP)
-	if err != nil {
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	c.JSON(http.StatusOK, testResponse{Id: projectId})
 }
 
 func (h *Handler) GetProject(c *gin.Context) {
@@ -129,42 +92,4 @@ func (h *Handler) GetProject(c *gin.Context) {
 	var jsonMap map[string]interface{}
 	json.Unmarshal([]byte(project.Json), &jsonMap)
 	c.JSON(http.StatusOK, jsonMap)
-}
-
-func (h *Handler) UpdateProject(c *gin.Context) {
-	userId, userRole, userIdentityErr := h.authDelegate.UserIdentity(c)
-	if userIdentityErr != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, userIdentityErr.Error())
-		return
-	}
-	allowedRoles := []models.Role{models.Student}
-	accessErr := h.authDelegate.UserAccess(userRole, allowedRoles, c)
-	if accessErr != nil {
-		c.AbortWithStatusJSON(http.StatusForbidden, accessErr.Error())
-		return
-	}
-
-	jsonDataBytes, err := ioutil.ReadAll(c.Request.Body)
-	if err != nil {
-		c.AbortWithStatus(http.StatusBadRequest)
-		return
-	}
-
-	projectId := c.Param("projectId")
-	projectHTTP := models.ProjectHTTP{}
-	projectHTTP.ID = projectId
-	projectHTTP.AuthorId = userId
-	projectHTTP.Json = string(jsonDataBytes)
-
-	err = h.projectsDelegate.UpdateProject(&projectHTTP, userId)
-	if err != nil {
-		if err == auth.ErrNotAccess {
-			c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
-			return
-		}
-		c.AbortWithStatus(http.StatusInternalServerError)
-		return
-	}
-
-	c.JSON(http.StatusOK, testResponse{Id: projectId})
 }
