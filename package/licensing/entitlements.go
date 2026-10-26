@@ -13,7 +13,8 @@ import (
 )
 
 // Free/Standard tariff defaults, used when the account has no active license.
-// SessionLimit=0 / SeatLimit=0 / MaxProjects=0 means unlimited.
+// SessionLimit=0 / SeatLimit=0 means unlimited. The number of projects is not limited:
+// the account's StorageQuotaMB bounds it.
 // FreeCloudQuotaMB is the max size of a single .sb3 project; FreeStorageQuotaMB is the
 // total for the whole account (all projects; later also cloud files).
 // Free has no seat limit: seats are RS3 Desktop activations by license key, and a Free
@@ -21,8 +22,7 @@ import (
 const (
 	FreeCloudQuotaMB   = 10
 	FreeStorageQuotaMB = 100
-	FreeSessionLimit   = 2
-	FreeMaxProjects    = 10
+	FreeSessionLimit   = 5
 )
 
 // DefaultLicenseStorageQuotaMB is the account total for a license or product created
@@ -36,7 +36,6 @@ type Entitlements struct {
 	TariffName       string
 	CloudQuotaMB     int // alias / legacy: same as MaxProjectSizeMB
 	MaxProjectSizeMB int // max .sb3 size per project in MB
-	MaxProjects      int // max total projects (published + drafts); 0 = unlimited
 	StorageQuotaMB   int // total for all the account's projects in MB
 	SessionLimit     int
 	SeatLimit        int
@@ -73,7 +72,6 @@ func ResolveEntitlements(gateway Gateway, lmsUserID string) (Entitlements, error
 				TariffName:       name,
 				CloudQuotaMB:     sizeMB,
 				MaxProjectSizeMB: sizeMB,
-				MaxProjects:      0, // unlimited for paid, bounded by StorageQuotaMB
 				StorageQuotaMB:   storageMB,
 				SessionLimit:     lic.SessionLimit,
 				SeatLimit:        lic.SeatLimit,
@@ -117,7 +115,6 @@ func freeEntitlements() Entitlements {
 		TariffName:       "Free",
 		CloudQuotaMB:     FreeCloudQuotaMB,
 		MaxProjectSizeMB: FreeCloudQuotaMB,
-		MaxProjects:      FreeMaxProjects,
 		StorageQuotaMB:   FreeStorageQuotaMB,
 		SessionLimit:     FreeSessionLimit,
 	}
@@ -189,12 +186,9 @@ func LMSUserDisplayName(lmsUserID string) string {
 	return strings.TrimSpace(profile.Username)
 }
 
-// CheckSessionLimit returns ErrSessionLimitReached when the account's active
-// (non-revoked) session count has already reached its tariff's session_limit.
-// SessionLimit<=0 means unlimited and is never enforced.
-// Admins (SuperAdmin / UnitAdmin) are always exempt.
-// Each device (browser) is one session slot (see CountActiveSessions).
-func CheckSessionLimit(gateway Gateway, lmsUserID string, role models.Role) error {
+// makeRoomForSession ends the account's least recently used sessions so one more fits its
+// session limit: signing in on another device signs out the oldest one instead of failing.
+func makeRoomForSession(gateway Gateway, lmsUserID string, role models.Role) error {
 	if UnlimitedSessionsAndSeats(role) {
 		return nil
 	}
@@ -205,18 +199,20 @@ func CheckSessionLimit(gateway Gateway, lmsUserID string, role models.Role) erro
 	if entitlements.SessionLimit <= 0 {
 		return nil
 	}
-	count, err := gateway.CountActiveSessions(lmsUserID)
+	sessions, err := gateway.ListActiveSessions(lmsUserID) // most recently used first
 	if err != nil {
 		return err
 	}
-	if int(count) >= entitlements.SessionLimit {
-		return ErrSessionLimitReached
+	for i := entitlements.SessionLimit - 1; i < len(sessions); i++ {
+		if err := gateway.RevokeSession(sessions[i].SessionKey); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// KickOtherSessions revokes every non-revoked web session for the user so a
-// subsequent AcquireLoginSession can succeed after session_limit_reached.
+// KickOtherSessions revokes every non-revoked web session for the user ("sign out on all
+// devices" at sign-in).
 func KickOtherSessions(gateway Gateway, lmsUserID string) error {
 	if gateway == nil {
 		return nil
@@ -282,7 +278,7 @@ func AcquireLoginSession(
 		return nil, err
 	}
 
-	if err := CheckSessionLimit(gateway, lmsUserID, role); err != nil {
+	if err := makeRoomForSession(gateway, lmsUserID, role); err != nil {
 		return nil, err
 	}
 	return gateway.CreateSession(&models.UserSessionCore{

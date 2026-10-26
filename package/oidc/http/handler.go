@@ -1,7 +1,6 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -237,10 +236,6 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 			ttl, role,
 		)
 		if createErr != nil {
-			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
-				c.JSON(http.StatusConflict, gin.H{"ok": false, "error": "session_limit_reached"})
-				return
-			}
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "error": "session_create_failed"})
 			return
 		}
@@ -584,27 +579,6 @@ func (h Handler) Callback(c *gin.Context) {
 			ttl, role,
 		)
 		if createErr != nil {
-			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
-				frontend := viper.GetString("oidc.frontendBaseUrl")
-				if frontend == "" {
-					frontend = "http://localhost:3030"
-				}
-				target := entry.ReturnTo
-				if target == "" {
-					target = "/home"
-				}
-				sep := "?"
-				if strings.Contains(target, "?") {
-					sep = "&"
-				}
-				redirectURL := fmt.Sprintf("%s%s%serr=session_limit_reached",
-					strings.TrimRight(frontend, "/"), target, sep)
-				if strings.HasPrefix(target, "http") {
-					redirectURL = fmt.Sprintf("%s%serr=session_limit_reached", target, sep)
-				}
-				c.Redirect(http.StatusFound, redirectURL)
-				return
-			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "session_create_failed"})
 			return
 		}

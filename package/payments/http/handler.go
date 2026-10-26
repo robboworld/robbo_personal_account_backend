@@ -53,7 +53,6 @@ func freeTariffJSON() gin.H {
 	return gin.H{
 		"maxProjectSizeMb": licensing.FreeCloudQuotaMB,
 		"storageQuotaMb":   licensing.FreeStorageQuotaMB,
-		"maxProjects":      licensing.FreeMaxProjects,
 		"sessionLimit":     licensing.FreeSessionLimit,
 	}
 }

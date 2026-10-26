@@ -92,9 +92,6 @@ const emptyProjectJson = "{\"targets\":[{\"isStage\":true,\"name\":\"Stage\",\"v
 	" Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36\"}}"
 
 func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error) {
-	if err := p.enforceProjectCountLimit(authorId); err != nil {
-		return nil, err
-	}
 	if err := p.enforceStorageQuota(authorId, "", 0); err != nil {
 		return nil, err
 	}
@@ -666,27 +663,6 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 		if updateErr != nil {
 			return updateErr
 		}
-	}
-	return nil
-}
-
-func (p *ProjectPageUseCaseImpl) enforceProjectCountLimit(authorId string) error {
-	if p.licensingGateway == nil {
-		return nil
-	}
-	ent, err := licensing.ResolveEntitlements(p.licensingGateway, authorId)
-	if err != nil {
-		return err
-	}
-	if ent.MaxProjects <= 0 {
-		return nil
-	}
-	count, err := p.projectPageGateway.CountProjectsByOwner(authorId)
-	if err != nil {
-		return err
-	}
-	if count >= int64(ent.MaxProjects) {
-		return projectPage.ErrProjectLimitReached
 	}
 	return nil
 }

@@ -211,9 +211,6 @@ func (a *AuthUseCaseImpl) issueTokensWithSession(
 			ttl, user.Role,
 		)
 		if createErr != nil {
-			if errors.Is(createErr, licensing.ErrSessionLimitReached) {
-				return "", "", auth.ErrSessionLimitReached
-			}
 			return "", "", createErr
 		}
 		sid = sess.SessionKey

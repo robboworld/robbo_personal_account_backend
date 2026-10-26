@@ -76,3 +76,11 @@ func (d *LicensingDelegateImpl) EncryptAddonBundle(token, fingerprint string) (s
 func (d *LicensingDelegateImpl) ResolveEntitlements(lmsUserID string) (licensing.Entitlements, error) {
 	return d.usecase.ResolveEntitlements(lmsUserID)
 }
+
+func (d *LicensingDelegateImpl) SaveFeatureInterest(answer models.FeatureInterestCore) error {
+	return d.usecase.SaveFeatureInterest(answer)
+}
+
+func (d *LicensingDelegateImpl) GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error) {
+	return d.usecase.GetFeatureInterest(lmsUserID)
+}

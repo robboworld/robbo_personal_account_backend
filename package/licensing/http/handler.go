@@ -59,6 +59,8 @@ func (h *Handler) InitLicensingRoutes(router *gin.Engine) {
 		api.POST("/issue", h.IssueLicense)
 		api.GET("/mine", h.ListMyLicenses)
 		api.GET("/entitlements", h.GetEntitlements)
+		api.GET("/interest", h.GetFeatureInterest)
+		api.POST("/interest", h.SaveFeatureInterest)
 		api.GET("/:licenseId", h.GetLicense)
 		api.DELETE("/:licenseId/seats/:seatId", h.RevokeSeat)
 		api.POST("/device/link/confirm", h.ConfirmDeviceLink)
@@ -524,13 +526,78 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		"cloudQuotaMb":     ent.MaxProjectSizeMB,
 		"maxProjectSizeMb": ent.MaxProjectSizeMB,
 		"storageQuotaMb":   ent.StorageQuotaMB,
-		"maxProjects":      ent.MaxProjects,
 		"projectCount":     projectCount,
 		"usedBytes":        usedBytes,
 		"sessionLimit":     ent.SessionLimit,
 		"seatLimit":        ent.SeatLimit,
 		"capabilities":     ent.Capabilities,
 	})
+}
+
+type featureInterestRequest struct {
+	Role    string `json:"role"`
+	Feature string `json:"feature"`
+	Other   string `json:"other"`
+	Notify  bool   `json:"notify"`
+	Source  string `json:"source"`
+}
+
+// GetFeatureInterest: GET /licensing/interest — the account's answer to the paid-edition
+// survey ({"answer": null} before the first answer).
+func (h *Handler) GetFeatureInterest(c *gin.Context) {
+	userID, _, err := h.sessionIdentity(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	answer, err := h.licensingDelegate.GetFeatureInterest(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if answer == nil {
+		c.JSON(http.StatusOK, gin.H{"answer": nil})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"answer": gin.H{
+		"role":      answer.Role,
+		"feature":   answer.Feature,
+		"other":     answer.Other,
+		"notify":    answer.Notify,
+		"updatedAt": answer.UpdatedAt.UTC().Format(time.RFC3339),
+	}})
+}
+
+// SaveFeatureInterest: POST /licensing/interest — stores the account's answer (replaces an
+// earlier one).
+func (h *Handler) SaveFeatureInterest(c *gin.Context) {
+	userID, _, err := h.sessionIdentity(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	var body featureInterestRequest
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_body"})
+		return
+	}
+	err = h.licensingDelegate.SaveFeatureInterest(models.FeatureInterestCore{
+		LmsUserID: userID,
+		Role:      body.Role,
+		Feature:   body.Feature,
+		Other:     body.Other,
+		Notify:    body.Notify,
+		Source:    body.Source,
+	})
+	if errors.Is(err, licensing.ErrBadInterest) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_body"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 func (h *Handler) GetLicense(c *gin.Context) {
