@@ -54,7 +54,6 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.POST("/classes/:classId/assignments", h.CreateAssignment)
 		api.POST("/classes/:classId/assignments/:assignmentId/issue-late", h.IssueLate)
 		api.GET("/classes/:classId/assignments/:assignmentId/submissions", h.ListSubmissions)
-		api.GET("/classes/:classId/live", h.LiveRoster)
 		api.GET("/classes/:classId/progress", h.Progress)
 		api.POST("/submissions/:projectId/review", h.ReviewSubmission)
 	}
@@ -160,11 +159,11 @@ func (h *Handler) ListCourses(c *gin.Context) {
 }
 
 func (h *Handler) ListMyClasses(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	list, err := h.uc.ListMyClasses(userID)
+	list, err := h.uc.ListMyClasses(userID, role)
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -197,11 +196,11 @@ func (h *Handler) CreateClass(c *gin.Context) {
 }
 
 func (h *Handler) GetClass(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	dto, err := h.uc.GetClass(userID, c.Param("classId"))
+	dto, err := h.uc.GetClass(userID, role, c.Param("classId"))
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -210,7 +209,7 @@ func (h *Handler) GetClass(c *gin.Context) {
 }
 
 func (h *Handler) RenameClass(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
@@ -221,7 +220,7 @@ func (h *Handler) RenameClass(c *gin.Context) {
 		writeErr(c, teacherclass.ErrBadRequest)
 		return
 	}
-	dto, err := h.uc.RenameClass(userID, c.Param("classId"), body.DisplayName)
+	dto, err := h.uc.RenameClass(userID, role, c.Param("classId"), body.DisplayName)
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -230,11 +229,11 @@ func (h *Handler) RenameClass(c *gin.Context) {
 }
 
 func (h *Handler) ArchiveClass(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	if err := h.uc.ArchiveClass(userID, c.Param("classId")); err != nil {
+	if err := h.uc.ArchiveClass(userID, role, c.Param("classId")); err != nil {
 		writeErr(c, err)
 		return
 	}
@@ -242,11 +241,11 @@ func (h *Handler) ArchiveClass(c *gin.Context) {
 }
 
 func (h *Handler) RotateInvite(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	dto, err := h.uc.RotateInvite(userID, c.Param("classId"))
+	dto, err := h.uc.RotateInvite(userID, role, c.Param("classId"))
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -255,11 +254,11 @@ func (h *Handler) RotateInvite(c *gin.Context) {
 }
 
 func (h *Handler) ListMembers(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	list, err := h.uc.ListMembers(userID, c.Param("classId"))
+	list, err := h.uc.ListMembers(userID, role, c.Param("classId"))
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -268,7 +267,7 @@ func (h *Handler) ListMembers(c *gin.Context) {
 }
 
 func (h *Handler) AddMembers(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
@@ -287,7 +286,7 @@ func (h *Handler) AddMembers(c *gin.Context) {
 			}
 		}
 	}
-	added, missing, err := h.uc.AddMembersByEmail(userID, c.Param("classId"), emails)
+	added, missing, err := h.uc.AddMembersByEmail(userID, role, c.Param("classId"), emails)
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -296,11 +295,11 @@ func (h *Handler) AddMembers(c *gin.Context) {
 }
 
 func (h *Handler) RemoveMember(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	if err := h.uc.RemoveMember(userID, c.Param("classId"), c.Param("username")); err != nil {
+	if err := h.uc.RemoveMember(userID, role, c.Param("classId"), c.Param("username")); err != nil {
 		writeErr(c, err)
 		return
 	}
@@ -308,7 +307,7 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 }
 
 func (h *Handler) CreateAssignment(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
@@ -336,7 +335,7 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 	if key == "" {
 		key = strings.ToLower(strings.ReplaceAll(body.Title, " ", "-"))
 	}
-	dto, err := h.uc.CreateAssignment(userID, c.Param("classId"), teacherclass.CreateAssignmentInput{
+	dto, err := h.uc.CreateAssignment(userID, role, c.Param("classId"), teacherclass.CreateAssignmentInput{
 		Title:             body.Title,
 		Instructions:      body.Instructions,
 		AssignmentKey:     key,
@@ -364,11 +363,11 @@ func (h *Handler) ListAssignmentsTeacher(c *gin.Context) {
 }
 
 func (h *Handler) IssueLate(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	n, err := h.uc.IssueToLatecomers(userID, c.Param("classId"), c.Param("assignmentId"))
+	n, err := h.uc.IssueToLatecomers(userID, role, c.Param("classId"), c.Param("assignmentId"))
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -377,24 +376,11 @@ func (h *Handler) IssueLate(c *gin.Context) {
 }
 
 func (h *Handler) ListSubmissions(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	list, err := h.uc.ListSubmissions(userID, c.Param("classId"), c.Param("assignmentId"))
-	if err != nil {
-		writeErr(c, err)
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"items": list})
-}
-
-func (h *Handler) LiveRoster(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
-	if !ok {
-		return
-	}
-	list, err := h.uc.LiveRoster(userID, c.Param("classId"), c.Query("assignmentId"))
+	list, err := h.uc.ListSubmissions(userID, role, c.Param("classId"), c.Param("assignmentId"))
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -403,11 +389,11 @@ func (h *Handler) LiveRoster(c *gin.Context) {
 }
 
 func (h *Handler) Progress(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
-	assignments, rows, err := h.uc.ProgressMatrix(userID, c.Param("classId"))
+	assignments, rows, err := h.uc.ProgressMatrix(userID, role, c.Param("classId"))
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -416,7 +402,7 @@ func (h *Handler) Progress(c *gin.Context) {
 }
 
 func (h *Handler) ReviewSubmission(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
@@ -428,7 +414,7 @@ func (h *Handler) ReviewSubmission(c *gin.Context) {
 		writeErr(c, teacherclass.ErrBadRequest)
 		return
 	}
-	if err := h.uc.ReviewSubmission(userID, c.Param("projectId"), body.Status, body.Comment); err != nil {
+	if err := h.uc.ReviewSubmission(userID, role, c.Param("projectId"), body.Status, body.Comment); err != nil {
 		writeErr(c, err)
 		return
 	}
