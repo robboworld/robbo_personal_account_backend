@@ -109,7 +109,6 @@ func SetupGinRouter(handlers modules.HandlerModule) *gin.Engine {
 	if handlers.OIDCHandler != nil {
 		handlers.OIDCHandler.InitRoutes(router)
 	}
-	handlers.PortalNotificationsHandler.InitRoutes(router)
 	handlers.NotificationsHandler.InitRoutes(router)
 	handlers.UserSearchHandler.InitRoutes(router)
 	handlers.ModerationHandler.InitRoutes(router)

@@ -29,6 +29,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 	group.GET("/unread-count", h.UnreadCount)
 	group.POST("/mark-personal-read", h.MarkPersonalRead)
 	group.POST("/mark-announcement-read", h.MarkAnnouncementRead)
+	group.POST("/mark-lms-read", h.MarkLMSRead)
 	group.POST("/mark-all-read", h.MarkAllRead)
 	group.POST("/admin/personal", h.AdminPersonal)
 	group.POST("/admin/announcement", h.AdminAnnouncement)
@@ -88,15 +89,12 @@ func (h *Handler) Feed(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "30"))
-	items, err := h.useCase.Feed(userID, limit)
+	feed, err := h.useCase.Feed(userID, limit, strings.TrimSpace(c.Query("source")))
 	if err != nil {
 		writeError(c, err)
 		return
 	}
-	if items == nil {
-		items = []models.NotificationFeedItemHTTP{}
-	}
-	c.JSON(http.StatusOK, gin.H{"items": items})
+	c.JSON(http.StatusOK, feed)
 }
 
 func (h *Handler) UnreadCount(c *gin.Context) {
@@ -104,12 +102,12 @@ func (h *Handler) UnreadCount(c *gin.Context) {
 	if !ok {
 		return
 	}
-	count, err := h.useCase.UnreadCount(userID)
+	counts, err := h.useCase.UnreadCount(userID)
 	if err != nil {
 		writeError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"count": count})
+	c.JSON(http.StatusOK, counts)
 }
 
 type idRequest struct {
@@ -150,12 +148,35 @@ func (h *Handler) MarkAnnouncementRead(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// MarkLMSRead: an Open edX notification (feedKind "lms") read in the LK bell.
+func (h *Handler) MarkLMSRead(c *gin.Context) {
+	userID, ok := h.identity(c, allRoles())
+	if !ok {
+		return
+	}
+	var request idRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		writeError(c, notificationusecase.ErrInvalidInput)
+		return
+	}
+	if err := h.useCase.MarkLMSRead(userID, request.ID); err != nil {
+		writeError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 func (h *Handler) MarkAllRead(c *gin.Context) {
 	userID, ok := h.identity(c, allRoles())
 	if !ok {
 		return
 	}
-	if err := h.useCase.MarkAllRead(userID); err != nil {
+	// Optional body {"source": "lk"|"lms"}: one tab of the bell; none = everything.
+	var request struct {
+		Source string `json:"source"`
+	}
+	_ = c.ShouldBindJSON(&request)
+	if err := h.useCase.MarkAllRead(userID, strings.TrimSpace(request.Source)); err != nil {
 		writeError(c, err)
 		return
 	}

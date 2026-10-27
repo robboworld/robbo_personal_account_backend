@@ -49,9 +49,14 @@ elasticsearch:
   # Periodic reindex interval in minutes (0 disables ticker; startup reindex still runs).
   reindexIntervalMinutes: 5
 
+# Open edX notifications in the LK bell: the LMS service API (robbo_notifications/service_api.py)
+# as the OAuth2 client-credentials app of the LK service account (Tutor plugin robbo-lk-integration:
+# LK_SERVICE_OAUTH2_KEY / LK_SERVICE_OAUTH2_SECRET). Env: LMS_NOTIFICATIONS_ENABLED, _BASE_URL
+# (default EDX_API_BASE_URL), _CLIENT_ID, _CLIENT_SECRET (secret only via env).
 lmsNotifications:
   enabled: false
-  ingestBearerToken: ""
+  # baseUrl: "http://lms:8000"   # empty = EDX_API_BASE_URL
+  clientId: "lk-service"
 
 portalOutbox:
   enabled: false

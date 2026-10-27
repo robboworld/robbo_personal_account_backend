@@ -29,14 +29,30 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/dbmigrate"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	edxusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/edx/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
+	licdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/delegate"
+	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
+	lichttp "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/http"
+	licusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
+	moddelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/delegate"
+	modgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/gateway"
+	modhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/http"
+	modusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
 	notificationgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/notifications/gateway"
 	notificationhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/notifications/http"
 	notificationusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/notifications/usecase"
 	oidchttp "github.com/skinnykaen/robbo_student_personal_account.git/package/oidc/http"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/payments"
+	paydelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/delegate"
+	paygateway "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/gateway"
+	payhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/http"
+	payusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/usecase"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
-	portalhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/http"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
+	ppageaccess "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	ppagedelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/delegate"
 	ppagegateway "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/gateway"
 	ppagehttp "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/http"
@@ -46,32 +62,7 @@ import (
 	prjgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/projects/gateway"
 	prjhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/projects/http"
 	prjusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/projects/usecase"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
-	licdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/delegate"
-	licgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/gateway"
-	lichttp "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/http"
-	licusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/licensing/usecase"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
-	moddelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/delegate"
-	modgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/gateway"
-	modhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/http"
-	modusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/moderation/usecase"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/payments"
-	paydelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/delegate"
-	paygateway "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/gateway"
-	payhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/http"
-	payusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/payments/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/resolvers"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
-	streakgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/gateway"
-	streakusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/usecase"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
-	tcgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/gateway"
-	tchtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/http"
-	tcusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/usecase"
-	ppageaccess "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/users/profileaccess"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup"
 	robboGroupdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/delegate"
 	robboGroupgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/robboGroup/gateway"
@@ -82,10 +73,18 @@ import (
 	robboUnitsgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits/gateway"
 	robboUnitshttp "github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits/http"
 	robboUnitsusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
+	streakgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/gateway"
+	streakusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
+	tcgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/gateway"
+	tchtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/http"
+	tcusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	usersdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/users/delegate"
 	usersgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/users/gateway"
 	usershtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/users/http"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/users/profileaccess"
 	usersusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/users/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch"
 	usersearchhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch/http"
@@ -234,8 +233,10 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 			gateway.RobboUnitsGateway,
 			gateway.RobboGroupGateway,
 		),
-		EdxUseCase:           edxMod.UseCase,
-		NotificationsUseCase: notificationusecase.SetupNotificationUseCase(gateway.NotificationsGateway),
+		EdxUseCase: edxMod.UseCase,
+		NotificationsUseCase: notificationusecase.SetupNotificationUseCase(
+			gateway.NotificationsGateway, notificationgateway.NewLMSGatewayFromConfig(),
+		),
 		ProjectPageUseCase: ppageusecase.SetupProjectPageUseCase(
 			gateway.ProjectPageGateway,
 			gateway.ProjectsGateway,
@@ -288,24 +289,23 @@ func SetupDelegate(usecase UseCaseModule) DelegateModule {
 }
 
 type HandlerModule struct {
-	ProjectsHandler            prjhttp.Handler
-	ProjectPageHandler         ppagehttp.Handler
-	AuthHandler                authhttp.Handler
-	CoursesHandler             crshttp.Handler
-	CohortsHandler             chrthttp.Handler
-	UsersHandler               usershtpp.Handler
-	RobboUnitsHandler          robboUnitshttp.Handler
-	RobboGroupHandler          robboGrouphttp.Handler
-	CoursePacketHandler        coursePackethttp.Handler
-	LicensingHandler           lichttp.Handler
-	PaymentsHandler            payhttp.Handler
-	PortalNotificationsHandler portalhttp.NotificationsHandler
-	NotificationsHandler       notificationhttp.Handler
-	UserSearchHandler          usersearchhttp.Handler
-	ModerationHandler          modhttp.Handler
-	TeacherClassHandler        tchtpp.Handler
-	OIDCHandler                *oidchttp.Handler
-	LicensingGateway           licensing.Gateway
+	ProjectsHandler      prjhttp.Handler
+	ProjectPageHandler   ppagehttp.Handler
+	AuthHandler          authhttp.Handler
+	CoursesHandler       crshttp.Handler
+	CohortsHandler       chrthttp.Handler
+	UsersHandler         usershtpp.Handler
+	RobboUnitsHandler    robboUnitshttp.Handler
+	RobboGroupHandler    robboGrouphttp.Handler
+	CoursePacketHandler  coursePackethttp.Handler
+	LicensingHandler     lichttp.Handler
+	PaymentsHandler      payhttp.Handler
+	NotificationsHandler notificationhttp.Handler
+	UserSearchHandler    usersearchhttp.Handler
+	ModerationHandler    modhttp.Handler
+	TeacherClassHandler  tchtpp.Handler
+	OIDCHandler          *oidchttp.Handler
+	LicensingGateway     licensing.Gateway
 }
 
 func SetupUserSearchService() *usersearch.Service {
@@ -335,7 +335,6 @@ func SetupHandler(
 	delegate DelegateModule,
 	usecase UseCaseModule,
 	gateway GatewayModule,
-	portalNotifications portalhttp.NotificationsHandler,
 	oidcHandler *oidchttp.Handler,
 	userSearch *usersearch.Service,
 ) HandlerModule {
@@ -346,22 +345,21 @@ func SetupHandler(
 			delegate.ProjectsDelegate,
 			delegate.ProjectPageDelegate,
 		),
-		AuthHandler:                authhttp.NewAuthHandler(delegate.AuthDelegate, usecase.StreakUseCase),
-		CoursesHandler:             crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
-		CohortsHandler:             chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
-		UsersHandler:               usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
-		RobboUnitsHandler:          robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
-		RobboGroupHandler:          robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
-		CoursePacketHandler:        coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
-		LicensingHandler:           lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate, gateway.ProjectPageGateway),
-		PaymentsHandler:            payhttp.NewPaymentsHandler(delegate.AuthDelegate, delegate.PaymentsDelegate),
-		PortalNotificationsHandler: portalNotifications,
-		NotificationsHandler:       notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
-		UserSearchHandler:          usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
-		ModerationHandler:          modhttp.NewHandler(delegate.AuthDelegate, delegate.ModerationDelegate),
-		TeacherClassHandler:        tchtpp.NewTeacherClassHandler(delegate.AuthDelegate, usecase.TeacherClassUseCase),
-		OIDCHandler:                oidcHandler,
-		LicensingGateway:           gateway.LicensingGateway,
+		AuthHandler:          authhttp.NewAuthHandler(delegate.AuthDelegate, usecase.StreakUseCase),
+		CoursesHandler:       crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
+		CohortsHandler:       chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
+		UsersHandler:         usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
+		RobboUnitsHandler:    robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
+		RobboGroupHandler:    robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
+		CoursePacketHandler:  coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
+		LicensingHandler:     lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate, gateway.ProjectPageGateway),
+		PaymentsHandler:      payhttp.NewPaymentsHandler(delegate.AuthDelegate, delegate.PaymentsDelegate),
+		NotificationsHandler: notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
+		UserSearchHandler:    usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
+		ModerationHandler:    modhttp.NewHandler(delegate.AuthDelegate, delegate.ModerationDelegate),
+		TeacherClassHandler:  tchtpp.NewTeacherClassHandler(delegate.AuthDelegate, usecase.TeacherClassUseCase),
+		OIDCHandler:          oidcHandler,
+		LicensingGateway:     gateway.LicensingGateway,
 	}
 }
 
