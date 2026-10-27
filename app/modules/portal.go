@@ -7,7 +7,6 @@ import (
 
 	oidchttp "github.com/skinnykaen/robbo_student_personal_account.git/package/oidc/http"
 	portalgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/gateway"
-	portalhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/portal/http"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/portal/worker"
 	streakusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/usecase"
 	"go.uber.org/fx"
@@ -15,9 +14,8 @@ import (
 
 type PortalModule struct {
 	fx.Out
-	Gateway                    portalgateway.Gateway
-	PortalNotificationsHandler portalhttp.NotificationsHandler
-	OIDCHandler                *oidchttp.Handler
+	Gateway     portalgateway.Gateway
+	OIDCHandler *oidchttp.Handler
 }
 
 func SetupPortalModule(gateway GatewayModule) (PortalModule, error) {
@@ -33,9 +31,8 @@ func SetupPortalModule(gateway GatewayModule) (PortalModule, error) {
 		oidcHandler = &h
 	}
 	return PortalModule{
-		Gateway:                    gw.Gateway,
-		PortalNotificationsHandler: portalhttp.NewNotificationsHandler(gw.Gateway),
-		OIDCHandler:                oidcHandler,
+		Gateway:     gw.Gateway,
+		OIDCHandler: oidcHandler,
 	}, nil
 }
 

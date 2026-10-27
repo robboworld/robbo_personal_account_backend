@@ -98,11 +98,21 @@ func Init() error {
 	} else if os.Getenv("PORTAL_OUTBOX_ENABLED") == "false" {
 		viper.Set("portalOutbox.enabled", false)
 	}
+	// Open edX notifications in the LK bell (notifications/gateway/lms.go): the LMS service API as the
+	// lk-service OAuth2 app. The base defaults to EDX_API_BASE_URL (server-to-server LMS address).
 	if os.Getenv("LMS_NOTIFICATIONS_ENABLED") == "true" {
 		viper.Set("lmsNotifications.enabled", true)
+	} else if os.Getenv("LMS_NOTIFICATIONS_ENABLED") == "false" {
+		viper.Set("lmsNotifications.enabled", false)
 	}
-	if os.Getenv("LMS_NOTIFICATIONS_INGEST_TOKEN") != "" {
-		viper.Set("lmsNotifications.ingestBearerToken", os.Getenv("LMS_NOTIFICATIONS_INGEST_TOKEN"))
+	if base := strings.TrimSpace(os.Getenv("LMS_NOTIFICATIONS_BASE_URL")); base != "" {
+		viper.Set("lmsNotifications.baseUrl", base)
+	}
+	if os.Getenv("LMS_NOTIFICATIONS_CLIENT_ID") != "" {
+		viper.Set("lmsNotifications.clientId", os.Getenv("LMS_NOTIFICATIONS_CLIENT_ID"))
+	}
+	if os.Getenv("LMS_NOTIFICATIONS_CLIENT_SECRET") != "" {
+		viper.Set("lmsNotifications.clientSecret", os.Getenv("LMS_NOTIFICATIONS_CLIENT_SECRET"))
 	}
 	if os.Getenv("ELASTICSEARCH_URL") != "" {
 		viper.Set("elasticsearch.url", os.Getenv("ELASTICSEARCH_URL"))
@@ -119,6 +129,12 @@ func Init() error {
 
 	applyEdxAPIBase(os.Getenv("EDX_API_BASE_URL"))
 	err := viper.ReadInConfig()
+	// After the file: an empty lmsNotifications.baseUrl there must not hide EDX_API_BASE_URL.
+	if strings.TrimSpace(viper.GetString("lmsNotifications.baseUrl")) == "" {
+		if base := strings.TrimSpace(os.Getenv("EDX_API_BASE_URL")); base != "" {
+			viper.Set("lmsNotifications.baseUrl", base)
+		}
+	}
 	return err
 }
 

@@ -49,4 +49,19 @@ type NotificationFeedItemHTTP struct {
 	ReadAt    *time.Time `json:"readAt"`
 	CreatedAt time.Time  `json:"createdAt"`
 	ActionURL *string    `json:"actionUrl"`
+	// CourseName: the LMS course of an Open edX notification (feedKind "lms"); empty for LK ones.
+	CourseName string `json:"courseName,omitempty" gorm:"-"`
+}
+
+// LMSNotificationLinksHTTP: the full list and the settings of Open edX notifications (Account MFE).
+type LMSNotificationLinksHTTP struct {
+	Feed     string `json:"feed"`
+	Settings string `json:"settings"`
+}
+
+// NotificationFeedHTTP: the bell's feed — LK notifications, announcements and, when the LMS feed is
+// on, Open edX notifications (feedKind "lms"), newest first.
+type NotificationFeedHTTP struct {
+	Items []NotificationFeedItemHTTP `json:"items"`
+	LMS   *LMSNotificationLinksHTTP  `json:"lms,omitempty"`
 }

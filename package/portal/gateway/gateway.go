@@ -24,7 +24,6 @@ type Gateway interface {
 	FetchPendingOutbox(limit int) ([]models.RobboPortalIntegrationOutboxDB, error)
 	MarkOutboxDone(id int64) error
 	MarkOutboxFailed(id int64, errMsg string) error
-	CreateNotification(n *models.RobboPortalNotificationDB) (duplicate bool, err error)
 }
 
 type GatewayImpl struct {
@@ -199,19 +198,4 @@ func (g *GatewayImpl) MarkOutboxFailed(id int64, errMsg string) error {
 	row.Attempts++
 	row.LastError = &errMsg
 	return g.db.Save(&row).Error
-}
-
-func (g *GatewayImpl) CreateNotification(n *models.RobboPortalNotificationDB) (bool, error) {
-	if n.DedupeKey != nil && n.RecipientEmail != nil {
-		var dup models.RobboPortalNotificationDB
-		err := g.db.Where("recipient_email = ? AND dedupe_key = ?", *n.RecipientEmail, *n.DedupeKey).First(&dup).Error
-		if err == nil {
-			return true, nil
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, err
-		}
-	}
-	n.CreatedAt = time.Now()
-	return false, g.db.Create(n).Error
 }

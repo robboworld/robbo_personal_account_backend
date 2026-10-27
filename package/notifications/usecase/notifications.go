@@ -5,7 +5,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -67,6 +71,9 @@ func newSendID() (string, error) {
 
 type NotificationUseCase struct {
 	gateway notifications.Gateway
+	// lms: Open edX notifications of the user (nil = none); they join the feed and the counter.
+	lms       notifications.LMSSource
+	lmsCounts lmsCountCache
 }
 
 type Module struct {
@@ -74,22 +81,136 @@ type Module struct {
 	notifications.UseCase
 }
 
-func SetupNotificationUseCase(gateway notifications.Gateway) Module {
-	return Module{UseCase: &NotificationUseCase{gateway: gateway}}
+func SetupNotificationUseCase(gateway notifications.Gateway, lms notifications.LMSSource) Module {
+	return Module{UseCase: &NotificationUseCase{gateway: gateway, lms: lms}}
 }
 
-func (u *NotificationUseCase) Feed(userID string, limit int) ([]models.NotificationFeedItemHTTP, error) {
+// lmsCountTTL: every open LK tab asks for the counter every 30 s; the LMS is asked at most this often
+// per user. Marking read here forgets the user's number at once.
+const lmsCountTTL = 20 * time.Second
+
+// lmsCountMaxUsers: past this many users the cache starts over instead of growing.
+const lmsCountMaxUsers = 10000
+
+type lmsCount struct {
+	count int64
+	at    time.Time
+}
+
+type lmsCountCache struct {
+	mu     sync.Mutex
+	byUser map[string]lmsCount
+}
+
+func (c *lmsCountCache) get(userID string) (int64, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	entry, ok := c.byUser[userID]
+	if !ok || now().Sub(entry.at) > lmsCountTTL {
+		return 0, false
+	}
+	return entry.count, true
+}
+
+func (c *lmsCountCache) set(userID string, count int64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.byUser == nil || len(c.byUser) >= lmsCountMaxUsers {
+		c.byUser = map[string]lmsCount{}
+	}
+	c.byUser[userID] = lmsCount{count: count, at: now()}
+}
+
+func (c *lmsCountCache) forget(userID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.byUser, userID)
+}
+
+func (u *NotificationUseCase) lmsOn() bool {
+	return u.lms != nil && u.lms.Enabled()
+}
+
+// Feed: LK notifications and announcements and/or the user's Open edX notifications, newest first.
+// An LMS that fails or is slow leaves its part out: the LK part is still shown.
+func (u *NotificationUseCase) Feed(userID string, limit int, source string) (models.NotificationFeedHTTP, error) {
 	if limit < 1 {
 		limit = 30
 	}
 	if limit > 100 {
 		limit = 100
 	}
-	return u.gateway.ListFeed(strings.TrimSpace(userID), limit)
+	if source != notifications.SourceAll && source != notifications.SourceLK && source != notifications.SourceLMS {
+		return models.NotificationFeedHTTP{}, ErrInvalidInput
+	}
+	userID = strings.TrimSpace(userID)
+	var lmsFeed notifications.LMSFeed
+	var lmsErr error
+	var wg sync.WaitGroup
+	if u.lmsOn() && source != notifications.SourceLK {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			lmsFeed, lmsErr = u.lms.Feed(userID, limit)
+		}()
+	}
+	var own []models.NotificationFeedItemHTTP
+	var err error
+	if source != notifications.SourceLMS {
+		own, err = u.gateway.ListFeed(userID, limit)
+	}
+	wg.Wait()
+	if err != nil {
+		return models.NotificationFeedHTTP{}, err
+	}
+	if lmsErr != nil {
+		log.Printf("[notifications] LMS feed of user %s left out: %v", userID, lmsErr)
+	}
+	items := append(own, lmsFeed.Items...)
+	sort.SliceStable(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	if items == nil {
+		items = []models.NotificationFeedItemHTTP{}
+	}
+	return models.NotificationFeedHTTP{Items: items, LMS: lmsFeed.Links}, nil
 }
 
-func (u *NotificationUseCase) UnreadCount(userID string) (int64, error) {
-	return u.gateway.CountUnread(strings.TrimSpace(userID))
+// UnreadCount: unread LK notifications and unread Open edX ones (cached for lmsCountTTL).
+func (u *NotificationUseCase) UnreadCount(userID string) (notifications.UnreadCounts, error) {
+	userID = strings.TrimSpace(userID)
+	lk, err := u.gateway.CountUnread(userID)
+	if err != nil {
+		return notifications.UnreadCounts{}, err
+	}
+	counts := notifications.UnreadCounts{Count: lk, LK: lk, LMSEnabled: u.lmsOn()}
+	if !counts.LMSEnabled {
+		return counts, nil
+	}
+	lmsUnread, ok := u.lmsCounts.get(userID)
+	if !ok {
+		lmsUnread, err = u.lms.UnreadCount(userID)
+		if err != nil {
+			log.Printf("[notifications] LMS unread count of user %s left out: %v", userID, err)
+			return counts, nil
+		}
+		u.lmsCounts.set(userID, lmsUnread)
+	}
+	counts.LMS = lmsUnread
+	counts.Count += lmsUnread
+	return counts, nil
+}
+
+// MarkLMSRead: an Open edX notification read in LK is read in the LMS too (one store).
+func (u *NotificationUseCase) MarkLMSRead(userID, notificationID string) error {
+	id, err := strconv.ParseInt(strings.TrimSpace(notificationID), 10, 64)
+	if err != nil || id <= 0 || !u.lmsOn() {
+		return ErrInvalidInput
+	}
+	userID = strings.TrimSpace(userID)
+	u.lmsCounts.forget(userID)
+	return u.lms.MarkRead(userID, []int64{id})
 }
 
 func (u *NotificationUseCase) MarkPersonalRead(userID, notificationID string) error {
@@ -106,8 +227,30 @@ func (u *NotificationUseCase) MarkAnnouncementRead(userID, announcementID string
 	return u.gateway.MarkAnnouncementRead(strings.TrimSpace(userID), announcementID)
 }
 
-func (u *NotificationUseCase) MarkAllRead(userID string) error {
-	return u.gateway.MarkAllRead(strings.TrimSpace(userID))
+// MarkAllRead: LK notifications and announcements and/or the Open edX ones. With both, an LMS
+// failure is logged: the LK part is done and the LMS items stay unread until the next try.
+func (u *NotificationUseCase) MarkAllRead(userID string, source string) error {
+	userID = strings.TrimSpace(userID)
+	switch source {
+	case notifications.SourceAll, notifications.SourceLK, notifications.SourceLMS:
+	default:
+		return ErrInvalidInput
+	}
+	if source != notifications.SourceLMS {
+		if err := u.gateway.MarkAllRead(userID); err != nil {
+			return err
+		}
+	}
+	if source == notifications.SourceLK || !u.lmsOn() {
+		return nil
+	}
+	u.lmsCounts.forget(userID)
+	err := u.lms.MarkAllRead(userID)
+	if err != nil && source == notifications.SourceAll {
+		log.Printf("[notifications] LMS mark-all-read of user %s failed: %v", userID, err)
+		return nil
+	}
+	return err
 }
 
 func (u *NotificationUseCase) SendPersonal(input notifications.PersonalInput) error {

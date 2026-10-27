@@ -44,12 +44,31 @@ type AnnouncementInput struct {
 	ExpiresAt       *time.Time
 }
 
+// Feed sources: the bell shows LK notifications first and Open edX ones as a secondary tab.
+const (
+	SourceAll = ""
+	SourceLK  = "lk"
+	SourceLMS = "lms"
+)
+
+// UnreadCounts: unread LK notifications (with announcements) and unread Open edX ones;
+// LMSEnabled says whether the bell has the Open edX tab at all.
+type UnreadCounts struct {
+	Count      int64 `json:"count"`
+	LK         int64 `json:"lk"`
+	LMS        int64 `json:"lms"`
+	LMSEnabled bool  `json:"lmsEnabled"`
+}
+
 type UseCase interface {
-	Feed(userID string, limit int) ([]models.NotificationFeedItemHTTP, error)
-	UnreadCount(userID string) (int64, error)
+	// Feed: source "lk" (LK notifications and announcements), "lms" (Open edX ones) or "" (both).
+	Feed(userID string, limit int, source string) (models.NotificationFeedHTTP, error)
+	UnreadCount(userID string) (UnreadCounts, error)
 	MarkPersonalRead(userID, notificationID string) error
 	MarkAnnouncementRead(userID, announcementID string) error
-	MarkAllRead(userID string) error
+	MarkLMSRead(userID, notificationID string) error
+	// MarkAllRead: source "lk", "lms" or "" (both).
+	MarkAllRead(userID string, source string) error
 	SendPersonal(input PersonalInput) error
 	SendFromTeacher(input TeacherMessageInput) (sent int, quota TeacherQuota, err error)
 	TeacherQuota(senderUserID string, senderRole models.Role) (TeacherQuota, error)

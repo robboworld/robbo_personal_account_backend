@@ -46,7 +46,3 @@ func (NoopGateway) MarkOutboxDone(_ int64) error {
 func (NoopGateway) MarkOutboxFailed(_ int64, _ string) error {
 	return nil
 }
-
-func (NoopGateway) CreateNotification(_ *models.RobboPortalNotificationDB) (bool, error) {
-	return false, errPortalDisabled
-}

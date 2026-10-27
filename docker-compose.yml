@@ -57,6 +57,11 @@ services:
       # Server-to-server Open edX base for every api_urls.* call (cohorts, enrollments, courses).
       # Empty keeps the URLs from config.yml.
       - EDX_API_BASE_URL=${EDX_API_BASE_URL:-}
+      # Open edX notifications in the LK bell (LMS service API as lk-service); base defaults to EDX_API_BASE_URL.
+      - LMS_NOTIFICATIONS_ENABLED=${LMS_NOTIFICATIONS_ENABLED:-false}
+      - LMS_NOTIFICATIONS_BASE_URL=${LMS_NOTIFICATIONS_BASE_URL:-}
+      - LMS_NOTIFICATIONS_CLIENT_ID=${LMS_NOTIFICATIONS_CLIENT_ID:-lk-service}
+      - LMS_NOTIFICATIONS_CLIENT_SECRET=${LMS_NOTIFICATIONS_CLIENT_SECRET:-}
       # YooKassa (optional; from backend/.env — never commit secrets)
       - PAYMENTS_YOOKASSA_SHOP_ID=${PAYMENTS_YOOKASSA_SHOP_ID:-}
       - PAYMENTS_YOOKASSA_SECRET_KEY=${PAYMENTS_YOOKASSA_SECRET_KEY:-}
