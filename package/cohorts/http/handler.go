@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/cohorts"
@@ -116,18 +117,18 @@ func (h *Handler) AddStudent(c *gin.Context) {
 }
 
 func ErrorHandling(err error, c *gin.Context) {
-	switch err {
-	case cohorts.ErrBadRequest:
+	switch {
+	case errors.Is(err, cohorts.ErrBadRequest):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case cohorts.ErrInternalServerLevel:
+	case errors.Is(err, cohorts.ErrInternalServerLevel):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case cohorts.ErrBadRequestBody:
+	case errors.Is(err, cohorts.ErrBadRequestBody):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case auth.ErrInvalidAccessToken:
+	case errors.Is(err, auth.ErrInvalidAccessToken):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrTokenNotFound:
+	case errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrNotAccess:
+	case errors.Is(err, auth.ErrNotAccess):
 		c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())

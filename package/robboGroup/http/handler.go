@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -324,20 +325,20 @@ func (h *Handler) DeleteTeacherForRobboGroup(c *gin.Context) {
 }
 
 func ErrorHandling(err error, c *gin.Context) {
-	switch err {
-	case robboGroup.ErrBadRequest:
+	switch {
+	case errors.Is(err, robboGroup.ErrBadRequest):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case robboGroup.ErrInternalServerLevel:
+	case errors.Is(err, robboGroup.ErrInternalServerLevel):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case robboGroup.ErrBadRequestBody:
+	case errors.Is(err, robboGroup.ErrBadRequestBody):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case robboGroup.ErrRobboGroupNotFound:
+	case errors.Is(err, robboGroup.ErrRobboGroupNotFound):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case auth.ErrInvalidAccessToken:
+	case errors.Is(err, auth.ErrInvalidAccessToken):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrTokenNotFound:
+	case errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrNotAccess:
+	case errors.Is(err, auth.ErrNotAccess):
 		c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())

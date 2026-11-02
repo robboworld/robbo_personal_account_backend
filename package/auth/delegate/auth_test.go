@@ -1,11 +1,13 @@
 package delegate
 
 import (
+	"errors"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/oidc"
@@ -92,5 +94,20 @@ func TestUserIdentityAcceptsLegacyJWTInHeaderFallback(t *testing.T) {
 	id, role, err := d.UserIdentity(c)
 	if err != nil || id != "42" || role != models.Teacher {
 		t.Fatalf("got id=%q role=%v err=%v", id, role, err)
+	}
+}
+
+// REST ErrorHandling maps these sentinels to 401; without them a guest got a 500.
+func TestUserIdentityErrorsUnwrapToAuthSentinels(t *testing.T) {
+	d := newDelegate()
+
+	_, _, err := d.UserIdentity(identityContext(t, ""))
+	if !errors.Is(err, auth.ErrTokenNotFound) {
+		t.Fatalf("no token: err=%v, want ErrTokenNotFound", err)
+	}
+
+	_, _, err = d.UserIdentity(identityContext(t, "not-a-jwt"))
+	if !errors.Is(err, auth.ErrInvalidAccessToken) {
+		t.Fatalf("bad token: err=%v, want ErrInvalidAccessToken", err)
 	}
 }

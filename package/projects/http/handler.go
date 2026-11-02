@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -49,7 +50,7 @@ func (h *Handler) GetProject(c *gin.Context) {
 		jsonStr, err := h.projectPageDelegate.GetProjectJSONByToken(projectId, playToken)
 		if err != nil {
 			status := http.StatusInternalServerError
-			if err == auth.ErrInvalidAccessToken {
+			if errors.Is(err, auth.ErrInvalidAccessToken) {
 				status = http.StatusUnauthorized
 			}
 			c.AbortWithStatusJSON(status, err.Error())

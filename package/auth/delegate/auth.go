@@ -61,8 +61,11 @@ func (s *AuthDelegateImpl) RevokeSessionByID(lmsUserID, sessionID string) error 
 	return s.UseCase.RevokeSessionByID(lmsUserID, sessionID)
 }
 
-func unauthorizedIdentity(c *gin.Context, message string) (string, models.Role, error) {
+// unauthorizedIdentity is a 401 for GraphQL (extensions.code) that still unwraps to cause,
+// so REST ErrorHandling matches auth.ErrTokenNotFound / auth.ErrInvalidAccessToken via errors.Is.
+func unauthorizedIdentity(c *gin.Context, cause error, message string) (string, models.Role, error) {
 	return "", models.Anonymous, &gqlerror.Error{
+		Err:     cause,
 		Path:    graphql.GetPath(c),
 		Message: message,
 		Extensions: map[string]interface{}{
@@ -85,27 +88,27 @@ func (s *AuthDelegateImpl) UserIdentity(c *gin.Context) (id string, role models.
 		if uid != "" && uid != "0" && role != models.Anonymous && role != models.WithExpiredToken {
 			return uid, role, nil
 		}
-		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound, auth.ErrTokenNotFound.Error())
 	}
 
 	// Paths the middleware skips (public routes): legacy JWT Bearer only.
 	header := c.GetHeader(authorizationHeader)
 	if header == "" {
-		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound, auth.ErrTokenNotFound.Error())
 	}
 
 	headerParts := strings.Split(header, " ")
 	if len(headerParts) != 2 {
-		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound, auth.ErrTokenNotFound.Error())
 	}
 
 	claims, parseTokenErr := s.UseCase.ParseToken(headerParts[1], []byte(viper.GetString("auth.access_signing_key")))
 	if parseTokenErr != nil {
-		return unauthorizedIdentity(c, parseTokenErr.Error())
+		return unauthorizedIdentity(c, auth.ErrInvalidAccessToken, parseTokenErr.Error())
 	}
 	// A BFF session token shares the signing key but has no Id: it names nobody here.
 	if strings.TrimSpace(claims.Id) == "" {
-		return unauthorizedIdentity(c, auth.ErrTokenNotFound.Error())
+		return unauthorizedIdentity(c, auth.ErrTokenNotFound, auth.ErrTokenNotFound.Error())
 	}
 	return claims.Id, claims.Role, nil
 }

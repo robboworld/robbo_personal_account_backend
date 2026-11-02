@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -1556,20 +1557,20 @@ func (h *Handler) GetUserById(c *gin.Context) {
 }
 
 func ErrorHandling(err error, c *gin.Context) {
-	switch err {
-	case users.ErrBadRequest:
+	switch {
+	case errors.Is(err, users.ErrBadRequest):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case users.ErrInternalServerLevel:
+	case errors.Is(err, users.ErrInternalServerLevel):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case users.ErrBadRequestBody:
+	case errors.Is(err, users.ErrBadRequestBody):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case auth.ErrInvalidAccessToken:
+	case errors.Is(err, auth.ErrInvalidAccessToken):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrTokenNotFound:
+	case errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrUserNotFound:
+	case errors.Is(err, auth.ErrUserNotFound):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case auth.ErrNotAccess:
+	case errors.Is(err, auth.ErrNotAccess):
 		c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())

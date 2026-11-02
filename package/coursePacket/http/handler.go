@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -192,20 +193,20 @@ func (h *Handler) DeleteCoursePacket(c *gin.Context) {
 }
 
 func ErrorHandling(err error, c *gin.Context) {
-	switch err {
-	case coursePacket.ErrBadRequest:
+	switch {
+	case errors.Is(err, coursePacket.ErrBadRequest):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case coursePacket.ErrInternalServerLevel:
+	case errors.Is(err, coursePacket.ErrInternalServerLevel):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case coursePacket.ErrBadRequestBody:
+	case errors.Is(err, coursePacket.ErrBadRequestBody):
 		c.AbortWithStatusJSON(http.StatusBadRequest, err.Error())
-	case coursePacket.ErrCoursePacketNotFound:
+	case errors.Is(err, coursePacket.ErrCoursePacketNotFound):
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
-	case auth.ErrInvalidAccessToken:
+	case errors.Is(err, auth.ErrInvalidAccessToken):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrTokenNotFound:
+	case errors.Is(err, auth.ErrTokenNotFound):
 		c.AbortWithStatusJSON(http.StatusUnauthorized, err.Error())
-	case auth.ErrNotAccess:
+	case errors.Is(err, auth.ErrNotAccess):
 		c.AbortWithStatusJSON(http.StatusForbidden, err.Error())
 	default:
 		c.AbortWithStatusJSON(http.StatusInternalServerError, err.Error())
