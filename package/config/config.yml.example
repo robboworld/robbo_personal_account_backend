@@ -75,6 +75,35 @@ projectPage:
     keepDailyDays: 0
     interval: 1h
 
+# "Мои файлы": the account's own files, in the same storage quota as projects. The bytes are
+# kept in storageDir (a volume; back it up with the projects database), the rows in projects PG.
+# One file is at most the tariff's per-project size, capped by maxUploadMB.
+# Env: USERFILES_ENABLED, USERFILES_STORAGEDIR, ...
+userFiles:
+  enabled: false
+  storageDir: /app/data/userfiles
+  maxUploadMB: 50
+  maxFilesPerUser: 1000
+  # Per account: uploads at the same time, and per hour (deleted files count too).
+  maxConcurrentUploads: 2
+  maxUploadsPerHour: 60
+  # Uploads stop (507 STORAGE_UNAVAILABLE) when the volume has less free space than this.
+  minFreeDiskMB: 1024
+  # Longer than server.ReadTimeout: only the upload route gets it.
+  uploadTimeout: 10m
+  # Deleting a file removes its bytes at once; the row stays this long as a record.
+  retainDeletedDays: 7
+  gc:
+    interval: 1h
+
+# Super admin "Хранилище": the low-space alert to every super admin's bell (at most daily while
+# low) and the top of accounts by stored bytes.
+adminStorage:
+  alertFreeBelowMB: 10240
+  alert:
+    interval: 15m
+  topUsers: 20
+
 postgres:
   postgresDsn: "host=localhost port=5432 user=robbo password=robbo_pwd dbname=robbo_db sslmode=disable"
 

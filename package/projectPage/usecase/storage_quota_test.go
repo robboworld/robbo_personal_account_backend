@@ -7,6 +7,7 @@ import (
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/storage"
 )
 
 const mb = int64(1) << 20
@@ -20,9 +21,12 @@ func (g *quotaPageGateway) GetTotalStorageBytesForOwner(string) (int64, error) {
 func (g *quotaPageGateway) GetCurrentVersionSizeBytes(string) (int64, error)   { return g.current, nil }
 
 func quotaUseCase(used, current int64, licenses ...*models.LicenseCore) *ProjectPageUseCaseImpl {
+	pages := &quotaPageGateway{used: used, current: current}
+	lic := &quotaLicensingGateway{licenses: licenses}
 	return &ProjectPageUseCaseImpl{
-		projectPageGateway: &quotaPageGateway{used: used, current: current},
-		licensingGateway:   &quotaLicensingGateway{licenses: licenses},
+		projectPageGateway: pages,
+		licensingGateway:   lic,
+		quota:              storage.NewQuota(lic, pages, nil),
 	}
 }
 

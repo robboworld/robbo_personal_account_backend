@@ -11,6 +11,8 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/storage"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch"
 	"github.com/spf13/viper"
 )
@@ -19,14 +21,20 @@ type Handler struct {
 	authDelegate      auth.Delegate
 	licensingDelegate licensing.Delegate
 	projectStorage    projectPage.Gateway
+	quota             *storage.Quota
+	files             userfiles.UseCase
 }
 
 func NewLicensingHandler(
 	authDelegate auth.Delegate,
 	licensingDelegate licensing.Delegate,
 	projectStorage projectPage.Gateway,
+	quota *storage.Quota,
+	files userfiles.UseCase,
 ) Handler {
 	return Handler{
+		quota:             quota,
+		files:             files,
 		authDelegate:      authDelegate,
 		licensingDelegate: licensingDelegate,
 		projectStorage:    projectStorage,
@@ -497,16 +505,35 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		return
 	}
 	licensing.ApplyAdminSessionSeatExemption(&ent, role)
-	var usedBytes int64
+	var usage storage.Usage
 	var projectCount int64
+	if h.quota != nil {
+		if usage, err = h.quota.Usage(userID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+	}
 	if h.projectStorage != nil {
-		usedBytes, err = h.projectStorage.GetTotalStorageBytesForOwner(userID)
+		if h.quota == nil {
+			if usage.Projects, err = h.projectStorage.GetTotalStorageBytesForOwner(userID); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+				return
+			}
+		}
+		projectCount, err = h.projectStorage.CountProjectsByOwner(userID)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		projectCount, err = h.projectStorage.CountProjectsByOwner(userID)
-		if err != nil {
+	}
+	filesEnabled := h.files != nil && h.files.Enabled()
+	var fileCount, maxFileBytes int64
+	if filesEnabled {
+		if fileCount, err = h.files.CountFiles(userID); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		if maxFileBytes, err = h.files.MaxUploadBytes(userID); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
@@ -527,10 +554,16 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		"maxProjectSizeMb": ent.MaxProjectSizeMB,
 		"storageQuotaMb":   ent.StorageQuotaMB,
 		"projectCount":     projectCount,
-		"usedBytes":        usedBytes,
-		"sessionLimit":     ent.SessionLimit,
-		"seatLimit":        ent.SeatLimit,
-		"capabilities":     ent.Capabilities,
+		// usedBytes is the account total the quota counts: projects and files.
+		"usedBytes":         usage.Total(),
+		"usedBytesProjects": usage.Projects,
+		"usedBytesFiles":    usage.Files,
+		"filesEnabled":      filesEnabled,
+		"fileCount":         fileCount,
+		"maxFileSizeMb":     maxFileBytes >> 20,
+		"sessionLimit":      ent.SessionLimit,
+		"seatLimit":         ent.SeatLimit,
+		"capabilities":      ent.Capabilities,
 	})
 }
 

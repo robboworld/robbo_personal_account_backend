@@ -1,6 +1,10 @@
 package projectPage
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/storage"
+)
 
 var (
 	ErrPageNotFound        = errors.New("page not found")
@@ -10,7 +14,8 @@ var (
 	ErrBadRequestBody      = errors.New("bad request body")
 	ErrProjectSizeExceeded = errors.New("PROJECT_SIZE_EXCEEDED")
 	// ErrStorageQuotaExceeded — the account total is used up; only growth is refused.
-	ErrStorageQuotaExceeded = errors.New("STORAGE_QUOTA_EXCEEDED")
+	// The same value as storage.ErrStorageQuotaExceeded (callers compare with ==).
+	ErrStorageQuotaExceeded = storage.ErrStorageQuotaExceeded
 	// ErrInvalidProjectFile — project.json / .sb3 не проходит проверку Scratch (Stage + meta.semver).
 	ErrInvalidProjectFile = errors.New("INVALID_PROJECT_FILE")
 	// ErrCloudQuotaExceeded is kept as an alias for older clients.

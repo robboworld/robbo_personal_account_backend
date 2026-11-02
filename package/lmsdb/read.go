@@ -386,3 +386,73 @@ func (r *Reader) HasEnrollment(userID int64, courseID string) (bool, error) {
 	}
 	return true, nil
 }
+
+// maxLookupIDs caps one IN (...) list.
+const maxLookupIDs = 500
+
+// LookupAuthUsersByIDs loads several auth_user rows at once (inactive ones too), by id.
+// Missing ids are absent from the map.
+func (r *Reader) LookupAuthUsersByIDs(ids []int64) (map[int64]AuthUserSearchHit, error) {
+	out := map[int64]AuthUserSearchHit{}
+	var valid []int64
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if id > 0 && !seen[id] {
+			seen[id] = true
+			valid = append(valid, id)
+		}
+	}
+	for start := 0; start < len(valid); start += maxLookupIDs {
+		chunk := valid[start:min(start+maxLookupIDs, len(valid))]
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(chunk)), ",")
+		args := make([]any, len(chunk))
+		for i, id := range chunk {
+			args[i] = id
+		}
+		rows, err := r.db.Query(`
+			SELECT u.id, u.username, u.email,
+				TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+				u.is_active, u.is_staff, u.is_superuser
+			FROM auth_user u
+			WHERE u.id IN (`+placeholders+`)`, args...)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var h AuthUserSearchHit
+			var isActive, isStaff, isSuper int
+			if err := rows.Scan(&h.ID, &h.Username, &h.Email, &h.FullName, &isActive, &isStaff, &isSuper); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			h.IsActive = isActive != 0
+			h.IsStaff = isStaff != 0
+			h.IsSuperuser = isSuper != 0
+			out[h.ID] = h
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// ListActiveSuperuserIDs returns the ids of active LMS superusers (ЛК super admins).
+func (r *Reader) ListActiveSuperuserIDs() ([]int64, error) {
+	rows, err := r.db.Query(`SELECT id FROM auth_user WHERE is_superuser = 1 AND is_active = 1 ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

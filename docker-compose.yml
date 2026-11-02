@@ -65,15 +65,24 @@ services:
       # YooKassa (optional; from backend/.env — never commit secrets)
       - PAYMENTS_YOOKASSA_SHOP_ID=${PAYMENTS_YOOKASSA_SHOP_ID:-}
       - PAYMENTS_YOOKASSA_SECRET_KEY=${PAYMENTS_YOOKASSA_SECRET_KEY:-}
+      # "Мои файлы" (off until the frontend opens it); the bytes go to the lk_userfiles volume.
+      - USERFILES_ENABLED=${USERFILES_ENABLED:-false}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       # Local RSA keys + addon (placeholder or paid-addon.local.js from sync_paid_addon.sh)
       - ./keys/licensing:/app/keys/licensing:ro
+      # User files; a new volume takes the image's owner (uid 1000) of this directory.
+      - userfiles:/app/data/userfiles
     ports:
       - 8080:8080
     networks:
       - lk
+
+volumes:
+  userfiles:
+    # Fixed name: deploy/lk-remote.sh backs it up by this name.
+    name: lk_userfiles
 
 networks:
   lk:

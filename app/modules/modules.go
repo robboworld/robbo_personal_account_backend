@@ -5,6 +5,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/adminaudit"
+	adminauditgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/adminaudit/gateway"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/admincontent"
+	acgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/admincontent/gateway"
+	achttp "github.com/skinnykaen/robbo_student_personal_account.git/package/admincontent/http"
+	acusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/admincontent/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	authdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/auth/delegate"
 	authgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/auth/gateway"
@@ -73,6 +79,7 @@ import (
 	robboUnitsgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits/gateway"
 	robboUnitshttp "github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits/http"
 	robboUnitsusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/robboUnits/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/storage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/streak"
 	streakgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/gateway"
 	streakusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/streak/usecase"
@@ -80,6 +87,11 @@ import (
 	tcgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/gateway"
 	tchtpp "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/http"
 	tcusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass/usecase"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/blobstore"
+	ufgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/gateway"
+	ufhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/http"
+	ufusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	usersdelegate "github.com/skinnykaen/robbo_student_personal_account.git/package/users/delegate"
 	usersgateway "github.com/skinnykaen/robbo_student_personal_account.git/package/users/gateway"
@@ -88,6 +100,7 @@ import (
 	usersusecase "github.com/skinnykaen/robbo_student_personal_account.git/package/users/usecase"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch"
 	usersearchhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/usersearch/http"
+	"github.com/spf13/viper"
 	"go.uber.org/fx"
 )
 
@@ -107,6 +120,9 @@ type GatewayModule struct {
 	RobboGroupGateway    robboGroup.Gateway
 	RobboUnitsGateway    robboUnits.Gateway
 	UsersGateway         users.Gateway
+	UserFilesGateway     userfiles.Gateway
+	AdminAuditGateway    adminaudit.Gateway
+	AdminContentGateway  admincontent.Gateway
 }
 
 func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error) {
@@ -139,6 +155,18 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 		return GatewayModule{}, err
 	}
 	paymentsGw, err := paygateway.SetupPaymentsGateway(postgresClient)
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	userFilesGw, err := ufgateway.SetupUserFilesGateway()
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	adminAuditGw, err := adminauditgateway.SetupAdminAuditGateway()
+	if err != nil {
+		return GatewayModule{}, err
+	}
+	adminContentGw, err := acgateway.SetupAdminContentGateway()
 	if err != nil {
 		return GatewayModule{}, err
 	}
@@ -199,6 +227,9 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 		RobboGroupGateway:    robboGroupgateway.SetupRobboGroupGateway(postgresClient),
 		RobboUnitsGateway:    robboUnitsgateway.SetupRobboUnitsGateway(postgresClient),
 		UsersGateway:         usersgateway.SetupUsersGateway(postgresClient),
+		UserFilesGateway:     userFilesGw,
+		AdminAuditGateway:    adminAuditGw,
+		AdminContentGateway:  adminContentGw,
 	}, nil
 }
 
@@ -219,6 +250,28 @@ type UseCaseModule struct {
 	RobboGroupUseCase    robboGroup.UseCase
 	RobboUnitsUseCase    robboUnits.UseCase
 	UsersUseCase         users.UseCase
+	UserFilesUseCase     userfiles.UseCase
+	// StorageQuota is the one account limit over projects and files.
+	StorageQuota        *storage.Quota
+	AdminContentUseCase *acusecase.AdminContentUseCase
+	StorageAlerter      *acusecase.StorageAlerter
+}
+
+// setupUserFiles opens the blob store only when the feature is on, so a stand without the
+// volume still starts; when on, a missing or read-only directory stops the start.
+// The volume is nil while the feature is off.
+func setupUserFiles(gateway GatewayModule, quota *storage.Quota) (userfiles.UseCase, admincontent.Volume, error) {
+	cfg := ufusecase.ConfigFromViper()
+	var blobs blobstore.BlobStore
+	var volume admincontent.Volume
+	if cfg.Enabled {
+		fs, err := blobstore.NewLocalFS(viper.GetString("userFiles.storageDir"))
+		if err != nil {
+			return nil, nil, err
+		}
+		blobs, volume = fs, fs
+	}
+	return ufusecase.NewUserFilesUseCase(cfg, gateway.UserFilesGateway, blobs, quota, gateway.LicensingGateway), volume, nil
 }
 
 func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, userSearch *usersearch.Service) (UseCaseModule, error) {
@@ -229,6 +282,37 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 	streakUC := streakusecase.SetupStreakUseCase(gateway.StreakGateway)
 	edxMod := edxusecase.SetupEdxApiUseCase()
 	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase)
+	quota := storage.NewQuota(gateway.LicensingGateway, gateway.ProjectPageGateway, gateway.UserFilesGateway)
+	userFilesUC, volume, err := setupUserFiles(gateway, quota)
+	if err != nil {
+		return UseCaseModule{}, err
+	}
+	projectPageUC := ppageusecase.SetupProjectPageUseCase(
+		gateway.ProjectPageGateway,
+		gateway.ProjectsGateway,
+		gateway.NotificationsGateway,
+		gateway.LicensingGateway,
+		quota,
+		gateway.AdminAuditGateway,
+		gateway.UsersGateway,
+	).UseCase
+	uploadsStop := ufusecase.ConfigFromViper().MinFreeDiskMB << 20
+	adminContentUC := acusecase.NewAdminContentUseCase(acusecase.Deps{
+		Gateway:               gateway.AdminContentGateway,
+		Audit:                 gateway.AdminAuditGateway,
+		Projects:              gateway.ProjectPageGateway,
+		ProjectsUC:            projectPageUC,
+		Files:                 userFilesUC,
+		Quota:                 quota,
+		Licensing:             gateway.LicensingGateway,
+		Notifications:         gateway.NotificationsGateway,
+		Volume:                volume,
+		UploadsStopBelowBytes: uploadsStop,
+	})
+	var alerter *acusecase.StorageAlerter
+	if volume != nil {
+		alerter = acusecase.NewStorageAlerter(volume, gateway.NotificationsGateway, acusecase.LMSSuperAdmins, uploadsStop)
+	}
 	return UseCaseModule{
 		AuthUseCase: authusecase.SetupAuthUseCase(
 			gateway.UsersGateway, portalGateway, gateway.LicensingGateway, streakUC.UseCase,
@@ -245,13 +329,7 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 		NotificationsUseCase: notificationusecase.SetupNotificationUseCase(
 			gateway.NotificationsGateway, notificationgateway.NewLMSGatewayFromConfig(),
 		),
-		ProjectPageUseCase: ppageusecase.SetupProjectPageUseCase(
-			gateway.ProjectPageGateway,
-			gateway.ProjectsGateway,
-			gateway.NotificationsGateway,
-			gateway.LicensingGateway,
-			gateway.UsersGateway,
-		),
+		ProjectPageUseCase:  projectPageUC,
 		ProjectsUseCase:     prjusecase.SetupProjectUseCase(gateway.ProjectsGateway),
 		LicensingUseCase:    licensingUC.UseCase,
 		ModerationUseCase:   modusecase.SetupBanUseCase(gateway.ModerationGateway, gateway.LicensingGateway, userSearch).UseCase,
@@ -261,6 +339,10 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 		RobboGroupUseCase:   robboGroupusecase.SetupRobboGroupUseCase(gateway.RobboGroupGateway, gateway.UsersGateway),
 		RobboUnitsUseCase:   robboUnitsusecase.SetupRobboUnitsUseCase(gateway.RobboUnitsGateway, gateway.UsersGateway),
 		UsersUseCase:        usersusecase.SetupUsersUseCase(gateway.UsersGateway, gateway.RobboGroupGateway),
+		UserFilesUseCase:    userFilesUC,
+		StorageQuota:        quota,
+		AdminContentUseCase: adminContentUC,
+		StorageAlerter:      alerter,
 	}, nil
 }
 
@@ -312,6 +394,8 @@ type HandlerModule struct {
 	UserSearchHandler    usersearchhttp.Handler
 	ModerationHandler    modhttp.Handler
 	TeacherClassHandler  tchtpp.Handler
+	UserFilesHandler     ufhttp.Handler
+	AdminContentHandler  achttp.Handler
 	OIDCHandler          *oidchttp.Handler
 	LicensingGateway     licensing.Gateway
 }
@@ -339,6 +423,14 @@ func StartSb3RetentionWorker(usecase UseCaseModule, lc fx.Lifecycle) {
 	ppageusecase.StartSb3RetentionWorker(usecase.ProjectPageUseCase, lc)
 }
 
+func StartUserFilesGCWorker(usecase UseCaseModule, lc fx.Lifecycle) {
+	ufusecase.StartGCWorker(usecase.UserFilesUseCase, lc)
+}
+
+func StartStorageAlertWorker(usecase UseCaseModule, lc fx.Lifecycle) {
+	acusecase.StartStorageAlertWorker(usecase.StorageAlerter, lc)
+}
+
 func SetupHandler(
 	delegate DelegateModule,
 	usecase UseCaseModule,
@@ -353,19 +445,24 @@ func SetupHandler(
 			delegate.ProjectsDelegate,
 			delegate.ProjectPageDelegate,
 		),
-		AuthHandler:          authhttp.NewAuthHandler(delegate.AuthDelegate, usecase.StreakUseCase),
-		CoursesHandler:       crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
-		CohortsHandler:       chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
-		UsersHandler:         usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
-		RobboUnitsHandler:    robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
-		RobboGroupHandler:    robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
-		CoursePacketHandler:  coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
-		LicensingHandler:     lichttp.NewLicensingHandler(delegate.AuthDelegate, delegate.LicensingDelegate, gateway.ProjectPageGateway),
+		AuthHandler:         authhttp.NewAuthHandler(delegate.AuthDelegate, usecase.StreakUseCase),
+		CoursesHandler:      crshttp.NewCoursesHandler(delegate.AuthDelegate, delegate.CoursesDelegate),
+		CohortsHandler:      chrthttp.NewCohortsHandler(delegate.AuthDelegate, delegate.CohortsDelegate),
+		UsersHandler:        usershtpp.NewUsersHandler(delegate.AuthDelegate, delegate.UsersDelegate),
+		RobboUnitsHandler:   robboUnitshttp.NewRobboUnitsHandler(delegate.AuthDelegate, delegate.RobboUnitsDelegate),
+		RobboGroupHandler:   robboGrouphttp.NewRobboGroupHandler(delegate.AuthDelegate, delegate.RobboGroupDelegate),
+		CoursePacketHandler: coursePackethttp.NewCoursePacketHandler(delegate.AuthDelegate, delegate.CoursePacketDelegate),
+		LicensingHandler: lichttp.NewLicensingHandler(
+			delegate.AuthDelegate, delegate.LicensingDelegate, gateway.ProjectPageGateway,
+			usecase.StorageQuota, usecase.UserFilesUseCase,
+		),
 		PaymentsHandler:      payhttp.NewPaymentsHandler(delegate.AuthDelegate, delegate.PaymentsDelegate),
 		NotificationsHandler: notificationhttp.NewNotificationHandler(delegate.AuthDelegate, usecase.NotificationsUseCase),
 		UserSearchHandler:    usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
 		ModerationHandler:    modhttp.NewHandler(delegate.AuthDelegate, delegate.ModerationDelegate),
 		TeacherClassHandler:  tchtpp.NewTeacherClassHandler(delegate.AuthDelegate, usecase.TeacherClassUseCase),
+		UserFilesHandler:     ufhttp.NewUserFilesHandler(delegate.AuthDelegate, usecase.UserFilesUseCase),
+		AdminContentHandler:  achttp.NewAdminContentHandler(delegate.AuthDelegate, usecase.AdminContentUseCase),
 		OIDCHandler:          oidcHandler,
 		LicensingGateway:     gateway.LicensingGateway,
 	}

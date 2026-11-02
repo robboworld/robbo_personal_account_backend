@@ -16,7 +16,9 @@ FROM alpine:3.22
 # The licensing key is bind-mounted with mode 0600; the user must own it (uid 1000 locally).
 ARG APP_UID=1000
 RUN apk add --no-cache ca-certificates \
-    && adduser -D -H -u ${APP_UID} app
+    && adduser -D -H -u ${APP_UID} app \
+    && mkdir -p /app/data/userfiles \
+    && chown ${APP_UID}:${APP_UID} /app/data/userfiles
 
 WORKDIR /app
 COPY --from=build /out/robbo_server /app/robbo_server

@@ -6,8 +6,8 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
-	"unicode/utf8"
 
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/adminaudit"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -17,6 +17,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/playtoken"
 	projecttags "github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/tags"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projects"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/storage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/users"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
@@ -27,6 +28,8 @@ type ProjectPageUseCaseImpl struct {
 	projectGateway      projects.Gateway
 	notificationGateway notifications.Gateway
 	licensingGateway    licensing.Gateway
+	quota               *storage.Quota
+	audit               adminaudit.Gateway
 }
 
 type ProjectPageUseCaseModule struct {
@@ -39,6 +42,8 @@ func SetupProjectPageUseCase(
 	projectGateway projects.Gateway,
 	notificationGateway notifications.Gateway,
 	licensingGateway licensing.Gateway,
+	quota *storage.Quota,
+	audit adminaudit.Gateway,
 	_ users.Gateway,
 ) ProjectPageUseCaseModule {
 	return ProjectPageUseCaseModule{
@@ -47,6 +52,8 @@ func SetupProjectPageUseCase(
 			projectGateway:      projectGateway,
 			notificationGateway: notificationGateway,
 			licensingGateway:    licensingGateway,
+			quota:               quota,
+			audit:               audit,
 		},
 	}
 }
@@ -336,6 +343,11 @@ func (p *ProjectPageUseCaseImpl) SavePreviewImage(projectPageId string, ownerId 
 	return p.projectPageGateway.SavePreviewImage(projectPageId, data, mime)
 }
 
+// SB3DownloadFilename is the .sb3 file name a download of the project gets.
+func SB3DownloadFilename(title, projectPageID string) string {
+	return sb3DownloadFilename(title, projectPageID)
+}
+
 func sb3DownloadFilename(title, fallbackPageID string) string {
 	base := strings.TrimSpace(title)
 	if base == "" {
@@ -511,13 +523,15 @@ func (p *ProjectPageUseCaseImpl) DeleteProjectReaction(
 	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, userId)
 }
 
+// ModerateDeleteProjectPage deletes someone's project for good with a reason, writes the
+// admin audit record first (no record, no deletion) and tells the owner.
 func (p *ProjectPageUseCaseImpl) ModerateDeleteProjectPage(
 	projectPageId string,
-	_ string,
+	moderatorId string,
 	reason string,
 ) error {
-	reason = strings.TrimSpace(reason)
-	if utf8.RuneCountInString(reason) < 3 {
+	reason, err := adminaudit.NormalizeReason(reason)
+	if err != nil {
 		return projectPage.ErrBadRequest
 	}
 	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
@@ -528,6 +542,21 @@ func (p *ProjectPageUseCaseImpl) ModerateDeleteProjectPage(
 	title := strings.TrimSpace(row.Title)
 	if title == "" {
 		title = "Untitled"
+	}
+	if p.audit != nil {
+		size, _ := p.projectPageGateway.GetCurrentVersionSizeBytes(row.ID)
+		if err := p.audit.Write(&models.AdminContentAuditDB{
+			ActorUserID:  moderatorId,
+			TargetUserID: ownerID,
+			Action:       models.AuditProjectDelete,
+			ObjectType:   "project",
+			ObjectID:     row.ID,
+			ObjectName:   title,
+			SizeBytes:    size,
+			Reason:       reason,
+		}); err != nil {
+			return err
+		}
 	}
 	if err := p.projectGateway.DeleteProject(row.ID); err != nil {
 		return err
@@ -642,7 +671,8 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if !access.Resolve(ownerId, row).CanWrite {
 		return auth.ErrNotAccess
 	}
-	if err := p.enforceProjectSizeLimit(ownerId, int64(len(data))); err != nil {
+	// Both limits are the owner's: the project takes the owner's storage, whoever saves it.
+	if err := p.enforceProjectSizeLimit(row.OwnerUserID, int64(len(data))); err != nil {
 		return err
 	}
 	if err := p.enforceStorageQuota(row.OwnerUserID, projectPageId, int64(len(data))); err != nil {
@@ -685,47 +715,21 @@ func (p *ProjectPageUseCaseImpl) enforceProjectSizeLimit(ownerId string, newSize
 	return nil
 }
 
-// enforceStorageQuota refuses only growth past the owner's account total: a save that
-// keeps or shrinks a project always passes, even over the quota (e.g. after a paid
-// license expired), so nothing is ever lost. projectPageId "" with newSize 0 is
-// a new project, refused once the quota is used up.
+// enforceStorageQuota refuses only growth past the owner's account total (projects and
+// files together, see storage.Quota): a save that keeps or shrinks a project always passes.
+// projectPageId "" with newSize 0 is a new project, refused once the quota is used up.
 func (p *ProjectPageUseCaseImpl) enforceStorageQuota(ownerUserID, projectPageId string, newSize int64) error {
-	if p.licensingGateway == nil {
+	if p.quota == nil {
 		return nil
 	}
-	var currentSize int64
-	if projectPageId != "" {
-		size, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
-		if err != nil {
-			return err
-		}
-		currentSize = size
-		if newSize <= currentSize {
-			return nil
-		}
-	}
-	ent, err := licensing.ResolveEntitlements(p.licensingGateway, ownerUserID)
-	if err != nil {
-		return err
-	}
-	if ent.StorageQuotaMB <= 0 {
-		return nil
-	}
-	used, err := p.projectPageGateway.GetTotalStorageBytesForOwner(ownerUserID)
-	if err != nil {
-		return err
-	}
-	quota := int64(ent.StorageQuotaMB) << 20
 	if projectPageId == "" {
-		if used >= quota {
-			return projectPage.ErrStorageQuotaExceeded
-		}
-		return nil
+		return p.quota.AllowNewItem(ownerUserID)
 	}
-	if used-currentSize+newSize > quota {
-		return projectPage.ErrStorageQuotaExceeded
+	currentSize, err := p.projectPageGateway.GetCurrentVersionSizeBytes(projectPageId)
+	if err != nil {
+		return err
 	}
-	return nil
+	return p.quota.AllowGrowth(ownerUserID, currentSize, newSize)
 }
 
 const defaultMaxUploadMB = 50
