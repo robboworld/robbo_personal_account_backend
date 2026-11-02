@@ -123,6 +123,7 @@ type Gateway interface {
 	CloseAssignment(id string) error
 
 	GetProject(id string) (*models.ScratchProjectDB, error)
+	// ForkProjectForStudent with a nil template issues an empty project.
 	ForkProjectForStudent(template *models.ScratchProjectDB, studentUserID, title string, assignment *models.ClassAssignmentDB) (*models.ScratchProjectDB, error)
 	ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error)
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)

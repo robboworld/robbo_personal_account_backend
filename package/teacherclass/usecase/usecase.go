@@ -449,13 +449,13 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 	assignments, _ := u.gw.ListAssignments(inv.EdxCourseID, inv.EdxCohortID)
 	for i := range assignments {
 		a := &assignments[i]
-		if a.ClosedAt != nil || a.TemplateProjectID == nil {
+		if a.ClosedAt != nil {
 			continue
 		}
 		if _, err := u.gw.FindStudentAssignmentProject(a.ID, studentID); err == nil {
 			continue
 		}
-		tpl, err := u.gw.GetProject(*a.TemplateProjectID)
+		tpl, err := u.assignmentTemplate(a)
 		if err != nil {
 			continue
 		}
@@ -657,17 +657,23 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 	}
 	in.Title = strings.TrimSpace(in.Title)
 	in.AssignmentKey = strings.TrimSpace(in.AssignmentKey)
-	if in.Title == "" || in.AssignmentKey == "" || in.TemplateProjectID == "" {
+	in.TemplateProjectID = strings.TrimSpace(in.TemplateProjectID)
+	if in.Title == "" || in.AssignmentKey == "" {
 		return nil, teacherclass.ErrBadRequest
 	}
-	tpl, err := u.gw.GetProject(in.TemplateProjectID)
-	if err != nil {
-		return nil, teacherclass.ErrNotFound
+	// The template is optional: without one every student starts from an empty project.
+	var tpl *models.ScratchProjectDB
+	var tplID *string
+	if in.TemplateProjectID != "" {
+		tpl, err = u.gw.GetProject(in.TemplateProjectID)
+		if err != nil {
+			return nil, teacherclass.ErrNotFound
+		}
+		if tpl.OwnerUserID != teacherID {
+			return nil, teacherclass.ErrForbidden
+		}
+		tplID = &in.TemplateProjectID
 	}
-	if tpl.OwnerUserID != teacherID {
-		return nil, teacherclass.ErrForbidden
-	}
-	tplID := in.TemplateProjectID
 	a := &models.ClassAssignmentDB{
 		EdxCourseID:        inv.EdxCourseID,
 		EdxCohortID:        inv.EdxCohortID,
@@ -675,7 +681,7 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 		Title:              in.Title,
 		Instructions:       in.Instructions,
 		AssignmentKey:      in.AssignmentKey,
-		TemplateProjectID:  &tplID,
+		TemplateProjectID:  tplID,
 		DueAt:              in.DueAt,
 	}
 	if err := u.gw.CreateAssignment(a); err != nil {
@@ -695,6 +701,14 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 	}
 	dto := assignmentDTO(a)
 	return &dto, nil
+}
+
+// assignmentTemplate is the project students get a copy of; nil means an empty project.
+func (u *UseCaseImpl) assignmentTemplate(a *models.ClassAssignmentDB) (*models.ScratchProjectDB, error) {
+	if a.TemplateProjectID == nil || *a.TemplateProjectID == "" {
+		return nil, nil
+	}
+	return u.gw.GetProject(*a.TemplateProjectID)
 }
 
 func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID string) ([]teacherclass.AssignmentDTO, error) {
@@ -766,13 +780,13 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, clas
 		return 0, err
 	}
 	a, err := u.gw.GetAssignment(assignmentID)
-	if err != nil || a.TemplateProjectID == nil {
+	if err != nil {
 		return 0, teacherclass.ErrNotFound
 	}
 	if a.EdxCohortID != inv.EdxCohortID {
 		return 0, teacherclass.ErrForbidden
 	}
-	tpl, err := u.gw.GetProject(*a.TemplateProjectID)
+	tpl, err := u.assignmentTemplate(a)
 	if err != nil {
 		return 0, err
 	}

@@ -149,28 +149,34 @@ func (g *GatewayImpl) ForkProjectForStudent(template *models.ScratchProjectDB, s
 	courseID := assignment.EdxCourseID
 	cohortID := assignment.EdxCohortID
 	assignID := assignment.ID
-	tplID := template.ID
 	row := models.ScratchProjectDB{
-		OwnerUserID:       studentUserID,
-		Title:             title,
-		Instruction:       template.Instruction,
-		Note:              template.Note,
-		ScratchVMJSON:     template.ScratchVMJSON,
-		IsPublic:          false,
-		EdxCourseID:       &courseID,
-		EdxCohortID:       &cohortID,
-		AssignmentID:      &assignID,
-		TemplateProjectID: &tplID,
-		ReviewStatus:      &status,
+		OwnerUserID:  studentUserID,
+		Title:        title,
+		IsPublic:     false,
+		EdxCourseID:  &courseID,
+		EdxCohortID:  &cohortID,
+		AssignmentID: &assignID,
+		ReviewStatus: &status,
+		// tags is NOT NULL: a nil slice made every copy fail, so no student ever got the work.
+		Tags: pq.StringArray{},
+	}
+	if template != nil {
+		tplID := template.ID
+		row.Instruction = template.Instruction
+		row.Note = template.Note
+		row.ScratchVMJSON = template.ScratchVMJSON
+		row.TemplateProjectID = &tplID
+		row.Tags = append(row.Tags, template.Tags...)
 	}
 	if row.ScratchVMJSON == "" {
 		row.ScratchVMJSON = "{}"
 	}
-	// tags is NOT NULL: a nil slice made every copy fail, so no student ever got the work.
-	row.Tags = append(pq.StringArray{}, template.Tags...)
 	err := g.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&row).Error; err != nil {
 			return err
+		}
+		if template == nil {
+			return nil
 		}
 		return copyCurrentSb3(tx, template, &row)
 	})
