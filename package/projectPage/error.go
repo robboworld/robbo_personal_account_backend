@@ -22,4 +22,7 @@ var (
 	ErrCloudQuotaExceeded = ErrProjectSizeExceeded
 	ErrProfanityDetected  = errors.New("profanity_detected")
 	ErrCommentNotFound    = errors.New("comment not found")
+	// ErrHomeworkLocked — the assignment copy is with the teacher (submitted, accepted or shown
+	// in class): nothing may change it until the teacher returns it for rework.
+	ErrHomeworkLocked = errors.New("HOMEWORK_LOCKED")
 )

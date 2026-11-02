@@ -44,6 +44,12 @@ func Resolve(viewerUserID string, p *models.ScratchProjectDB) ProjectAccess {
 	}
 }
 
+// HomeworkLocked: an assignment copy that is handed in and not returned. Its owner may read it
+// but not change it (upload, preview, fields, delete) until the teacher returns it.
+func HomeworkLocked(p *models.ScratchProjectDB) bool {
+	return p.AssignmentID != nil && strings.TrimSpace(*p.AssignmentID) != "" && models.IsReviewLocked(p.ReviewStatus)
+}
+
 // SuperAdminReadsClassWork mirrors teacherclass canManage: a SuperAdmin manages every class,
 // so it reads class homework (projects keyed to a cohort). Other private projects stay closed.
 func SuperAdminReadsClassWork(role models.Role, p *models.ScratchProjectDB) bool {

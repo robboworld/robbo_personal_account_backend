@@ -87,6 +87,8 @@ func (r *mutationResolver) UpdateProjectPage(ctx context.Context, input models.U
 			code = "PROJECT_SIZE_EXCEEDED"
 		} else if updateProjectPageErr == projectPage.ErrInvalidProjectFile {
 			code = "INVALID_PROJECT_FILE"
+		} else if updateProjectPageErr == projectPage.ErrHomeworkLocked {
+			code = "HOMEWORK_LOCKED"
 		}
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
@@ -123,11 +125,15 @@ func (r *mutationResolver) DeleteProjectPage(ctx context.Context, projectID stri
 				},
 			}
 		}
+		code := "500"
+		if deleteProjectPageErr == projectPage.ErrHomeworkLocked {
+			code = "HOMEWORK_LOCKED"
+		}
 		return nil, &gqlerror.Error{
 			Path:    graphql.GetPath(ctx),
 			Message: deleteProjectPageErr.Error(),
 			Extensions: map[string]interface{}{
-				"code": "500",
+				"code": code,
 			},
 		}
 	}

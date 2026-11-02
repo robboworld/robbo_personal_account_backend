@@ -23,6 +23,8 @@ type ProjectPageCore struct {
 	AuthorAvatarId   string
 	IsOwner          bool
 	ReactionCount    int64
+	// ReviewLocked: a handed-in assignment copy the owner may not change (access.HomeworkLocked).
+	ReviewLocked bool
 }
 
 type ProjectPageDB struct {
@@ -83,6 +85,7 @@ func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 		AuthorAvatarId:   ht.AuthorAvatarID,
 		IsOwner:          ht.IsOwner,
 		ReactionCount:    ht.ReactionCount,
+		ReviewLocked:     ht.ReviewLocked,
 	}
 }
 
@@ -108,4 +111,5 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.AuthorAvatarID = projectPage.AuthorAvatarId
 	ht.IsOwner = projectPage.IsOwner
 	ht.ReactionCount = projectPage.ReactionCount
+	ht.ReviewLocked = projectPage.ReviewLocked
 }

@@ -893,6 +893,11 @@ func ErrorHandling(err error, c *gin.Context) {
 			"error": err.Error(),
 			"code":  "INVALID_PROJECT_FILE",
 		})
+	case errors.Is(err, projectPage.ErrHomeworkLocked):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "HOMEWORK_LOCKED",
+		})
 	case errors.Is(err, projectPage.ErrProfanityDetected):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "profanity_detected"})
 	case errors.Is(err, projectPage.ErrCommentNotFound):

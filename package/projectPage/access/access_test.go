@@ -107,3 +107,30 @@ func TestResolve_classTeacherReadsOnlyHandedIn(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestHomeworkLocked(t *testing.T) {
+	assignment := "a-1"
+	cases := []struct {
+		name         string
+		assignmentID *string
+		status       string
+		want         bool
+	}{
+		{"draft copy", &assignment, models.ReviewDraft, false},
+		{"returned copy", &assignment, models.ReviewReturned, false},
+		{"submitted copy", &assignment, models.ReviewSubmitted, true},
+		{"accepted copy", &assignment, models.ReviewAccepted, true},
+		{"shown in class", &assignment, models.ReviewShownInClass, true},
+		{"own project, stray status", nil, models.ReviewSubmitted, false},
+	}
+	for _, c := range cases {
+		status := c.status
+		p := &models.ScratchProjectDB{OwnerUserID: "student-1", AssignmentID: c.assignmentID, ReviewStatus: &status}
+		if got := HomeworkLocked(p); got != c.want {
+			t.Errorf("%s: HomeworkLocked=%v, want %v", c.name, got, c.want)
+		}
+	}
+	if HomeworkLocked(&models.ScratchProjectDB{AssignmentID: &assignment}) {
+		t.Error("copy without a status is a draft, not locked")
+	}
+}

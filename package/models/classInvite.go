@@ -72,3 +72,16 @@ func IsHandedIn(status *string) bool {
 	}
 	return false
 }
+
+// IsReviewLocked: the work is with the teacher (handed in and not returned for rework). Its
+// owner may not change it, so the teacher reviews exactly what was handed in.
+func IsReviewLocked(status *string) bool {
+	if status == nil {
+		return false
+	}
+	switch *status {
+	case ReviewSubmitted, ReviewAccepted, ReviewShownInClass:
+		return true
+	}
+	return false
+}

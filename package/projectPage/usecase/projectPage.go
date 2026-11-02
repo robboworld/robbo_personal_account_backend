@@ -156,7 +156,20 @@ func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId stri
 	core.AuthorName = author.Name
 	core.AuthorAvatarId = author.AvatarID
 	core.IsOwner = acc.IsOwner
+	core.ReviewLocked = access.HomeworkLocked(row)
 	return core, row, acc, nil
+}
+
+// checkOwnerWrite: only the owner writes to a project, and not to homework handed in to the
+// teacher (submitted, accepted, shown in class) — the teacher reviews what was handed in.
+func checkOwnerWrite(viewerId string, row *models.ScratchProjectDB) error {
+	if !access.Resolve(viewerId, row).CanWrite {
+		return auth.ErrNotAccess
+	}
+	if access.HomeworkLocked(row) {
+		return projectPage.ErrHomeworkLocked
+	}
+	return nil
 }
 
 func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCore) {
@@ -198,6 +211,12 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	if !acc.CanWrite && !isSuperAdmin {
 		return nil, auth.ErrNotAccess
 	}
+	// The owner may not rename or publish handed-in homework; a SuperAdmin's tags-only edit stays.
+	if acc.CanWrite {
+		if err := checkOwnerWrite(authorId, row); err != nil {
+			return nil, err
+		}
+	}
 
 	if projectPage.Tags == nil {
 		projectPage.Tags = append([]string(nil), existing.Tags...)
@@ -237,6 +256,7 @@ func (p *ProjectPageUseCaseImpl) UpdateProjectPage(projectPage *models.ProjectPa
 	updated.AuthorName = author.Name
 	updated.AuthorAvatarId = author.AvatarID
 	updated.IsOwner = acc.IsOwner
+	updated.ReviewLocked = access.HomeworkLocked(row)
 	return updated, nil
 }
 
@@ -245,8 +265,8 @@ func (p *ProjectPageUseCaseImpl) DeleteProjectPage(projectPageId string, authorI
 	if err != nil {
 		return err
 	}
-	if !access.Resolve(authorId, row).CanWrite {
-		return auth.ErrNotAccess
+	if err := checkOwnerWrite(authorId, row); err != nil {
+		return err
 	}
 	return p.projectGateway.DeleteProject(row.ID)
 }
@@ -337,8 +357,8 @@ func (p *ProjectPageUseCaseImpl) SavePreviewImage(projectPageId string, ownerId 
 	if err != nil {
 		return err
 	}
-	if !access.Resolve(ownerId, row).CanWrite {
-		return auth.ErrNotAccess
+	if err := checkOwnerWrite(ownerId, row); err != nil {
+		return err
 	}
 	return p.projectPageGateway.SavePreviewImage(projectPageId, data, mime)
 }
@@ -675,8 +695,8 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if err != nil {
 		return err
 	}
-	if !access.Resolve(ownerId, row).CanWrite {
-		return auth.ErrNotAccess
+	if err := checkOwnerWrite(ownerId, row); err != nil {
+		return err
 	}
 	// Both limits are the owner's: the project takes the owner's storage, whoever saves it.
 	if err := p.enforceProjectSizeLimit(row.OwnerUserID, int64(len(data))); err != nil {
