@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type GatewayImpl struct {
@@ -167,10 +168,54 @@ func (g *GatewayImpl) ForkProjectForStudent(template *models.ScratchProjectDB, s
 	}
 	// tags is NOT NULL: a nil slice made every copy fail, so no student ever got the work.
 	row.Tags = append(pq.StringArray{}, template.Tags...)
-	if err := g.db.Create(&row).Error; err != nil {
+	err := g.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&row).Error; err != nil {
+			return err
+		}
+		return copyCurrentSb3(tx, template, &row)
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &row, nil
+}
+
+// copyCurrentSb3 gives the copy the template's .sb3 as its first version. Costumes and
+// sounds live only in the archive: a JSON-only copy fails in the player with
+// "costume.asset is null" for any asset not bundled with the editor.
+func copyCurrentSb3(tx *gorm.DB, template, row *models.ScratchProjectDB) error {
+	var src models.ScratchProjectVersionDB
+	q := tx.Where("project_id = ?", template.ID)
+	// The current version first, the newest one if current is unset (as GetLatestSb3Archive).
+	if template.CurrentVersionID != nil && *template.CurrentVersionID != "" {
+		q = q.Order(clause.Expr{SQL: "(id = ?) DESC", Vars: []interface{}{*template.CurrentVersionID}})
+	}
+	err := q.Order("version_seq DESC").First(&src).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && len(src.Archive) == 0) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	saveSource := "class.assignment"
+	ver := models.ScratchProjectVersionDB{
+		ProjectID:       row.ID,
+		VersionSeq:      1,
+		Archive:         src.Archive,
+		SizeBytes:       int64(len(src.Archive)),
+		ChecksumSHA256:  src.ChecksumSHA256,
+		CreatedByUserID: template.OwnerUserID,
+		SaveSource:      &saveSource,
+	}
+	if err := tx.Create(&ver).Error; err != nil {
+		return err
+	}
+	row.VersionCounter = 1
+	row.CurrentVersionID = &ver.ID
+	return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", row.ID).Updates(map[string]interface{}{
+		"version_counter":    1,
+		"current_version_id": ver.ID,
+	}).Error
 }
 
 func (g *GatewayImpl) ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error) {
