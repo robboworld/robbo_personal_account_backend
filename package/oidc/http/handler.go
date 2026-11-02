@@ -212,12 +212,7 @@ func (h Handler) PasswordLogin(c *gin.Context) {
 	}
 
 	edxUserID := strconv.FormatInt(u.ID, 10)
-	role := models.Student
-	if u.IsSuperuser {
-		role = models.SuperAdmin
-	} else if u.IsStaff {
-		role = models.Teacher
-	}
+	role := lmsdb.ResolveRoleFromConfig(u.ID, u.IsStaff, u.IsSuperuser)
 	touchLastLogin(u.ID)
 
 	sid := ""
@@ -543,7 +538,7 @@ func (h Handler) Callback(c *gin.Context) {
 			return
 		}
 		edxUserID = strconv.FormatInt(profile.ID, 10)
-		role = lmsRoleFromProfile(profile)
+		role = lmsdb.ResolveRoleFromConfig(profile.ID, profile.IsStaff, profile.IsSuperuser)
 		touchLastLogin(profile.ID)
 		if h.streak != nil {
 			if _, streakErr := h.streak.RecordVisit(edxUserID, "UTC"); streakErr != nil {
@@ -626,19 +621,6 @@ func lookupLMSProfileByEmail(email string) (*lmsdb.AuthUserProfile, error) {
 	}
 	defer reader.Close()
 	return reader.LookupAuthUserProfileByEmail(email)
-}
-
-func lmsRoleFromProfile(u *lmsdb.AuthUserProfile) models.Role {
-	if u == nil {
-		return models.Student
-	}
-	if u.IsSuperuser {
-		return models.SuperAdmin
-	}
-	if u.IsStaff {
-		return models.Teacher
-	}
-	return models.Student
 }
 
 func touchLastLogin(userID int64) {

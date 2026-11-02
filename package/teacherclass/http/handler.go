@@ -147,10 +147,11 @@ func (h *Handler) JoinClass(c *gin.Context) {
 }
 
 func (h *Handler) ListCourses(c *gin.Context) {
-	if _, _, ok := h.identity(c, teacherRoles()); !ok {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
 		return
 	}
-	list, err := h.uc.ListCourses()
+	list, err := h.uc.ListCourses(userID, role)
 	if err != nil {
 		writeErr(c, err)
 		return
@@ -172,7 +173,7 @@ func (h *Handler) ListMyClasses(c *gin.Context) {
 }
 
 func (h *Handler) CreateClass(c *gin.Context) {
-	userID, _, ok := h.identity(c, teacherRoles())
+	userID, role, ok := h.identity(c, teacherRoles())
 	if !ok {
 		return
 	}
@@ -184,7 +185,7 @@ func (h *Handler) CreateClass(c *gin.Context) {
 		writeErr(c, teacherclass.ErrBadRequest)
 		return
 	}
-	dto, err := h.uc.CreateClass(userID, teacherclass.CreateClassInput{
+	dto, err := h.uc.CreateClass(userID, role, teacherclass.CreateClassInput{
 		CourseID:    body.CourseID,
 		DisplayName: body.DisplayName,
 	})

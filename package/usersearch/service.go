@@ -390,21 +390,54 @@ func (s *Service) Search(ctx context.Context, q string, limit int, includeInacti
 	if s.ready() {
 		hits, err := s.searchES(ctx, q, limit, includeInactive)
 		if err == nil {
-			return hits, nil
+			return withCourseTeamRoles(hits), nil
 		}
 		log.Printf("usersearch: es search failed, falling back to mysql: %v", err)
 	}
-	return s.searchMySQL(q, limit, includeInactive)
+	hits, err := s.searchMySQL(q, limit, includeInactive)
+	if err != nil {
+		return nil, err
+	}
+	return withCourseTeamRoles(hits), nil
 }
 
 func roleFromFlags(isStaff, isSuperuser bool) int {
-	if isSuperuser {
-		return int(models.SuperAdmin)
+	return int(lmsdb.RoleFromFlags(isStaff, isSuperuser, false))
+}
+
+// withCourseTeamRoles turns students who are on a course team into teachers. The flags alone
+// (ES index, auth_user) do not know about course teams.
+func withCourseTeamRoles(hits []Hit) []Hit {
+	var ids []int64
+	for _, h := range hits {
+		if h.Role != int(models.Student) {
+			continue
+		}
+		if id, err := strconv.ParseInt(h.ID, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
 	}
-	if isStaff {
-		return int(models.Teacher)
+	if len(ids) == 0 {
+		return hits
 	}
-	return int(models.Student)
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		log.Printf("usersearch: reader for course teams: %v", err)
+		return hits
+	}
+	defer reader.Close()
+	courseTeam, err := reader.CourseTeamMemberIDs(ids)
+	if err != nil {
+		log.Printf("usersearch: course team lookup: %v", err)
+		return hits
+	}
+	for i := range hits {
+		id, err := strconv.ParseInt(hits[i].ID, 10, 64)
+		if err == nil && hits[i].Role == int(models.Student) && courseTeam[id] {
+			hits[i].Role = int(models.Teacher)
+		}
+	}
+	return hits
 }
 
 func (s *Service) searchES(ctx context.Context, q string, limit int, includeInactive bool) ([]Hit, error) {

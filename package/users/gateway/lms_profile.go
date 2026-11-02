@@ -3,6 +3,7 @@ package gateway
 import (
 	"database/sql"
 	"errors"
+	"log"
 	"strconv"
 	"strings"
 
@@ -10,19 +11,6 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 )
-
-func lmsRoleFromProfile(u *lmsdb.AuthUserProfile) models.Role {
-	if u == nil {
-		return models.Student
-	}
-	if u.IsSuperuser {
-		return models.SuperAdmin
-	}
-	if u.IsStaff {
-		return models.Teacher
-	}
-	return models.Student
-}
 
 func nullStringToValue(ns sql.NullString) string {
 	if ns.Valid {
@@ -39,7 +27,8 @@ func nullIntToPtr(ni sql.NullInt64) *int {
 	return &v
 }
 
-func userCoreFromLMSProfile(u *lmsdb.AuthUserProfile) models.UserCore {
+// isCourseTeam: the user is staff or instructor on at least one course (see lmsdb.RoleFromFlags).
+func userCoreFromLMSProfile(u *lmsdb.AuthUserProfile, isCourseTeam bool) models.UserCore {
 	if u == nil {
 		return models.UserCore{}
 	}
@@ -69,7 +58,7 @@ func userCoreFromLMSProfile(u *lmsdb.AuthUserProfile) models.UserCore {
 		Language:         nullStringToValue(u.Language),
 		Bio:              nullStringToValue(u.Bio),
 		AvatarID:         lmsdb.ParseAvatarIDFromMeta(u.Meta),
-		Role:             lmsRoleFromProfile(u),
+		Role:             lmsdb.RoleFromFlags(u.IsStaff, u.IsSuperuser, isCourseTeam),
 		CreatedAt:        u.DateJoined.UTC().Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
@@ -103,7 +92,13 @@ func (r *UsersGatewayImpl) lmsUserCoreByID(userID string) (models.UserCore, erro
 	if profile == nil {
 		return models.UserCore{}, auth.ErrUserNotFound
 	}
-	return userCoreFromLMSProfile(profile), nil
+	isCourseTeam := false
+	if !profile.IsStaff && !profile.IsSuperuser {
+		if isCourseTeam, err = reader.IsCourseTeamMember(profile.ID); err != nil {
+			log.Printf("users: course team lookup for user %d: %v", profile.ID, err)
+		}
+	}
+	return userCoreFromLMSProfile(profile, isCourseTeam), nil
 }
 
 func (r *UsersGatewayImpl) updateLMSUserProfile(userID string, core models.UserCore) (models.UserCore, error) {
@@ -149,8 +144,16 @@ func (r *UsersGatewayImpl) searchLMSStudentsByEmail(email string, page, pageSize
 		return nil, 0, err
 	}
 	countRows = count
+	ids := make([]int64, 0, len(profiles))
 	for i := range profiles {
-		core := userCoreFromLMSProfile(&profiles[i])
+		ids = append(ids, profiles[i].ID)
+	}
+	courseTeam, err := reader.CourseTeamMemberIDs(ids)
+	if err != nil {
+		log.Printf("users: course team lookup: %v", err)
+	}
+	for i := range profiles {
+		core := userCoreFromLMSProfile(&profiles[i], courseTeam[profiles[i].ID])
 		students = append(students, &models.StudentCore{UserCore: core})
 	}
 	return students, countRows, nil

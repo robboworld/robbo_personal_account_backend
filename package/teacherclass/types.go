@@ -131,9 +131,9 @@ type Gateway interface {
 }
 
 type UseCase interface {
-	CreateClass(teacherID string, in CreateClassInput) (*ClassDTO, error)
+	CreateClass(teacherID string, role models.Role, in CreateClassInput) (*ClassDTO, error)
 	ListMyClasses(teacherID string, role models.Role) ([]ClassDTO, error)
-	ListCourses() ([]CourseDTO, error)
+	ListCourses(teacherID string, role models.Role) ([]CourseDTO, error)
 	GetClass(teacherID string, role models.Role, classID string) (*ClassDTO, error)
 	RenameClass(teacherID string, role models.Role, classID, displayName string) (*ClassDTO, error)
 	ArchiveClass(teacherID string, role models.Role, classID string) error

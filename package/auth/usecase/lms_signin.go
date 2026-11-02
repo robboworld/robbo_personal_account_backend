@@ -10,16 +10,6 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/moderation"
 )
 
-func roleFromLMSUser(u *lmsdb.AuthUserLogin) models.Role {
-	if u.IsSuperuser {
-		return models.SuperAdmin
-	}
-	if u.IsStaff {
-		return models.Teacher
-	}
-	return models.Student
-}
-
 func (a *AuthUseCaseImpl) signInLMS(email, password string, client auth.ClientInfo) (accessToken, refreshToken string, err error) {
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
@@ -56,7 +46,7 @@ func (a *AuthUseCaseImpl) signInLMS(email, password string, client auth.ClientIn
 	user := &models.UserCore{
 		Id:    edxID,
 		Email: u.Email,
-		Role:  roleFromLMSUser(u),
+		Role:  reader.ResolveRole(u.ID, u.IsStaff, u.IsSuperuser),
 	}
 
 	return a.issueTokensWithSession(user, "lms_db", client)

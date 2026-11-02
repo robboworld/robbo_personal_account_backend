@@ -121,11 +121,18 @@ func (u *UseCaseImpl) ensureCohorted(courseID string) error {
 	return err
 }
 
-func (u *UseCaseImpl) CreateClass(teacherID string, in teacherclass.CreateClassInput) (*teacherclass.ClassDTO, error) {
+func (u *UseCaseImpl) CreateClass(teacherID string, role models.Role, in teacherclass.CreateClassInput) (*teacherclass.ClassDTO, error) {
 	in.CourseID = strings.TrimSpace(in.CourseID)
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
 	if in.CourseID == "" || in.DisplayName == "" || teacherID == "" {
 		return nil, teacherclass.ErrBadRequest
+	}
+	allowed, err := teacherCourseIDs(teacherID, role)
+	if err != nil {
+		return nil, err
+	}
+	if allowed != nil && !allowed[in.CourseID] {
+		return nil, teacherclass.ErrForbidden
 	}
 	if err := u.ensureCohorted(in.CourseID); err != nil {
 		return nil, fmt.Errorf("%w: enable cohorts: %v", teacherclass.ErrInternal, err)
@@ -236,8 +243,13 @@ func (u *UseCaseImpl) ListMyClasses(teacherID string, role models.Role) ([]teach
 	return out, nil
 }
 
-// ListCourses: running Open edX courses for the "create class" picker.
-func (u *UseCaseImpl) ListCourses() ([]teacherclass.CourseDTO, error) {
+// ListCourses: running Open edX courses for the "create class" picker; for a teacher who is
+// only on some course teams, just those courses.
+func (u *UseCaseImpl) ListCourses(teacherID string, role models.Role) ([]teacherclass.CourseDTO, error) {
+	allowed, err := teacherCourseIDs(teacherID, role)
+	if err != nil {
+		return nil, err
+	}
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
 		return nil, err
@@ -249,9 +261,49 @@ func (u *UseCaseImpl) ListCourses() ([]teacherclass.CourseDTO, error) {
 	}
 	out := make([]teacherclass.CourseDTO, 0, len(rows))
 	for _, row := range rows {
+		if allowed != nil && !allowed[row.ID] {
+			continue
+		}
 		out = append(out, teacherclass.CourseDTO{ID: row.ID, Name: row.Name})
 	}
 	return out, nil
+}
+
+// teacherCourseIDs returns the courses a teacher may link classes to: nil means every course
+// (SuperAdmin, or LMS global staff); otherwise the courses where the teacher is staff or
+// instructor. A teacher by course team must not get cohorts in someone else's course.
+func teacherCourseIDs(teacherID string, role models.Role) (map[string]bool, error) {
+	if role == models.SuperAdmin {
+		return nil, nil
+	}
+	id, err := strconv.ParseInt(strings.TrimSpace(teacherID), 10, 64)
+	if err != nil || id <= 0 {
+		return nil, teacherclass.ErrForbidden
+	}
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	profile, err := reader.LookupAuthUserProfileByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if profile == nil {
+		return nil, teacherclass.ErrForbidden
+	}
+	if profile.IsStaff || profile.IsSuperuser {
+		return nil, nil
+	}
+	ids, err := reader.ListCourseTeamCourseIDs(id)
+	if err != nil {
+		return nil, err
+	}
+	allowed := make(map[string]bool, len(ids))
+	for _, courseID := range ids {
+		allowed[courseID] = true
+	}
+	return allowed, nil
 }
 
 func (u *UseCaseImpl) GetClass(teacherID string, role models.Role, classID string) (*teacherclass.ClassDTO, error) {
