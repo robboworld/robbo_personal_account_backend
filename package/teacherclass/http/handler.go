@@ -53,6 +53,8 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.GET("/classes/:classId/assignments", h.ListAssignmentsTeacher)
 		api.POST("/classes/:classId/assignments", h.CreateAssignment)
 		api.POST("/classes/:classId/assignments/:assignmentId/issue-late", h.IssueLate)
+		api.POST("/classes/:classId/assignments/:assignmentId/close", h.CloseAssignment)
+		api.POST("/classes/:classId/assignments/:assignmentId/reopen", h.ReopenAssignment)
 		api.GET("/classes/:classId/assignments/:assignmentId/submissions", h.ListSubmissions)
 		api.GET("/classes/:classId/progress", h.Progress)
 		api.POST("/submissions/:projectId/review", h.ReviewSubmission)
@@ -90,7 +92,8 @@ func writeErr(c *gin.Context, err error) {
 		status = http.StatusForbidden
 	case errors.Is(err, teacherclass.ErrNotFound):
 		status = http.StatusNotFound
-	case errors.Is(err, teacherclass.ErrConflict), errors.Is(err, teacherclass.ErrAlreadyIn):
+	case errors.Is(err, teacherclass.ErrConflict), errors.Is(err, teacherclass.ErrAlreadyIn),
+		errors.Is(err, teacherclass.ErrAssignmentClosed), errors.Is(err, teacherclass.ErrAlreadyHandedIn):
 		status = http.StatusConflict
 	}
 	if status == http.StatusInternalServerError {
@@ -180,14 +183,21 @@ func (h *Handler) CreateClass(c *gin.Context) {
 	var body struct {
 		CourseID    string `json:"courseId"`
 		DisplayName string `json:"displayName"`
+		LinkLMS     *bool  `json:"linkLms"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeErr(c, teacherclass.ErrBadRequest)
 		return
 	}
+	// A client that predates linkLms sends only courseId and still gets a cohort.
+	linkLMS := strings.TrimSpace(body.CourseID) != ""
+	if body.LinkLMS != nil {
+		linkLMS = *body.LinkLMS
+	}
 	dto, err := h.uc.CreateClass(userID, role, teacherclass.CreateClassInput{
 		CourseID:    body.CourseID,
 		DisplayName: body.DisplayName,
+		LinkLMS:     linkLMS,
 	})
 	if err != nil {
 		writeErr(c, err)
@@ -374,6 +384,22 @@ func (h *Handler) IssueLate(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"issued": n})
+}
+
+func (h *Handler) CloseAssignment(c *gin.Context)  { h.setAssignmentClosed(c, true) }
+func (h *Handler) ReopenAssignment(c *gin.Context) { h.setAssignmentClosed(c, false) }
+
+func (h *Handler) setAssignmentClosed(c *gin.Context, closed bool) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	dto, err := h.uc.SetAssignmentClosed(userID, role, c.Param("classId"), c.Param("assignmentId"), closed)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto)
 }
 
 func (h *Handler) ListSubmissions(c *gin.Context) {

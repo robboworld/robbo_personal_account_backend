@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -48,6 +49,7 @@ func (u *UseCaseImpl) toDTO(inv *models.ClassInviteDB) *teacherclass.ClassDTO {
 		InviteSlug:     inv.InviteSlug,
 		JoinURL:        base + "/join/" + inv.InviteSlug,
 		IsActive:       inv.IsActive,
+		LmsLinked:      inv.LmsLinked,
 		CreatedAt:      inv.CreatedAt,
 	}
 }
@@ -124,7 +126,13 @@ func (u *UseCaseImpl) ensureCohorted(courseID string) error {
 func (u *UseCaseImpl) CreateClass(teacherID string, role models.Role, in teacherclass.CreateClassInput) (*teacherclass.ClassDTO, error) {
 	in.CourseID = strings.TrimSpace(in.CourseID)
 	in.DisplayName = strings.TrimSpace(in.DisplayName)
-	if in.CourseID == "" || in.DisplayName == "" || teacherID == "" {
+	if in.DisplayName == "" || teacherID == "" {
+		return nil, teacherclass.ErrBadRequest
+	}
+	if !in.LinkLMS {
+		return u.createLocalClass(teacherID, in.DisplayName)
+	}
+	if in.CourseID == "" {
 		return nil, teacherclass.ErrBadRequest
 	}
 	allowed, err := teacherCourseIDs(teacherID, role)
@@ -171,6 +179,37 @@ func (u *UseCaseImpl) CreateClass(teacherID string, role models.Role, in teacher
 		InviteCode:     code,
 		InviteSlug:     slug,
 		IsActive:       true,
+		LmsLinked:      true,
+	}
+	if err := u.gw.CreateInvite(inv); err != nil {
+		return nil, err
+	}
+	dto := u.toDTO(inv)
+	u.fillOwnerName(dto)
+	return dto, nil
+}
+
+// createLocalClass makes a class the LMS knows nothing about: no course, no cohort, the
+// roster lives in class_members.
+func (u *UseCaseImpl) createLocalClass(teacherID, displayName string) (*teacherclass.ClassDTO, error) {
+	code, err := genInviteCode()
+	if err != nil {
+		return nil, err
+	}
+	slug, err := genSlug()
+	if err != nil {
+		return nil, err
+	}
+	id := uuid.NewString()
+	inv := &models.ClassInviteDB{
+		ID:             id,
+		EdxCohortID:    models.UnlinkedCohortKey(id),
+		OwnerTeacherID: teacherID,
+		DisplayName:    displayName,
+		InviteCode:     code,
+		InviteSlug:     slug,
+		IsActive:       true,
+		LmsLinked:      false,
 	}
 	if err := u.gw.CreateInvite(inv); err != nil {
 		return nil, err
@@ -325,10 +364,12 @@ func (u *UseCaseImpl) RenameClass(teacherID string, role models.Role, classID, d
 	if err != nil {
 		return nil, err
 	}
-	cohortID, _ := strconv.Atoi(inv.EdxCohortID)
-	_, err = u.edx.PatchCohort(inv.EdxCourseID, cohortID, map[string]interface{}{"name": displayName})
-	if err != nil {
-		return nil, fmt.Errorf("%w: rename cohort", teacherclass.ErrInternal)
+	if inv.LmsLinked {
+		cohortID, _ := strconv.Atoi(inv.EdxCohortID)
+		_, err = u.edx.PatchCohort(inv.EdxCourseID, cohortID, map[string]interface{}{"name": displayName})
+		if err != nil {
+			return nil, fmt.Errorf("%w: rename cohort", teacherclass.ErrInternal)
+		}
 	}
 	inv.DisplayName = displayName
 	if err := u.gw.UpdateInvite(inv); err != nil {
@@ -401,6 +442,7 @@ func (u *UseCaseImpl) PreviewJoin(codeOrSlug string) (*teacherclass.JoinPreviewD
 		EdxCourseID: inv.EdxCourseID,
 		InviteSlug:  inv.InviteSlug,
 		IsActive:    inv.IsActive,
+		LmsLinked:   inv.LmsLinked,
 	}
 	classDTO := u.toDTO(inv)
 	u.fillOwnerName(classDTO)
@@ -421,6 +463,31 @@ func (u *UseCaseImpl) enrollAndAdd(username, courseID, cohortIDStr string) error
 	return err
 }
 
+// addToClass puts the user on the roster: class_members for a ЛК class, otherwise the
+// course enrollment and the Open edX cohort.
+func (u *UseCaseImpl) addToClass(inv *models.ClassInviteDB, userID string) error {
+	id, err := lmsdb.ParseLMSUserID(userID)
+	if err != nil {
+		return teacherclass.ErrBadRequest
+	}
+	if !inv.LmsLinked {
+		return u.gw.AddMember(inv.ID, strconv.FormatInt(id, 10))
+	}
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	user, err := reader.LookupAuthUserByID(id)
+	if err != nil || user == nil {
+		return teacherclass.ErrBadRequest
+	}
+	if err := u.enrollAndAdd(user.Username, inv.EdxCourseID, inv.EdxCohortID); err != nil {
+		return fmt.Errorf("%w: join cohort: %v", teacherclass.ErrInternal, err)
+	}
+	return nil
+}
+
 func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teacherclass.ClassDTO, error) {
 	inv, err := u.resolveInvite(codeOrSlug)
 	if err != nil {
@@ -429,21 +496,8 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 	if !inv.IsActive {
 		return nil, teacherclass.ErrNotFound
 	}
-	id, err := lmsdb.ParseLMSUserID(studentID)
-	if err != nil {
-		return nil, teacherclass.ErrBadRequest
-	}
-	reader, err := lmsdb.NewReaderFromConfig()
-	if err != nil {
+	if err := u.addToClass(inv, studentID); err != nil {
 		return nil, err
-	}
-	defer reader.Close()
-	user, err := reader.LookupAuthUserByID(id)
-	if err != nil || user == nil {
-		return nil, teacherclass.ErrBadRequest
-	}
-	if err := u.enrollAndAdd(user.Username, inv.EdxCourseID, inv.EdxCohortID); err != nil {
-		return nil, fmt.Errorf("%w: join cohort: %v", teacherclass.ErrInternal, err)
 	}
 	// Auto-issue open assignments to late joiner
 	assignments, _ := u.gw.ListAssignments(inv.EdxCourseID, inv.EdxCohortID)
@@ -470,13 +524,26 @@ func (u *UseCaseImpl) ListStudentClasses(studentID string) ([]teacherclass.Class
 	if _, err := lmsdb.ParseLMSUserID(studentID); err != nil {
 		return nil, teacherclass.ErrBadRequest
 	}
-	// One query for the student's cohorts instead of one Open edX API call per class.
-	cohorts, err := studentCohortIDs(studentID)
+	localIDs, err := u.gw.ListMemberClassIDs(studentID)
 	if err != nil {
 		return nil, err
 	}
+	local := make(map[string]bool, len(localIDs))
+	for _, id := range localIDs {
+		local[id] = true
+	}
+	// One query for the student's cohorts instead of one Open edX API call per class.
+	// Without the LMS the student still sees the classes the ЛК keeps itself.
+	cohorts, err := studentCohortIDs(studentID)
+	if err != nil {
+		if len(local) == 0 {
+			return nil, err
+		}
+		log.Printf("teacherclass: student %s cohorts: %v", studentID, err)
+		cohorts = map[string]bool{}
+	}
 	out := make([]teacherclass.ClassDTO, 0)
-	if len(cohorts) == 0 {
+	if len(cohorts) == 0 && len(local) == 0 {
 		return out, nil
 	}
 	all, err := u.gw.ListActiveInvites()
@@ -485,7 +552,10 @@ func (u *UseCaseImpl) ListStudentClasses(studentID string) ([]teacherclass.Class
 	}
 	for i := range all {
 		inv := &all[i]
-		if !cohorts[strings.TrimSpace(inv.EdxCohortID)] {
+		if inv.LmsLinked && !cohorts[strings.TrimSpace(inv.EdxCohortID)] {
+			continue
+		}
+		if !inv.LmsLinked && !local[inv.ID] {
 			continue
 		}
 		out = append(out, *u.toDTO(inv))
@@ -572,6 +642,9 @@ func (u *UseCaseImpl) ListMembers(teacherID string, role models.Role, classID st
 	if err != nil {
 		return nil, err
 	}
+	if !inv.LmsLinked {
+		return u.listLocalMembers(inv.ID)
+	}
 	cohortID, _ := strconv.Atoi(inv.EdxCohortID)
 	type edxResult struct {
 		body []byte
@@ -596,6 +669,35 @@ func (u *UseCaseImpl) ListMembers(teacherID string, role models.Role, classID st
 	}
 }
 
+// listLocalMembers reads the ЛК roster; names and logins come from LMS MySQL when it is up.
+func (u *UseCaseImpl) listLocalMembers(classID string) ([]teacherclass.CohortUserDTO, error) {
+	rows, err := u.gw.ListMembers(classID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]teacherclass.CohortUserDTO, 0, len(rows))
+	reader, rerr := lmsdb.NewReaderFromConfig()
+	if rerr != nil {
+		reader = nil
+	} else if reader != nil {
+		defer reader.Close()
+	}
+	for _, row := range rows {
+		dto := teacherclass.CohortUserDTO{UserID: row.UserID}
+		if reader != nil {
+			if id, err := lmsdb.ParseLMSUserID(row.UserID); err == nil {
+				if user, err := reader.LookupAuthUserByID(id); err == nil && user != nil {
+					dto.Username = user.Username
+					dto.Email = user.Email
+					dto.Name = profileName(reader, id)
+				}
+			}
+		}
+		out = append(out, dto)
+	}
+	return out, nil
+}
+
 func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error) {
 	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
@@ -616,7 +718,12 @@ func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, clas
 			missing = append(missing, email)
 			continue
 		}
-		if err := u.enrollAndAdd(row.Username, inv.EdxCourseID, inv.EdxCohortID); err != nil {
+		if inv.LmsLinked {
+			err = u.enrollAndAdd(row.Username, inv.EdxCourseID, inv.EdxCohortID)
+		} else {
+			err = u.gw.AddMember(inv.ID, strconv.FormatInt(row.ID, 10))
+		}
+		if err != nil {
 			missing = append(missing, email)
 			continue
 		}
@@ -625,13 +732,40 @@ func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, clas
 	return added, missing, nil
 }
 
+// RemoveMember: member is the LMS username; a ЛК class also takes the user id, so a
+// member whose LMS profile could not be read can still be removed.
 func (u *UseCaseImpl) RemoveMember(teacherID string, role models.Role, classID, username string) error {
 	inv, err := u.requireOwner(teacherID, role, classID)
 	if err != nil {
 		return err
 	}
+	if !inv.LmsLinked {
+		return u.removeLocalMember(inv.ID, username)
+	}
 	cohortID, _ := strconv.Atoi(inv.EdxCohortID)
 	return u.edx.RemoveCohortUser(username, inv.EdxCourseID, cohortID)
+}
+
+func (u *UseCaseImpl) removeLocalMember(classID, member string) error {
+	member = strings.TrimSpace(member)
+	if member == "" {
+		return teacherclass.ErrBadRequest
+	}
+	if ok, err := u.gw.IsMemberOfAny(member, []string{classID}); err != nil {
+		return err
+	} else if ok {
+		return u.gw.RemoveMember(classID, member)
+	}
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+	row, err := reader.LookupAuthUserByUsername(member)
+	if err != nil || row == nil {
+		return teacherclass.ErrNotFound
+	}
+	return u.gw.RemoveMember(classID, strconv.FormatInt(row.ID, 10))
 }
 
 func assignmentDTO(a *models.ClassAssignmentDB) teacherclass.AssignmentDTO {
@@ -691,15 +825,19 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 	if err != nil {
 		return nil, err
 	}
+	dto := assignmentDTO(a)
 	for _, m := range members {
 		if m.UserID == "" {
+			dto.CopiesSkipped++
 			continue
 		}
 		if _, err := u.gw.ForkProjectForStudent(tpl, m.UserID, in.Title, a); err != nil {
+			dto.CopiesFailed++
 			log.Printf("teacherclass: assignment %s: copy for student %s: %v", a.ID, m.UserID, err)
+			continue
 		}
+		dto.CopiesIssued++
 	}
-	dto := assignmentDTO(a)
 	return &dto, nil
 }
 
@@ -727,7 +865,12 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 		if err != nil {
 			return nil, teacherclass.ErrNotFound
 		}
-		member, err := studentInCohort(viewerID, inv.EdxCohortID)
+		var member bool
+		if inv.LmsLinked {
+			member, err = studentInCohort(viewerID, inv.EdxCohortID)
+		} else {
+			member, err = u.gw.IsMemberOfAny(viewerID, []string{inv.ID})
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -786,6 +929,9 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, clas
 	if a.EdxCohortID != inv.EdxCohortID {
 		return 0, teacherclass.ErrForbidden
 	}
+	if a.ClosedAt != nil {
+		return 0, teacherclass.ErrAssignmentClosed
+	}
 	tpl, err := u.assignmentTemplate(a)
 	if err != nil {
 		return 0, err
@@ -811,6 +957,25 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, clas
 	return issued, nil
 }
 
+func (u *UseCaseImpl) SetAssignmentClosed(teacherID string, role models.Role, classID, assignmentID string, closed bool) (*teacherclass.AssignmentDTO, error) {
+	inv, err := u.requireOwner(teacherID, role, classID)
+	if err != nil {
+		return nil, err
+	}
+	a, err := u.gw.GetAssignment(assignmentID)
+	if err != nil || a.EdxCohortID != inv.EdxCohortID {
+		return nil, teacherclass.ErrNotFound
+	}
+	if err := u.gw.SetAssignmentClosed(a.ID, closed); err != nil {
+		return nil, err
+	}
+	if a, err = u.gw.GetAssignment(a.ID); err != nil {
+		return nil, err
+	}
+	dto := assignmentDTO(a)
+	return &dto, nil
+}
+
 func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	p, err := u.gw.GetProject(projectID)
 	if err != nil {
@@ -823,13 +988,29 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	if p.AssignmentID == nil || strings.TrimSpace(*p.AssignmentID) == "" {
 		return teacherclass.ErrBadRequest
 	}
+	// Handing in again would put reviewed work back on review and drop the teacher's comment.
+	switch deref(p.ReviewStatus) {
+	case "", models.ReviewDraft, models.ReviewReturned:
+	default:
+		return teacherclass.ErrAlreadyHandedIn
+	}
+	a, err := u.gw.GetAssignment(*p.AssignmentID)
+	if err != nil {
+		return teacherclass.ErrNotFound
+	}
+	// The due date only marks late work; closing the assignment stops hand-ins.
+	if a.ClosedAt != nil {
+		return teacherclass.ErrAssignmentClosed
+	}
 	now := time.Now().UTC()
 	return u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now)
 }
 
 func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error {
 	switch status {
-	case models.ReviewAccepted, models.ReviewReturned, models.ReviewShownInClass, models.ReviewDraft, models.ReviewSubmitted:
+	// Submitted puts reviewed work back in the queue. Draft is the student's own state: set by
+	// the teacher it would hide the work from the teacher for good.
+	case models.ReviewAccepted, models.ReviewReturned, models.ReviewShownInClass, models.ReviewSubmitted:
 	default:
 		return teacherclass.ErrBadRequest
 	}
@@ -844,7 +1025,20 @@ func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, proje
 	if err != nil || !canManage(inv, teacherID, role) {
 		return teacherclass.ErrForbidden
 	}
+	if !draftVisible(role, p) {
+		return teacherclass.ErrNotFound
+	}
 	return u.gw.UpdateReview(projectID, status, comment, nil)
+}
+
+// draftVisible: a SuperAdmin sees every copy; the teacher only handed-in work (as access.Resolve).
+func draftVisible(role models.Role, p *models.ScratchProjectDB) bool {
+	return role == models.SuperAdmin || models.IsHandedIn(p.ReviewStatus)
+}
+
+// isLate: the work was handed in after the assignment's due date.
+func isLate(a *models.ClassAssignmentDB, p *models.ScratchProjectDB) bool {
+	return a.DueAt != nil && p.SubmittedAt != nil && p.SubmittedAt.After(*a.DueAt)
 }
 
 func deref(s *string) string {
@@ -870,24 +1064,26 @@ func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classI
 	out := make([]teacherclass.SubmissionDTO, 0, len(list))
 	for i := range list {
 		p := &list[i]
-		status := ""
-		if p.ReviewStatus != nil {
+		status := models.ReviewDraft
+		if p.ReviewStatus != nil && *p.ReviewStatus != "" {
 			status = *p.ReviewStatus
 		}
-		comment := ""
-		if p.ReviewComment != nil {
-			comment = *p.ReviewComment
+		dto := teacherclass.SubmissionDTO{
+			OwnerUserID:  p.OwnerUserID,
+			Title:        p.Title,
+			ReviewStatus: status,
+			UpdatedAt:    p.UpdatedAt,
 		}
-		out = append(out, teacherclass.SubmissionDTO{
-			ProjectID:     p.ID,
-			OwnerUserID:   p.OwnerUserID,
-			Title:         p.Title,
-			ReviewStatus:  status,
-			ReviewComment: comment,
-			UpdatedAt:     p.UpdatedAt,
-			SubmittedAt:   p.SubmittedAt,
-			PreviewURL:    "/projectPage/" + p.ID + "/preview",
-		})
+		// The lesson board shows who is working: a draft the teacher may not open still
+		// carries its status and last save, without the project id that would lead to it.
+		if draftVisible(role, p) {
+			dto.ProjectID = p.ID
+			dto.ReviewComment = deref(p.ReviewComment)
+			dto.SubmittedAt = p.SubmittedAt
+			dto.PreviewURL = "/projectPage/" + p.ID + "/preview"
+			dto.Late = isLate(a, p)
+		}
+		out = append(out, dto)
 	}
 	return out, nil
 }
@@ -904,26 +1100,42 @@ func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID
 		return nil, nil, err
 	}
 	assignDTOs := make([]teacherclass.AssignmentDTO, 0, len(assignments))
+	ids := make([]string, 0, len(assignments))
+	for i := range assignments {
+		assignDTOs = append(assignDTOs, assignmentDTO(&assignments[i]))
+		ids = append(ids, assignments[i].ID)
+	}
+	subs, err := u.gw.ListSubmissionsForAssignments(ids)
+	if err != nil {
+		return nil, nil, err
+	}
+	byAssignment := map[string][]*models.ScratchProjectDB{}
+	for j := range subs {
+		p := &subs[j]
+		if p.AssignmentID != nil {
+			byAssignment[*p.AssignmentID] = append(byAssignment[*p.AssignmentID], p)
+		}
+	}
 	rows := []teacherclass.ProgressRowDTO{}
 	rowOf := map[string]int{}
 	for i := range assignments {
 		a := &assignments[i]
-		assignDTOs = append(assignDTOs, assignmentDTO(a))
-		subs, err := u.gw.ListSubmissions(a.ID)
-		if err != nil {
-			return nil, nil, err
-		}
 		seen := map[string]struct{}{}
 		// Newest first: the latest project wins if a student somehow has two.
-		for j := range subs {
-			p := &subs[j]
+		for _, p := range byAssignment[a.ID] {
 			if _, ok := seen[p.OwnerUserID]; ok {
 				continue
 			}
 			seen[p.OwnerUserID] = struct{}{}
-			status := "draft"
-			if p.ReviewStatus != nil {
+			status := models.ReviewDraft
+			if p.ReviewStatus != nil && *p.ReviewStatus != "" {
 				status = *p.ReviewStatus
+			}
+			cell := teacherclass.ProgressCellDTO{AssignmentID: a.ID, Status: status}
+			// A draft the teacher may not open shows as "draft" without a link to it.
+			if draftVisible(role, p) {
+				cell.ProjectID = p.ID
+				cell.Late = isLate(a, p)
 			}
 			idx, ok := rowOf[p.OwnerUserID]
 			if !ok {
@@ -931,11 +1143,7 @@ func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID
 				rowOf[p.OwnerUserID] = idx
 				rows = append(rows, teacherclass.ProgressRowDTO{UserID: p.OwnerUserID})
 			}
-			rows[idx].Cells = append(rows[idx].Cells, teacherclass.ProgressCellDTO{
-				AssignmentID: a.ID,
-				Status:       status,
-				ProjectID:    p.ID,
-			})
+			rows[idx].Cells = append(rows[idx].Cells, cell)
 		}
 	}
 	return assignDTOs, rows, nil

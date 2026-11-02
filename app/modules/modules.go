@@ -156,13 +156,21 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 			return false
 		}
 		var cohortIDs []int64
+		var localIDs []string
 		for _, inv := range invites {
 			if inv.ArchivedAt != nil {
+				continue
+			}
+			if !inv.LmsLinked {
+				localIDs = append(localIDs, inv.ID)
 				continue
 			}
 			if id, err := strconv.ParseInt(strings.TrimSpace(inv.EdxCohortID), 10, 64); err == nil {
 				cohortIDs = append(cohortIDs, id)
 			}
+		}
+		if member, err := tcGw.Gateway.IsMemberOfAny(strconv.FormatInt(studentNum, 10), localIDs); err == nil && member {
+			return true
 		}
 		if len(cohortIDs) == 0 {
 			return false

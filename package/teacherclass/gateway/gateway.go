@@ -106,6 +106,37 @@ func (g *GatewayImpl) ListActiveInvites() ([]models.ClassInviteDB, error) {
 	return list, err
 }
 
+func (g *GatewayImpl) AddMember(classID, userID string) error {
+	row := models.ClassMemberDB{ClassID: classID, UserID: userID, JoinedAt: time.Now().UTC()}
+	return g.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&row).Error
+}
+
+func (g *GatewayImpl) RemoveMember(classID, userID string) error {
+	return g.db.Where("class_id = ? AND user_id = ?", classID, userID).Delete(&models.ClassMemberDB{}).Error
+}
+
+func (g *GatewayImpl) ListMembers(classID string) ([]models.ClassMemberDB, error) {
+	var list []models.ClassMemberDB
+	err := g.db.Where("class_id = ?", classID).Order("joined_at ASC").Find(&list).Error
+	return list, err
+}
+
+func (g *GatewayImpl) ListMemberClassIDs(userID string) ([]string, error) {
+	var ids []string
+	err := g.db.Model(&models.ClassMemberDB{}).Where("user_id = ?", userID).Pluck("class_id", &ids).Error
+	return ids, err
+}
+
+func (g *GatewayImpl) IsMemberOfAny(userID string, classIDs []string) (bool, error) {
+	if len(classIDs) == 0 {
+		return false, nil
+	}
+	var n int64
+	err := g.db.Model(&models.ClassMemberDB{}).
+		Where("user_id = ? AND class_id IN ?", userID, classIDs).Count(&n).Error
+	return n > 0, err
+}
+
 func (g *GatewayImpl) CreateAssignment(a *models.ClassAssignmentDB) error {
 	now := time.Now().UTC()
 	a.CreatedAt = now
@@ -129,10 +160,22 @@ func (g *GatewayImpl) GetAssignment(id string) (*models.ClassAssignmentDB, error
 	return &a, nil
 }
 
-func (g *GatewayImpl) CloseAssignment(id string) error {
+// SetAssignmentClosed stops (closed) or resumes accepting work for the assignment.
+func (g *GatewayImpl) SetAssignmentClosed(id string, closed bool) error {
 	now := time.Now().UTC()
-	return g.db.Model(&models.ClassAssignmentDB{}).Where("id = ?", id).
-		Updates(map[string]interface{}{"closed_at": now, "updated_at": now}).Error
+	var closedAt interface{}
+	if closed {
+		closedAt = now
+	}
+	res := g.db.Model(&models.ClassAssignmentDB{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"closed_at": closedAt, "updated_at": now})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (g *GatewayImpl) GetProject(id string) (*models.ScratchProjectDB, error) {
@@ -227,6 +270,17 @@ func copyCurrentSb3(tx *gorm.DB, template, row *models.ScratchProjectDB) error {
 func (g *GatewayImpl) ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error) {
 	var list []models.ScratchProjectDB
 	err := g.db.Where("assignment_id = ? AND deleted_at IS NULL", assignmentID).
+		Order("updated_at DESC").Find(&list).Error
+	return list, err
+}
+
+// ListSubmissionsForAssignments is ListSubmissions for several assignments in one query.
+func (g *GatewayImpl) ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error) {
+	var list []models.ScratchProjectDB
+	if len(assignmentIDs) == 0 {
+		return list, nil
+	}
+	err := g.db.Where("assignment_id IN ? AND deleted_at IS NULL", assignmentIDs).
 		Order("updated_at DESC").Find(&list).Error
 	return list, err
 }

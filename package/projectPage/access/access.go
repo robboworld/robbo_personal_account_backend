@@ -32,7 +32,9 @@ func derefStr(s *string) string {
 func Resolve(viewerUserID string, p *models.ScratchProjectDB) ProjectAccess {
 	isOwner := normalizeUserID(p.OwnerUserID) == normalizeUserID(viewerUserID)
 	canRead := isOwner || p.IsPublic
-	if !canRead && CohortTeacherReader != nil && p.EdxCohortID != nil && strings.TrimSpace(*p.EdxCohortID) != "" {
+	// The class teacher reads homework once it is handed in; drafts stay the student's.
+	if !canRead && CohortTeacherReader != nil && p.EdxCohortID != nil && strings.TrimSpace(*p.EdxCohortID) != "" &&
+		models.IsHandedIn(p.ReviewStatus) {
 		canRead = CohortTeacherReader(viewerUserID, derefStr(p.EdxCourseID), *p.EdxCohortID)
 	}
 	return ProjectAccess{
@@ -40,4 +42,10 @@ func Resolve(viewerUserID string, p *models.ScratchProjectDB) ProjectAccess {
 		CanRead:  canRead,
 		CanWrite: isOwner,
 	}
+}
+
+// SuperAdminReadsClassWork mirrors teacherclass canManage: a SuperAdmin manages every class,
+// so it reads class homework (projects keyed to a cohort). Other private projects stay closed.
+func SuperAdminReadsClassWork(role models.Role, p *models.ScratchProjectDB) bool {
+	return role == models.SuperAdmin && p.EdxCohortID != nil && strings.TrimSpace(*p.EdxCohortID) != ""
 }

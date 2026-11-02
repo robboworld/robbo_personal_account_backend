@@ -55,3 +55,55 @@ func TestResolve_anyRolePublicReadOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestSuperAdminReadsClassWork(t *testing.T) {
+	cohort, blank := "lk:class-1", " "
+	cases := []struct {
+		name   string
+		role   models.Role
+		cohort *string
+		want   bool
+	}{
+		{"superadmin class project", models.SuperAdmin, &cohort, true},
+		{"superadmin personal project", models.SuperAdmin, nil, false},
+		{"superadmin blank cohort", models.SuperAdmin, &blank, false},
+		{"teacher class project", models.Teacher, &cohort, false},
+		{"unit admin class project", models.UnitAdmin, &cohort, false},
+	}
+	for _, tc := range cases {
+		p := &models.ScratchProjectDB{OwnerUserID: "student-1", EdxCohortID: tc.cohort}
+		if got := SuperAdminReadsClassWork(tc.role, p); got != tc.want {
+			t.Fatalf("%s: got %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestResolve_classTeacherReadsOnlyHandedIn(t *testing.T) {
+	prev := CohortTeacherReader
+	CohortTeacherReader = func(teacherID, _, cohortID string) bool { return teacherID == "teacher-1" && cohortID == "7" }
+	t.Cleanup(func() { CohortTeacherReader = prev })
+
+	cohort := "7"
+	statuses := []struct {
+		status *string
+		want   bool
+	}{
+		{nil, false},
+		{strPtr(models.ReviewDraft), false},
+		{strPtr(models.ReviewSubmitted), true},
+		{strPtr(models.ReviewReturned), true},
+		{strPtr(models.ReviewAccepted), true},
+		{strPtr(models.ReviewShownInClass), true},
+	}
+	for _, tc := range statuses {
+		p := &models.ScratchProjectDB{OwnerUserID: "student-1", EdxCohortID: &cohort, ReviewStatus: tc.status}
+		if got := Resolve("teacher-1", p).CanRead; got != tc.want {
+			t.Fatalf("status %v: teacher CanRead = %v, want %v", derefStr(tc.status), got, tc.want)
+		}
+		if !Resolve("student-1", p).CanRead {
+			t.Fatalf("status %v: owner lost read", derefStr(tc.status))
+		}
+	}
+}
+
+func strPtr(s string) *string { return &s }

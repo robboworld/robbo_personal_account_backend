@@ -13,12 +13,36 @@ import (
 // Only what the student flows touch; anything else panics on the nil interface.
 type studentGateway struct {
 	teacherclass.Gateway
-	projects map[string]*models.ScratchProjectDB
-	reviewed string
+	projects    map[string]*models.ScratchProjectDB
+	assignments map[string]*models.ClassAssignmentDB
+	reviewed    string
+	newStatus   string
+}
+
+// GetAssignment: an entry of assignments, else an open assignment of cohort 7.
+func (g *studentGateway) GetAssignment(id string) (*models.ClassAssignmentDB, error) {
+	if a, ok := g.assignments[id]; ok {
+		return a, nil
+	}
+	return &models.ClassAssignmentDB{ID: id, EdxCohortID: "7"}, nil
+}
+
+func (g *studentGateway) SetAssignmentClosed(id string, closed bool) error {
+	a, _ := g.GetAssignment(id)
+	a.ClosedAt = nil
+	if closed {
+		now := time.Now()
+		a.ClosedAt = &now
+	}
+	if g.assignments == nil {
+		g.assignments = map[string]*models.ClassAssignmentDB{}
+	}
+	g.assignments[id] = a
+	return nil
 }
 
 func (g *studentGateway) GetInviteByID(string) (*models.ClassInviteDB, error) {
-	return &models.ClassInviteDB{ID: "class-1", EdxCourseID: "course-v1:R+S+1", EdxCohortID: "7", OwnerTeacherID: "10"}, nil
+	return &models.ClassInviteDB{ID: "class-1", EdxCourseID: "course-v1:R+S+1", EdxCohortID: "7", OwnerTeacherID: "10", LmsLinked: true}, nil
 }
 
 func (g *studentGateway) ListAssignments(string, string) ([]models.ClassAssignmentDB, error) {
@@ -41,8 +65,9 @@ func (g *studentGateway) GetProject(id string) (*models.ScratchProjectDB, error)
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (g *studentGateway) UpdateReview(projectID, _ string, _ string, _ *time.Time) error {
+func (g *studentGateway) UpdateReview(projectID, status string, _ string, _ *time.Time) error {
 	g.reviewed = projectID
+	g.newStatus = status
 	return nil
 }
 
@@ -111,16 +136,79 @@ func TestSubmitOnlyAssignmentCopies(t *testing.T) {
 	}
 }
 
+func TestSubmitOnlyDraftOrReturned(t *testing.T) {
+	for status, want := range map[string]error{
+		models.ReviewDraft:        nil,
+		models.ReviewReturned:     nil,
+		models.ReviewSubmitted:    teacherclass.ErrAlreadyHandedIn,
+		models.ReviewAccepted:     teacherclass.ErrAlreadyHandedIn,
+		models.ReviewShownInClass: teacherclass.ErrAlreadyHandedIn,
+	} {
+		gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
+			"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(status)},
+		}}
+		uc := &UseCaseImpl{gw: gw}
+		if err := uc.SubmitAssignment("797", "p1"); !errors.Is(err, want) {
+			t.Fatalf("submit from %s: err = %v, want %v", status, err, want)
+		}
+		if want != nil && gw.reviewed != "" {
+			t.Fatalf("submit from %s changed the review", status)
+		}
+	}
+}
+
+func TestSubmitClosedAssignment(t *testing.T) {
+	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
+		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(models.ReviewDraft)},
+	}}
+	uc := &UseCaseImpl{gw: gw}
+
+	if _, err := uc.SetAssignmentClosed("10", models.Teacher, "class-1", "a1", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.SubmitAssignment("797", "p1"); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
+		t.Fatalf("closed: err = %v, want ErrAssignmentClosed", err)
+	}
+	if _, err := uc.SetAssignmentClosed("10", models.Teacher, "class-1", "a1", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.SubmitAssignment("797", "p1"); err != nil {
+		t.Fatalf("reopened: err = %v", err)
+	}
+}
+
+func TestSubmitAfterDueIsAllowed(t *testing.T) {
+	past := time.Now().Add(-time.Hour)
+	gw := &studentGateway{
+		projects: map[string]*models.ScratchProjectDB{
+			"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(models.ReviewDraft)},
+		},
+		assignments: map[string]*models.ClassAssignmentDB{"a1": {ID: "a1", EdxCohortID: "7", DueAt: &past}},
+	}
+	if err := (&UseCaseImpl{gw: gw}).SubmitAssignment("797", "p1"); err != nil {
+		t.Fatalf("late submit err = %v", err)
+	}
+}
+
+func TestCloseOtherTeachersAssignment(t *testing.T) {
+	uc := &UseCaseImpl{gw: &studentGateway{}}
+	if _, err := uc.SetAssignmentClosed("11", models.Teacher, "class-1", "a1", true); !errors.Is(err, teacherclass.ErrForbidden) {
+		t.Fatalf("err = %v, want ErrForbidden", err)
+	}
+}
+
 type classListGateway struct {
 	studentGateway
 }
 
 func (g *classListGateway) ListActiveInvites() ([]models.ClassInviteDB, error) {
 	return []models.ClassInviteDB{
-		{ID: "c7", EdxCohortID: "7", DisplayName: "5A"},
-		{ID: "c9", EdxCohortID: "9", DisplayName: "6B"},
+		{ID: "c7", EdxCohortID: "7", DisplayName: "5A", LmsLinked: true},
+		{ID: "c9", EdxCohortID: "9", DisplayName: "6B", LmsLinked: true},
 	}, nil
 }
+
+func (g *classListGateway) ListMemberClassIDs(string) ([]string, error) { return nil, nil }
 
 func TestStudentClassesComeFromCohortMembership(t *testing.T) {
 	prev := studentCohortIDs

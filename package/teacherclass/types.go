@@ -15,25 +15,32 @@ var (
 	ErrUnauthorized = errors.New("unauthorized")
 	ErrInternal     = errors.New("internal error")
 	ErrAlreadyIn    = errors.New("already in class")
+	// The teacher stopped accepting work for the assignment.
+	ErrAssignmentClosed = errors.New("assignment_closed")
+	// The work is on review or reviewed: only a draft or returned work is handed in.
+	ErrAlreadyHandedIn = errors.New("already_handed_in")
 )
 
 type CreateClassInput struct {
 	CourseID    string
 	DisplayName string
+	// LinkLMS makes the class an Open edX cohort on CourseID; otherwise the ЛК keeps the roster.
+	LinkLMS bool
 }
 
 type ClassDTO struct {
-	ID             string     `json:"id"`
-	EdxCourseID    string     `json:"edxCourseId"`
-	EdxCohortID    string     `json:"edxCohortId"`
-	OwnerTeacherID string     `json:"ownerTeacherId"`
-	DisplayName    string     `json:"displayName"`
-	InviteCode     string     `json:"inviteCode"`
-	InviteSlug     string     `json:"inviteSlug"`
-	JoinURL        string     `json:"joinUrl"`
-	IsActive       bool       `json:"isActive"`
-	CreatedAt      time.Time  `json:"createdAt"`
-	OwnerName      string     `json:"ownerName,omitempty"`
+	ID             string    `json:"id"`
+	EdxCourseID    string    `json:"edxCourseId"`
+	EdxCohortID    string    `json:"edxCohortId"`
+	OwnerTeacherID string    `json:"ownerTeacherId"`
+	DisplayName    string    `json:"displayName"`
+	InviteCode     string    `json:"inviteCode"`
+	InviteSlug     string    `json:"inviteSlug"`
+	JoinURL        string    `json:"joinUrl"`
+	IsActive       bool      `json:"isActive"`
+	LmsLinked      bool      `json:"lmsLinked"`
+	CreatedAt      time.Time `json:"createdAt"`
+	OwnerName      string    `json:"ownerName,omitempty"`
 }
 
 // CourseDTO is a course a class can be created on.
@@ -43,11 +50,12 @@ type CourseDTO struct {
 }
 
 type JoinPreviewDTO struct {
-	DisplayName    string `json:"displayName"`
-	EdxCourseID    string `json:"edxCourseId"`
-	InviteSlug     string `json:"inviteSlug"`
-	OwnerName      string `json:"ownerName,omitempty"`
-	IsActive       bool   `json:"isActive"`
+	DisplayName string `json:"displayName"`
+	EdxCourseID string `json:"edxCourseId"`
+	InviteSlug  string `json:"inviteSlug"`
+	OwnerName   string `json:"ownerName,omitempty"`
+	IsActive    bool   `json:"isActive"`
+	LmsLinked   bool   `json:"lmsLinked"`
 }
 
 type CohortUserDTO struct {
@@ -73,6 +81,11 @@ type AssignmentDTO struct {
 	MyProjectID     string `json:"myProjectId,omitempty"`
 	MyReviewStatus  string `json:"myReviewStatus,omitempty"`
 	MyReviewComment string `json:"myReviewComment,omitempty"`
+	// CreateAssignment only: copies made, failed (issue-late retries them) and skipped
+	// (a cohort member without an LMS user id cannot own a project).
+	CopiesIssued  int `json:"copiesIssued,omitempty"`
+	CopiesFailed  int `json:"copiesFailed,omitempty"`
+	CopiesSkipped int `json:"copiesSkipped,omitempty"`
 }
 
 type CreateAssignmentInput struct {
@@ -83,8 +96,10 @@ type CreateAssignmentInput struct {
 	DueAt             *time.Time
 }
 
+// SubmissionDTO is one student's copy. The teacher gets a draft without ProjectID and
+// PreviewURL: when it was last saved, not what is in it.
 type SubmissionDTO struct {
-	ProjectID     string     `json:"projectId"`
+	ProjectID     string     `json:"projectId,omitempty"`
 	OwnerUserID   string     `json:"ownerUserId"`
 	Title         string     `json:"title"`
 	ReviewStatus  string     `json:"reviewStatus"`
@@ -92,12 +107,15 @@ type SubmissionDTO struct {
 	UpdatedAt     time.Time  `json:"updatedAt"`
 	SubmittedAt   *time.Time `json:"submittedAt,omitempty"`
 	PreviewURL    string     `json:"previewUrl,omitempty"`
+	// Late: handed in after the assignment's due date.
+	Late bool `json:"late,omitempty"`
 }
 
 type ProgressCellDTO struct {
 	AssignmentID string `json:"assignmentId"`
 	Status       string `json:"status"` // empty|draft|submitted|returned|accepted|shown_in_class|missing
 	ProjectID    string `json:"projectId,omitempty"`
+	Late         bool   `json:"late,omitempty"`
 }
 
 // ProgressRowDTO holds one project owner's cells; assignments without a project are omitted.
@@ -117,15 +135,23 @@ type Gateway interface {
 	ListAllInvites() ([]models.ClassInviteDB, error)
 	ListActiveInvites() ([]models.ClassInviteDB, error)
 
+	// Roster of classes not linked to the LMS.
+	AddMember(classID, userID string) error
+	RemoveMember(classID, userID string) error
+	ListMembers(classID string) ([]models.ClassMemberDB, error)
+	ListMemberClassIDs(userID string) ([]string, error)
+	IsMemberOfAny(userID string, classIDs []string) (bool, error)
+
 	CreateAssignment(a *models.ClassAssignmentDB) error
 	ListAssignments(courseID, cohortID string) ([]models.ClassAssignmentDB, error)
 	GetAssignment(id string) (*models.ClassAssignmentDB, error)
-	CloseAssignment(id string) error
+	SetAssignmentClosed(id string, closed bool) error
 
 	GetProject(id string) (*models.ScratchProjectDB, error)
 	// ForkProjectForStudent with a nil template issues an empty project.
 	ForkProjectForStudent(template *models.ScratchProjectDB, studentUserID, title string, assignment *models.ClassAssignmentDB) (*models.ScratchProjectDB, error)
 	ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error)
+	ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error)
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)
 	UpdateReview(projectID, status, comment string, submittedAt *time.Time) error
 	FindStudentAssignmentProject(assignmentID, studentUserID string) (*models.ScratchProjectDB, error)
@@ -151,6 +177,7 @@ type UseCase interface {
 	CreateAssignment(teacherID string, role models.Role, classID string, in CreateAssignmentInput) (*AssignmentDTO, error)
 	ListAssignments(viewerID string, role models.Role, classID string) ([]AssignmentDTO, error)
 	IssueToLatecomers(teacherID string, role models.Role, classID, assignmentID string) (issued int, err error)
+	SetAssignmentClosed(teacherID string, role models.Role, classID, assignmentID string, closed bool) (*AssignmentDTO, error)
 	SubmitAssignment(studentID, projectID string) error
 	ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error
 	ListSubmissions(teacherID string, role models.Role, classID, assignmentID string) ([]SubmissionDTO, error)
