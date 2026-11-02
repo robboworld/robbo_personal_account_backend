@@ -118,6 +118,14 @@ func optionalViewerID(c *gin.Context, authDelegate auth.Delegate) string {
 	return ""
 }
 
+// optionalViewerRole returns the authenticated user's role; Anonymous for guests.
+func optionalViewerRole(c *gin.Context, authDelegate auth.Delegate) models.Role {
+	if _, role, err := authDelegate.UserIdentity(c); err == nil {
+		return role
+	}
+	return models.Anonymous
+}
+
 func (h *Handler) ListReactionTypes(c *gin.Context) {
 	types, err := h.projectPageDelegate.ListEnabledReactionTypes()
 	if err != nil {
@@ -131,11 +139,11 @@ func (h *Handler) ListReactionTypes(c *gin.Context) {
 }
 
 func (h *Handler) GetProjectReactions(c *gin.Context) {
-	viewerID := ""
-	if id, _, err := h.authDelegate.UserIdentity(c); err == nil {
-		viewerID = id
+	viewerID, role := "", models.Anonymous
+	if id, r, err := h.authDelegate.UserIdentity(c); err == nil {
+		viewerID, role = id, r
 	}
-	summary, err := h.projectPageDelegate.GetProjectReactions(c.Param("projectPageId"), viewerID)
+	summary, err := h.projectPageDelegate.GetProjectReactions(c.Param("projectPageId"), viewerID, role)
 	if err != nil {
 		ErrorHandling(err, c)
 		return
@@ -346,8 +354,9 @@ type getProjectPageResponse struct {
 func (h *Handler) GetProjectPageById(c *gin.Context) {
 	log.Println("Get Project Page By ID")
 	userId := optionalViewerID(c, h.authDelegate)
+	role := optionalViewerRole(c, h.authDelegate)
 	projectPageId := c.Param("projectPageId")
-	page, err := h.projectPageDelegate.GetProjectPageById(projectPageId, userId)
+	page, err := h.projectPageDelegate.GetProjectPageById(projectPageId, userId, role)
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -355,7 +364,7 @@ func (h *Handler) GetProjectPageById(c *gin.Context) {
 	}
 
 	var playToken *projectPage.PlayTokenHTTP
-	if token, tokenErr := h.projectPageDelegate.IssuePlayToken(projectPageId, userId, backendBaseURL(c)); tokenErr == nil {
+	if token, tokenErr := h.projectPageDelegate.IssuePlayToken(projectPageId, userId, role, backendBaseURL(c)); tokenErr == nil {
 		playToken = token
 	}
 
@@ -687,7 +696,7 @@ func (h *Handler) IssuePlayToken(c *gin.Context) {
 		return
 	}
 	projectPageId := c.Param("projectPageId")
-	token, err := h.projectPageDelegate.IssuePlayToken(projectPageId, userId, backendBaseURL(c))
+	token, err := h.projectPageDelegate.IssuePlayToken(projectPageId, userId, role, backendBaseURL(c))
 	if err != nil {
 		log.Println(err)
 		ErrorHandling(err, c)
@@ -798,7 +807,7 @@ func detectPreviewMime(data []byte, filename string) (string, bool) {
 func (h *Handler) GetProjectPreview(c *gin.Context) {
 	userId := optionalViewerID(c, h.authDelegate)
 	projectPageId := c.Param("projectPageId")
-	data, mime, err := h.projectPageDelegate.GetPreviewImage(projectPageId, userId)
+	data, mime, err := h.projectPageDelegate.GetPreviewImage(projectPageId, userId, optionalViewerRole(c, h.authDelegate))
 	if err != nil {
 		ErrorHandling(err, c)
 		return

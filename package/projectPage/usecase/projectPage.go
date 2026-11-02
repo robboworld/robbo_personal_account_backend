@@ -133,7 +133,7 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale strin
 	return
 }
 
-func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId string) (
+func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId string, role models.Role) (
 	core *models.ProjectPageCore,
 	row *models.ScratchProjectDB,
 	acc access.ProjectAccess,
@@ -144,7 +144,7 @@ func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId stri
 		return nil, nil, access.ProjectAccess{}, err
 	}
 	acc = access.Resolve(viewerId, row)
-	if !acc.CanRead {
+	if !acc.CanRead && !access.SuperAdminReadsClassWork(role, row) {
 		return nil, nil, acc, auth.ErrNotAccess
 	}
 	core, err = p.projectPageGateway.GetProjectPageById(projectPageId)
@@ -290,11 +290,11 @@ func (p *ProjectPageUseCaseImpl) GetAllProjectPageByUserId(authorId, viewerId st
 	return
 }
 
-func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewerId string) (
+func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewerId string, role models.Role) (
 	projectPage *models.ProjectPageCore,
 	err error,
 ) {
-	core, _, _, err := p.enrichAndCheckRead(projectPageId, viewerId)
+	core, _, _, err := p.enrichAndCheckRead(projectPageId, viewerId, role)
 	return core, err
 }
 
@@ -324,8 +324,8 @@ func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, filte
 	return projectPages, countRows, nil
 }
 
-func (p *ProjectPageUseCaseImpl) GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error) {
-	_, _, _, err = p.enrichAndCheckRead(projectPageId, viewerId)
+func (p *ProjectPageUseCaseImpl) GetPreviewImage(projectPageId string, viewerId string, role models.Role) (data []byte, mime string, err error) {
+	_, _, _, err = p.enrichAndCheckRead(projectPageId, viewerId, role)
 	if err != nil {
 		return nil, "", err
 	}
@@ -387,7 +387,7 @@ func sb3DownloadFilename(title, fallbackPageID string) string {
 }
 
 func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
-	core, err := p.GetProjectPageById(projectPageId, viewerId)
+	core, err := p.GetProjectPageById(projectPageId, viewerId, models.Anonymous)
 	if err != nil {
 		return nil, "", err
 	}
@@ -433,12 +433,13 @@ func (p *ProjectPageUseCaseImpl) ListEnabledReactionTypes() ([]models.ReactionTy
 func (p *ProjectPageUseCaseImpl) GetProjectReactions(
 	projectPageId string,
 	viewerId string,
+	role models.Role,
 ) (*models.ProjectReactionsHTTP, error) {
 	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
 	if err != nil {
 		return nil, err
 	}
-	if !access.Resolve(viewerId, row).CanRead {
+	if !access.Resolve(viewerId, row).CanRead && !access.SuperAdminReadsClassWork(role, row) {
 		return nil, auth.ErrNotAccess
 	}
 	return p.projectPageGateway.GetProjectReactionSummary(projectPageId, strings.TrimSpace(viewerId))
@@ -639,12 +640,18 @@ func (p *ProjectPageUseCaseImpl) GetProjectJSONByToken(projectId string, token s
 	return vmJSON, nil
 }
 
-func (p *ProjectPageUseCaseImpl) IssuePlayToken(projectPageId string, viewerId string, backendBaseURL string) (*projectPage.PlayTokenHTTP, error) {
-	core, row, acc, err := p.enrichAndCheckRead(projectPageId, viewerId)
+func (p *ProjectPageUseCaseImpl) IssuePlayToken(projectPageId string, viewerId string, role models.Role, backendBaseURL string) (*projectPage.PlayTokenHTTP, error) {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
 	if err != nil {
 		return nil, err
 	}
-	_ = acc
+	if !access.Resolve(viewerId, row).CanRead && !access.SuperAdminReadsClassWork(role, row) {
+		return nil, auth.ErrNotAccess
+	}
+	core, err := p.projectPageGateway.GetProjectPageById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
 	token, expiresAt, err := playtoken.Issue(core.ProjectPageId, core.ProjectId)
 	if err != nil {
 		return nil, err

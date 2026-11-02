@@ -150,7 +150,7 @@ func (r *queryResolver) GetProjectPageByID(ctx context.Context, projectPageID st
 		return nil, accessErr
 	}
 
-	projectPageHttp, getProjectPageByIdErr := r.projectPageDelegate.GetProjectPageById(projectPageID, userId)
+	projectPageHttp, getProjectPageByIdErr := r.projectPageDelegate.GetProjectPageById(projectPageID, userId, userRole)
 	if getProjectPageByIdErr != nil {
 		if getProjectPageByIdErr == auth.ErrNotAccess {
 			return nil, &gqlerror.Error{

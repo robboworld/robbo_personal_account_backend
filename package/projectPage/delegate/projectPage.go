@@ -51,8 +51,8 @@ func (p *ProjectPageDelegateImpl) UpdateProjectPage(projectPage *models.ProjectP
 	return
 }
 
-func (p *ProjectPageDelegateImpl) GetProjectPageById(projectPageId string, viewerId string) (projectPage models.ProjectPageHTTP, err error) {
-	projectPageCore, err := p.UseCase.GetProjectPageById(projectPageId, viewerId)
+func (p *ProjectPageDelegateImpl) GetProjectPageById(projectPageId string, viewerId string, role models.Role) (projectPage models.ProjectPageHTTP, err error) {
+	projectPageCore, err := p.UseCase.GetProjectPageById(projectPageId, viewerId, role)
 	if err != nil {
 		return
 	}
@@ -68,8 +68,8 @@ func (p *ProjectPageDelegateImpl) PlayProjectSb3(projectPageId string, viewerId 
 	return p.UseCase.PlayProjectSb3(projectPageId, viewerId)
 }
 
-func (p *ProjectPageDelegateImpl) IssuePlayToken(projectPageId string, viewerId string, backendBaseURL string) (*projectPage.PlayTokenHTTP, error) {
-	return p.UseCase.IssuePlayToken(projectPageId, viewerId, backendBaseURL)
+func (p *ProjectPageDelegateImpl) IssuePlayToken(projectPageId string, viewerId string, role models.Role, backendBaseURL string) (*projectPage.PlayTokenHTTP, error) {
+	return p.UseCase.IssuePlayToken(projectPageId, viewerId, role, backendBaseURL)
 }
 
 func (p *ProjectPageDelegateImpl) PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error) {
@@ -91,8 +91,9 @@ func (p *ProjectPageDelegateImpl) ListEnabledReactionTypes() ([]models.ReactionT
 func (p *ProjectPageDelegateImpl) GetProjectReactions(
 	projectPageId string,
 	viewerId string,
+	role models.Role,
 ) (*models.ProjectReactionsHTTP, error) {
-	return p.UseCase.GetProjectReactions(projectPageId, viewerId)
+	return p.UseCase.GetProjectReactions(projectPageId, viewerId, role)
 }
 
 func (p *ProjectPageDelegateImpl) PutProjectReaction(
@@ -217,8 +218,8 @@ func (p *ProjectPageDelegateImpl) GetPublicProjectPages(page, pageSize string, f
 	return
 }
 
-func (p *ProjectPageDelegateImpl) GetPreviewImage(projectPageId string, viewerId string) (data []byte, mime string, err error) {
-	return p.UseCase.GetPreviewImage(projectPageId, viewerId)
+func (p *ProjectPageDelegateImpl) GetPreviewImage(projectPageId string, viewerId string, role models.Role) (data []byte, mime string, err error) {
+	return p.UseCase.GetPreviewImage(projectPageId, viewerId, role)
 }
 
 func (p *ProjectPageDelegateImpl) SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error {
