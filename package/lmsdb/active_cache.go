@@ -12,8 +12,8 @@ type activeCacheEntry struct {
 }
 
 var (
-	activeCacheMu sync.RWMutex
-	activeCache   = map[int64]activeCacheEntry{}
+	activeCacheMu  sync.RWMutex
+	activeCache    = map[int64]activeCacheEntry{}
 	activeCacheTTL = 60 * time.Second
 )
 

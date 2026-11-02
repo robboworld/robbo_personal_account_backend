@@ -43,12 +43,12 @@ type CommentReactionsHTTP struct {
 
 // ProjectCommentHTTP is one node in the comment tree.
 type ProjectCommentHTTP struct {
-	ID        string                `json:"id"`
-	Body      string                `json:"body"`
-	CreatedAt string                `json:"createdAt"`
-	Author    CommentAuthorHTTP     `json:"author"`
-	Reactions CommentReactionsHTTP  `json:"reactions"`
-	Replies   []ProjectCommentHTTP  `json:"replies"`
+	ID        string               `json:"id"`
+	Body      string               `json:"body"`
+	CreatedAt string               `json:"createdAt"`
+	Author    CommentAuthorHTTP    `json:"author"`
+	Reactions CommentReactionsHTTP `json:"reactions"`
+	Replies   []ProjectCommentHTTP `json:"replies"`
 }
 
 // ProjectCommentsHTTP is the list response.

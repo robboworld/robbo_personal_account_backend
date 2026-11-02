@@ -20,12 +20,12 @@ import (
 )
 
 var (
-	ErrCannotBanSelf     = errors.New("cannot ban yourself")
-	ErrAlreadyBanned     = errors.New("user is already banned")
-	ErrNotBanned         = errors.New("user is not banned")
-	ErrReasonRequired    = errors.New("ban reason is required")
-	ErrInvalidExpiresAt  = errors.New("expiresAt must be in the future")
-	ErrExpiresAtTooFar   = errors.New("expiresAt exceeds maximum ban duration")
+	ErrCannotBanSelf    = errors.New("cannot ban yourself")
+	ErrAlreadyBanned    = errors.New("user is already banned")
+	ErrNotBanned        = errors.New("user is not banned")
+	ErrReasonRequired   = errors.New("ban reason is required")
+	ErrInvalidExpiresAt = errors.New("expiresAt must be in the future")
+	ErrExpiresAtTooFar  = errors.New("expiresAt exceeds maximum ban duration")
 )
 
 const defaultMaxBanDays = 365

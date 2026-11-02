@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/spf13/viper"
 )
 

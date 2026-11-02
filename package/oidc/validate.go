@@ -14,13 +14,13 @@ import (
 )
 
 type IDTokenClaims struct {
-	Iss   string `json:"iss"`
-	Sub   string `json:"sub"`
+	Iss   string      `json:"iss"`
+	Sub   string      `json:"sub"`
 	Aud   interface{} `json:"aud"`
-	Exp   int64  `json:"exp"`
-	Nonce string `json:"nonce"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	Exp   int64       `json:"exp"`
+	Nonce string      `json:"nonce"`
+	Email string      `json:"email"`
+	Name  string      `json:"name"`
 }
 
 func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims, error) {
@@ -57,13 +57,13 @@ func (c *Config) ValidateIDToken(idToken, expectedNonce string) (*IDTokenClaims,
 		return nil, errors.New("oidc: invalid claims")
 	}
 	claims := &IDTokenClaims{
-		Iss: asString(raw["iss"]),
-		Sub: asString(raw["sub"]),
-		Aud: raw["aud"],
-		Exp: asInt64(raw["exp"]),
+		Iss:   asString(raw["iss"]),
+		Sub:   asString(raw["sub"]),
+		Aud:   raw["aud"],
+		Exp:   asInt64(raw["exp"]),
 		Nonce: asString(raw["nonce"]),
 		Email: asString(raw["email"]),
-		Name: asString(raw["name"]),
+		Name:  asString(raw["name"]),
 	}
 	if !issuerMatches(claims.Iss, c.Issuer) {
 		return nil, errors.New("oidc: invalid_issuer")

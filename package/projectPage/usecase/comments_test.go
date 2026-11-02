@@ -10,10 +10,10 @@ import (
 )
 
 type stubCommentGateway struct {
-	project  *models.ScratchProjectDB
-	comment  *models.ScratchProjectCommentDB
-	deleted  bool
-	created  *models.ScratchProjectCommentDB
+	project *models.ScratchProjectDB
+	comment *models.ScratchProjectCommentDB
+	deleted bool
+	created *models.ScratchProjectCommentDB
 }
 
 func (s *stubCommentGateway) GetScratchProjectById(string) (*models.ScratchProjectDB, error) {

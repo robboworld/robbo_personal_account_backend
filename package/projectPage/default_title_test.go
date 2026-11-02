@@ -23,14 +23,14 @@ func TestDefaultProjectTitle(t *testing.T) {
 
 func TestLocaleFromAcceptLanguage(t *testing.T) {
 	cases := map[string]string{
-		"":                         DefaultLanguage,
-		"ru":                       "ru",
-		"ru-RU,ru;q=0.9,en;q=0.8":  "ru",
-		"zh-CN,zh;q=0.9":           "zh",
-		"en-US,en;q=0.9":           "en",
-		"fr-FR,fr;q=0.9,en;q=0.8":  "en",
-		"fr,de":                    DefaultLanguage,
-		"*":                        DefaultLanguage,
+		"":                        DefaultLanguage,
+		"ru":                      "ru",
+		"ru-RU,ru;q=0.9,en;q=0.8": "ru",
+		"zh-CN,zh;q=0.9":          "zh",
+		"en-US,en;q=0.9":          "en",
+		"fr-FR,fr;q=0.9,en;q=0.8": "en",
+		"fr,de":                   DefaultLanguage,
+		"*":                       DefaultLanguage,
 	}
 	for input, want := range cases {
 		if got := LocaleFromAcceptLanguage(input); got != want {

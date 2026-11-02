@@ -15,7 +15,7 @@ import (
 var (
 	usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 	emailPattern    = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
-	ruPhonePattern = regexp.MustCompile(`^\+7\d{10}$`)
+	ruPhonePattern  = regexp.MustCompile(`^\+7\d{10}$`)
 )
 
 func isValidInternationalPhone(phone string) bool {

@@ -36,12 +36,12 @@ type ReceiptCustomer struct {
 }
 
 type ReceiptItem struct {
-	Description    string        `json:"description"`
-	Quantity       string        `json:"quantity"`
-	Amount         AmountValue   `json:"amount"`
-	VatCode        int           `json:"vat_code"`
-	PaymentMode    string        `json:"payment_mode"`
-	PaymentSubject string        `json:"payment_subject"`
+	Description    string      `json:"description"`
+	Quantity       string      `json:"quantity"`
+	Amount         AmountValue `json:"amount"`
+	VatCode        int         `json:"vat_code"`
+	PaymentMode    string      `json:"payment_mode"`
+	PaymentSubject string      `json:"payment_subject"`
 }
 
 type AmountValue struct {
