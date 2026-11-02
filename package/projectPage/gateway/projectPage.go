@@ -232,6 +232,40 @@ func (r *ProjectPageGatewayImpl) GetLatestSb3Archive(projectPageId string) (arch
 	return ver.Archive, nil
 }
 
+// GetTemplateSb3Archive loads an assignment template's .sb3 (current version, else the newest),
+// even when the template itself was deleted: the copies issued from it still need its assets.
+func (r *ProjectPageGatewayImpl) GetTemplateSb3Archive(templateProjectID string) ([]byte, error) {
+	var tpl models.ScratchProjectDB
+	if err := r.projectStorageDB.Select("id, current_version_id").Where("id = ?", templateProjectID).
+		First(&tpl).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, projectPage.ErrSb3ArchiveNotFound
+		}
+		return nil, err
+	}
+	var ver models.ScratchProjectVersionDB
+	versions := func() *gorm.DB {
+		return r.projectStorageDB.Model(&models.ScratchProjectVersionDB{}).Select("archive").Where("project_id = ?", tpl.ID)
+	}
+	err := gorm.ErrRecordNotFound
+	if tpl.CurrentVersionID != nil && *tpl.CurrentVersionID != "" {
+		err = versions().Where("id = ?", *tpl.CurrentVersionID).First(&ver).Error
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = versions().Order("version_seq DESC").First(&ver).Error
+	}
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, projectPage.ErrSb3ArchiveNotFound
+		}
+		return nil, err
+	}
+	if len(ver.Archive) == 0 {
+		return nil, projectPage.ErrSb3ArchiveNotFound
+	}
+	return ver.Archive, nil
+}
+
 func (r *ProjectPageGatewayImpl) GetScratchProjectById(projectPageId string) (projectDB *models.ScratchProjectDB, err error) {
 	var row models.ScratchProjectDB
 	storageProjectID, resolveErr := r.resolveStorageProjectID(r.projectStorageDB, projectPageId)

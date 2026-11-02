@@ -411,7 +411,7 @@ func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, viewer
 	if err != nil {
 		return nil, "", err
 	}
-	data, err = p.projectPageGateway.GetLatestSb3Archive(projectPageId)
+	data, err = p.sb3Archive(projectPageId)
 	if err != nil {
 		return nil, "", err
 	}
@@ -438,7 +438,7 @@ func (p *ProjectPageUseCaseImpl) PlayProjectSb3ByToken(projectPageId string, tok
 	if !row.IsPublic && claims.ProjectID != row.ID {
 		return nil, "", auth.ErrInvalidAccessToken
 	}
-	data, err = p.projectPageGateway.GetLatestSb3Archive(projectPageId)
+	data, err = p.sb3Archive(projectPageId)
 	if err != nil {
 		return nil, "", err
 	}
@@ -679,7 +679,7 @@ func (p *ProjectPageUseCaseImpl) IssuePlayToken(projectPageId string, viewerId s
 	base := strings.TrimRight(backendBaseURL, "/")
 	q := url.QueryEscape(token)
 	playURL := ""
-	if _, errSb3 := p.projectPageGateway.GetLatestSb3Archive(projectPageId); errSb3 == nil {
+	if _, errSb3 := p.sb3Archive(projectPageId); errSb3 == nil {
 		playURL = fmt.Sprintf("%s/projectPage/%s/play?token=%s", base, url.PathEscape(projectPageId), q)
 	}
 	jsonURL := fmt.Sprintf("%s/project/%s?token=%s", base, url.PathEscape(row.ID), q)

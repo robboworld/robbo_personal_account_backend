@@ -70,6 +70,7 @@ func (s *stubCommentGateway) GetPublicProjectPages(int, int, projectPage.PublicL
 func (s *stubCommentGateway) GetPreviewImage(string) ([]byte, string, error) { panic("unused") }
 func (s *stubCommentGateway) SavePreviewImage(string, []byte, string) error  { panic("unused") }
 func (s *stubCommentGateway) GetLatestSb3Archive(string) ([]byte, error)     { panic("unused") }
+func (s *stubCommentGateway) GetTemplateSb3Archive(string) ([]byte, error)   { panic("unused") }
 func (s *stubCommentGateway) SaveSb3Archive(string, string, []byte, string) error {
 	panic("unused")
 }

@@ -27,6 +27,7 @@ type Gateway interface {
 	GetPreviewImage(projectPageId string) (data []byte, mime string, err error)
 	SavePreviewImage(projectPageId string, data []byte, mime string) error
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
+	GetTemplateSb3Archive(templateProjectID string) (archive []byte, err error)
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
 	ListSb3PruneCandidates(policy Sb3RetentionPolicy, limit int) (projectIDs []string, err error)
 	PruneSb3Versions(projectID string, policy Sb3RetentionPolicy) (deleted int64, err error)
