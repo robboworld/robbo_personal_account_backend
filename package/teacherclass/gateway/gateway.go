@@ -233,13 +233,16 @@ func (g *GatewayImpl) ForkProjectForStudent(template *models.ScratchProjectDB, s
 // sounds live only in the archive: a JSON-only copy fails in the player with
 // "costume.asset is null" for any asset not bundled with the editor.
 func copyCurrentSb3(tx *gorm.DB, template, row *models.ScratchProjectDB) error {
+	// The current version, the newest one if current is unset (as GetLatestSb3Archive).
+	// Two queries: gorm's Order() silently drops a clause.Expr such as "(id = ?) DESC".
 	var src models.ScratchProjectVersionDB
-	q := tx.Where("project_id = ?", template.ID)
-	// The current version first, the newest one if current is unset (as GetLatestSb3Archive).
+	err := gorm.ErrRecordNotFound
 	if template.CurrentVersionID != nil && *template.CurrentVersionID != "" {
-		q = q.Order(clause.Expr{SQL: "(id = ?) DESC", Vars: []interface{}{*template.CurrentVersionID}})
+		err = tx.Where("id = ? AND project_id = ?", *template.CurrentVersionID, template.ID).First(&src).Error
 	}
-	err := q.Order("version_seq DESC").First(&src).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		err = tx.Where("project_id = ?", template.ID).Order("version_seq DESC").First(&src).Error
+	}
 	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && len(src.Archive) == 0) {
 		return nil
 	}
