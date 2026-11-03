@@ -35,6 +35,9 @@ func superAdminOnly() []models.Role {
 	return []models.Role{models.SuperAdmin}
 }
 
+// backendBaseURL is the API origin as the browser sees it: play-token URLs are fetched by the
+// Scratch player, so behind a proxy that rewrites Host (prod lk-proxy → 127.0.0.1:8080) the
+// X-Forwarded-* headers must win.
 func backendBaseURL(c *gin.Context) string {
 	scheme := "http"
 	if c.Request.TLS != nil {
@@ -44,6 +47,9 @@ func backendBaseURL(c *gin.Context) string {
 		scheme = strings.TrimSpace(strings.Split(fwd, ",")[0])
 	}
 	host := c.Request.Host
+	if fwd := strings.TrimSpace(strings.Split(c.GetHeader("X-Forwarded-Host"), ",")[0]); fwd != "" {
+		host = fwd
+	}
 	if host == "" {
 		host = "localhost:8080"
 	}
