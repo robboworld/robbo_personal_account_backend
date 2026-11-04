@@ -95,6 +95,18 @@ userFiles:
   retainDeletedDays: 7
   gc:
     interval: 1h
+  # ClamAV (clamd, INSTREAM over TCP). An empty address skips the scan. required: an upload
+  # is refused when the scan cannot run (503 SCAN_UNAVAILABLE); file assignments in classes
+  # are on only then. Env: USERFILES_ANTIVIRUS_ADDRESS, _TIMEOUT, _REQUIRED.
+  antivirus:
+    address: ""
+    timeout: 2m
+    required: false
+
+# Classes. A file assignment's submission holds at most this many files.
+# Env: CLASSES_MAXSUBMISSIONFILES
+classes:
+  maxSubmissionFiles: 10
 
 # Super admin "Хранилище": the low-space alert to every super admin's bell (at most daily while
 # low) and the top of accounts by stored bytes.

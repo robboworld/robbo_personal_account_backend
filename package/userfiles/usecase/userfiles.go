@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"io"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/storage"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/antivirus"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/blobstore"
 	"github.com/spf13/viper"
 )
@@ -41,6 +43,7 @@ type Config struct {
 	MaxUploadsPerHour    int64
 	// Uploads stop while the blob volume has less free space than this plus one file.
 	MinFreeDiskMB int64
+	Antivirus     antivirus.Config
 }
 
 func ConfigFromViper() Config {
@@ -53,6 +56,7 @@ func ConfigFromViper() Config {
 		MaxConcurrentUploads: viper.GetInt("userFiles.maxConcurrentUploads"),
 		MaxUploadsPerHour:    viper.GetInt64("userFiles.maxUploadsPerHour"),
 		MinFreeDiskMB:        viper.GetInt64("userFiles.minFreeDiskMB"),
+		Antivirus:            antivirus.ConfigFromViper(),
 	}
 	if c.MaxUploadMB <= 0 {
 		c.MaxUploadMB = defaultMaxUploadMB
@@ -81,6 +85,8 @@ type UserFilesUseCaseImpl struct {
 	blobs            blobstore.BlobStore
 	quota            *storage.Quota
 	licensingGateway licensing.Gateway
+	// scanner is nil when userFiles.antivirus.address is empty.
+	scanner antivirus.Scanner
 
 	mu       sync.Mutex
 	inFlight map[string]int // uploads in progress per owner (one backend instance)
@@ -99,6 +105,7 @@ func NewUserFilesUseCase(
 		blobs:            blobs,
 		quota:            quota,
 		licensingGateway: licensingGateway,
+		scanner:          antivirus.New(cfg.Antivirus),
 		inFlight:         map[string]int{},
 	}
 }
@@ -135,6 +142,38 @@ func (u *UserFilesUseCaseImpl) checkFreeSpace(need int64) error {
 }
 
 func (u *UserFilesUseCaseImpl) Enabled() bool { return u.cfg.Enabled && u.blobs != nil }
+
+func (u *UserFilesUseCaseImpl) AcceptedKinds() []string { return AcceptedKinds() }
+
+func (u *UserFilesUseCaseImpl) ExchangeEnabled() bool {
+	return u.Enabled() && u.cfg.Antivirus.Required && u.scanner != nil
+}
+
+// scan runs ClamAV over the contents. scanned is false when the scan was skipped: no clamd
+// configured, or clamd failed while the scan is not required.
+func (u *UserFilesUseCaseImpl) scan(ownerUserID, name string, r io.Reader) (scanned bool, err error) {
+	if u.scanner == nil {
+		if u.cfg.Antivirus.Required {
+			return false, userfiles.ErrScanUnavailable
+		}
+		return false, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), u.cfg.Antivirus.Timeout)
+	defer cancel()
+	sig, err := u.scanner.Scan(ctx, r)
+	if err != nil {
+		log.Printf("userfiles: antivirus scan of %q for %s: %v", name, ownerUserID, err)
+		if u.cfg.Antivirus.Required {
+			return false, userfiles.ErrScanUnavailable
+		}
+		return false, nil
+	}
+	if sig != "" {
+		log.Printf("userfiles: antivirus: %q from %s matches %s, refused", name, ownerUserID, sig)
+		return false, userfiles.ErrFileInfected
+	}
+	return true, nil
+}
 
 // MaxUploadBytes is the largest file the owner may upload: the tariff's per-project size
 // (10 MB Free / 50 MB paid), capped by userFiles.maxUploadMB.
@@ -250,6 +289,11 @@ func (u *UserFilesUseCaseImpl) Upload(ownerUserID, name string, r io.Reader) (*m
 	if err != nil {
 		return nil, err
 	}
+	// The upload as it came, before images are re-encoded.
+	scanned, err := u.scan(ownerUserID, name, io.NewSectionReader(staged, 0, staged.Size()))
+	if err != nil {
+		return nil, err
+	}
 	if isImageKind(kind) {
 		clean, err := u.sanitizeImage(kind, staged, maxBytes)
 		if err != nil {
@@ -271,6 +315,9 @@ func (u *UserFilesUseCaseImpl) Upload(ownerUserID, name string, r io.Reader) (*m
 		SHA256:       staged.SHA256(),
 		HasScripts:   hasScripts,
 		CreatedAt:    time.Now().UTC(),
+	}
+	if scanned {
+		row.ScannedAt = &row.CreatedAt
 	}
 	if err := u.blobs.Publish(staged, row.ID); err != nil {
 		return nil, err
@@ -320,6 +367,29 @@ func (u *UserFilesUseCaseImpl) Open(ownerUserID, id string) (*models.UserFileDB,
 	return row, rc, nil
 }
 
+func (u *UserFilesUseCaseImpl) EnsureScanned(ownerUserID, id string) (*models.UserFileDB, error) {
+	row, rc, err := u.Open(ownerUserID, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	if row.ScannedAt != nil {
+		return row, nil
+	}
+	scanned, err := u.scan(ownerUserID, row.OriginalName, rc)
+	if err != nil {
+		return nil, err
+	}
+	if scanned {
+		now := time.Now().UTC()
+		if err := u.gateway.MarkScanned(row.ID, now); err != nil {
+			return nil, err
+		}
+		row.ScannedAt = &now
+	}
+	return row, nil
+}
+
 // Delete frees the quota and the disk at once: the bytes go now, the row stays for
 // userFiles.retainDeletedDays as a record. Keeping the bytes too would let an account fill
 // the volume by uploading and deleting in a loop.
@@ -329,6 +399,15 @@ func (u *UserFilesUseCaseImpl) Delete(ownerUserID, id string) error {
 	}
 	if _, err := uuid.Parse(id); err != nil {
 		return userfiles.ErrFileNotFound
+	}
+	if userfiles.FileInUse != nil {
+		inUse, err := userfiles.FileInUse(ownerUserID, id)
+		if err != nil {
+			return err
+		}
+		if inUse {
+			return userfiles.ErrFileInUse
+		}
 	}
 	if err := u.gateway.SoftDelete(ownerUserID, id); err != nil {
 		return err

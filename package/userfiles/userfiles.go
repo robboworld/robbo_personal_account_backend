@@ -26,7 +26,19 @@ var (
 	ErrUploadRateLimited = errors.New("UPLOAD_RATE_LIMITED")
 	// ErrStorageUnavailable — the blob volume is short of free space.
 	ErrStorageUnavailable = errors.New("STORAGE_UNAVAILABLE")
+	// ErrFileInfected — ClamAV matched a signature; the file is not stored or shared.
+	ErrFileInfected = errors.New("FILE_INFECTED")
+	// ErrScanUnavailable — the scan is required (userFiles.antivirus.required) but clamd
+	// did not answer.
+	ErrScanUnavailable = errors.New("SCAN_UNAVAILABLE")
+	// ErrFileInUse — the file is handed in for an assignment, or is a class's starter file.
+	ErrFileInUse = errors.New("FILE_IN_USE")
 )
+
+// FileInUse reports whether a class still needs the file (homework on review or reviewed,
+// a starter file of an open assignment), so its owner may not delete it. Set by the app to
+// a teacherclass query; nil means no file is in use.
+var FileInUse func(ownerUserID, fileID string) (bool, error)
 
 type Gateway interface {
 	// GetTotalStorageBytesForOwner sums the owner's files that are not deleted (storage.UsageSource).
@@ -41,6 +53,8 @@ type Gateway interface {
 	// uploads at once cannot both fit into the last free megabytes.
 	CreateLocked(row *models.UserFileDB, check func() error) error
 	SoftDelete(ownerUserID, id string) error
+	// MarkScanned records that ClamAV found the file clean.
+	MarkScanned(id string, at time.Time) error
 	ListDeletedBefore(t time.Time, limit int) ([]string, error)
 	HardDelete(ids []string) error
 }
@@ -52,6 +66,14 @@ type UseCase interface {
 	List(ownerUserID string) ([]*models.UserFileDB, error)
 	CountFiles(ownerUserID string) (int64, error)
 	Open(ownerUserID, id string) (*models.UserFileDB, io.ReadSeekCloser, error)
+	// AcceptedKinds are the kinds a stored file can have (user_files.kind).
+	AcceptedKinds() []string
+	// ExchangeEnabled: files may reach another account (class assignments). Needs the
+	// feature on and a required antivirus scan.
+	ExchangeEnabled() bool
+	// EnsureScanned returns the owner's file, scanning it first if it never was (uploaded
+	// before the scanner). ErrFileInfected for a match, ErrScanUnavailable without clamd.
+	EnsureScanned(ownerUserID, id string) (*models.UserFileDB, error)
 	Delete(ownerUserID, id string) error
 	// CollectGarbage removes rows of files deleted longer ago than the retention, and
 	// leftovers of interrupted uploads. The bytes go at Delete already.

@@ -20,6 +20,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/graph/generated"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/resolvers"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/antivirus"
 	"github.com/spf13/viper"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -48,6 +49,12 @@ func NewServer(lifecycle fx.Lifecycle, graphQLModule modules.GraphQLModule, hand
 				checks := []readinessCheck{{name: "lms_mysql", ping: lmsdb.Ping}}
 				if p, ok := handlers.LicensingGateway.(pinger); ok {
 					checks = append(checks, readinessCheck{name: "licensing_db", ping: p.Ping})
+				}
+				// Uploads stop without clamd when the scan is required: the deploy must see it.
+				if av := antivirus.ConfigFromViper(); av.Required && viper.GetBool("userFiles.enabled") {
+					if sc := antivirus.New(av); sc != nil {
+						checks = append(checks, readinessCheck{name: "clamd", ping: sc.Ping})
+					}
 				}
 				server = &http.Server{
 					Addr:    viper.GetString("server.address"),

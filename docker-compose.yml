@@ -67,6 +67,11 @@ services:
       - PAYMENTS_YOOKASSA_SECRET_KEY=${PAYMENTS_YOOKASSA_SECRET_KEY:-}
       # "Мои файлы" (off until the frontend opens it); the bytes go to the lk_userfiles volume.
       - USERFILES_ENABLED=${USERFILES_ENABLED:-false}
+      # ClamAV for "Мои файлы" (service clamd, profile antivirus). Empty address: no scan.
+      # Required: an upload without a scan is refused; file assignments in classes need it.
+      - USERFILES_ANTIVIRUS_ADDRESS=${USERFILES_ANTIVIRUS_ADDRESS:-}
+      - USERFILES_ANTIVIRUS_REQUIRED=${USERFILES_ANTIVIRUS_REQUIRED:-false}
+      - CLASSES_MAXSUBMISSIONFILES=${CLASSES_MAXSUBMISSIONFILES:-10}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -79,10 +84,27 @@ services:
     networks:
       - lk
 
+  # ClamAV daemon for "Мои файлы": the app streams each upload to clamd:3310 (INSTREAM).
+  # Off in dev unless asked for: docker compose --profile antivirus up -d clamd, then
+  # USERFILES_ANTIVIRUS_ADDRESS=clamd:3310. It needs about 1.5 GB of RAM; the first start
+  # loads the signatures for a minute or two (the image's own healthcheck waits for it).
+  clamd:
+    image: clamav/clamav:1.5.4
+    profiles: [antivirus]
+    restart: unless-stopped
+    mem_limit: ${CLAMD_MEM_LIMIT:-3g}
+    volumes:
+      # Signatures freshclam keeps updating; kept across restarts and image updates.
+      - clamav:/var/lib/clamav
+    networks:
+      - lk
+
 volumes:
   userfiles:
     # Fixed name: deploy/lk-remote.sh backs it up by this name.
     name: lk_userfiles
+  clamav:
+    name: lk_clamav
 
 networks:
   lk:

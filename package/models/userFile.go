@@ -4,16 +4,18 @@ import "time"
 
 // UserFileDB maps user_files ("Мои файлы"); the bytes live in the userfiles blob store under ID.
 type UserFileDB struct {
-	ID           string     `gorm:"column:id;type:uuid;primaryKey"`
-	OwnerUserID  string     `gorm:"column:owner_user_id"`
-	OriginalName string     `gorm:"column:original_name"`
-	Kind         string     `gorm:"column:kind"`
-	Mime         string     `gorm:"column:mime"`
-	SizeBytes    int64      `gorm:"column:size_bytes"`
-	SHA256       string     `gorm:"column:sha256"`
-	HasScripts   bool       `gorm:"column:has_scripts"` // Python scripts inside a zip or FreeCAD model
-	CreatedAt    time.Time  `gorm:"column:created_at"`
-	DeletedAt    *time.Time `gorm:"column:deleted_at"`
+	ID           string `gorm:"column:id;type:uuid;primaryKey"`
+	OwnerUserID  string `gorm:"column:owner_user_id"`
+	OriginalName string `gorm:"column:original_name"`
+	Kind         string `gorm:"column:kind"`
+	Mime         string `gorm:"column:mime"`
+	SizeBytes    int64  `gorm:"column:size_bytes"`
+	SHA256       string `gorm:"column:sha256"`
+	HasScripts   bool   `gorm:"column:has_scripts"` // Python scripts inside a zip or FreeCAD model
+	// ScannedAt: when ClamAV found the file clean; nil if it was never scanned.
+	ScannedAt *time.Time `gorm:"column:scanned_at"`
+	CreatedAt time.Time  `gorm:"column:created_at"`
+	DeletedAt *time.Time `gorm:"column:deleted_at"`
 }
 
 func (UserFileDB) TableName() string {

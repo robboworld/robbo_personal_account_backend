@@ -100,6 +100,10 @@ func (g *UserFilesGatewayImpl) SoftDelete(ownerUserID, id string) error {
 	return nil
 }
 
+func (g *UserFilesGatewayImpl) MarkScanned(id string, at time.Time) error {
+	return g.db.Model(&models.UserFileDB{}).Where("id = ?", id).Update("scanned_at", at).Error
+}
+
 func (g *UserFilesGatewayImpl) ListDeletedBefore(t time.Time, limit int) ([]string, error) {
 	var ids []string
 	err := g.db.Model(&models.UserFileDB{}).

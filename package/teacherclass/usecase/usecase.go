@@ -15,6 +15,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
@@ -23,6 +24,8 @@ import (
 type UseCaseImpl struct {
 	gw  teacherclass.Gateway
 	edx edx.UseCase
+	// files is "Мои файлы": file assignments are handed in from there.
+	files userfiles.UseCase
 }
 
 type UseCaseModule struct {
@@ -30,8 +33,8 @@ type UseCaseModule struct {
 	teacherclass.UseCase
 }
 
-func SetupTeacherClassUseCase(gw teacherclass.Gateway, edxUC edx.UseCase) UseCaseModule {
-	return UseCaseModule{UseCase: &UseCaseImpl{gw: gw, edx: edxUC}}
+func SetupTeacherClassUseCase(gw teacherclass.Gateway, edxUC edx.UseCase, files userfiles.UseCase) UseCaseModule {
+	return UseCaseModule{UseCase: &UseCaseImpl{gw: gw, edx: edxUC, files: files}}
 }
 
 func (u *UseCaseImpl) toDTO(inv *models.ClassInviteDB) *teacherclass.ClassDTO {
@@ -769,7 +772,18 @@ func (u *UseCaseImpl) removeLocalMember(classID, member string) error {
 }
 
 func assignmentDTO(a *models.ClassAssignmentDB) teacherclass.AssignmentDTO {
+	kind := models.AssignmentScratch
+	var maxFiles int
+	if a.IsFileAssignment() {
+		kind = models.AssignmentFile
+		maxFiles = maxSubmissionFiles()
+	}
+	allowed := []string{}
+	allowed = append(allowed, a.AllowedKinds...)
 	return teacherclass.AssignmentDTO{
+		Kind:               kind,
+		AllowedKinds:       allowed,
+		MaxFiles:           maxFiles,
 		ID:                 a.ID,
 		EdxCourseID:        a.EdxCourseID,
 		EdxCohortID:        a.EdxCohortID,
@@ -795,9 +809,37 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 	if in.Title == "" || in.AssignmentKey == "" {
 		return nil, teacherclass.ErrBadRequest
 	}
+	a := &models.ClassAssignmentDB{
+		EdxCourseID:        inv.EdxCourseID,
+		EdxCohortID:        inv.EdxCohortID,
+		CreatedByTeacherID: teacherID,
+		Title:              in.Title,
+		Instructions:       in.Instructions,
+		AssignmentKey:      in.AssignmentKey,
+		DueAt:              in.DueAt,
+	}
+	switch in.Kind {
+	case "", models.AssignmentScratch:
+	case models.AssignmentFile:
+		// Students hand in files later: nothing is issued now.
+		starter, err := u.prepareFileAssignment(teacherID, in, a)
+		if err != nil {
+			return nil, err
+		}
+		if err := u.gw.CreateAssignment(a); err != nil {
+			return nil, err
+		}
+		dto := assignmentDTO(a)
+		if starter != nil {
+			ref := teacherclass.FileRef(starter)
+			dto.TemplateFile = &ref
+		}
+		return &dto, nil
+	default:
+		return nil, teacherclass.ErrBadRequest
+	}
 	// The template is optional: without one every student starts from an empty project.
 	var tpl *models.ScratchProjectDB
-	var tplID *string
 	if in.TemplateProjectID != "" {
 		tpl, err = u.gw.GetProject(in.TemplateProjectID)
 		if err != nil {
@@ -806,17 +848,7 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 		if tpl.OwnerUserID != teacherID {
 			return nil, teacherclass.ErrForbidden
 		}
-		tplID = &in.TemplateProjectID
-	}
-	a := &models.ClassAssignmentDB{
-		EdxCourseID:        inv.EdxCourseID,
-		EdxCohortID:        inv.EdxCohortID,
-		CreatedByTeacherID: teacherID,
-		Title:              in.Title,
-		Instructions:       in.Instructions,
-		AssignmentKey:      in.AssignmentKey,
-		TemplateProjectID:  tplID,
-		DueAt:              in.DueAt,
+		a.TemplateProjectID = &in.TemplateProjectID
 	}
 	if err := u.gw.CreateAssignment(a); err != nil {
 		return nil, err
@@ -865,12 +897,7 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 		if err != nil {
 			return nil, teacherclass.ErrNotFound
 		}
-		var member bool
-		if inv.LmsLinked {
-			member, err = studentInCohort(viewerID, inv.EdxCohortID)
-		} else {
-			member, err = u.gw.IsMemberOfAny(viewerID, []string{inv.ID})
-		}
+		member, err := u.isClassMember(viewerID, inv)
 		if err != nil {
 			return nil, err
 		}
@@ -885,15 +912,24 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 	studentView := role != models.Teacher && role != models.SuperAdmin
 	out := make([]teacherclass.AssignmentDTO, 0, len(list))
 	for i := range list {
-		dto := assignmentDTO(&list[i])
-		if studentView {
+		out = append(out, assignmentDTO(&list[i]))
+	}
+	if err := u.fillTemplateFiles(out, list); err != nil {
+		return nil, err
+	}
+	for i := range list {
+		dto := &out[i]
+		if studentView && list[i].IsFileAssignment() {
+			if err := u.fillMyFileWork(dto, list[i].ID, viewerID); err != nil {
+				return nil, err
+			}
+		} else if studentView {
 			if p, err := u.gw.FindStudentAssignmentProject(list[i].ID, viewerID); err == nil && p != nil {
 				dto.MyProjectID = p.ID
 				dto.MyReviewStatus = deref(p.ReviewStatus)
 				dto.MyReviewComment = deref(p.ReviewComment)
 			}
 		}
-		out = append(out, dto)
 	}
 	return out, nil
 }
@@ -931,6 +967,10 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, clas
 	}
 	if a.ClosedAt != nil {
 		return 0, teacherclass.ErrAssignmentClosed
+	}
+	// A file submission starts with the student's first file: nothing to issue.
+	if a.IsFileAssignment() {
+		return 0, teacherclass.ErrBadRequest
 	}
 	tpl, err := u.assignmentTemplate(a)
 	if err != nil {
@@ -1006,12 +1046,18 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	return u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now)
 }
 
-func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error {
+// reviewStatusAllowed: Submitted puts reviewed work back in the queue. Draft is the
+// student's own state: set by the teacher it would hide the work from the teacher for good.
+func reviewStatusAllowed(status string) bool {
 	switch status {
-	// Submitted puts reviewed work back in the queue. Draft is the student's own state: set by
-	// the teacher it would hide the work from the teacher for good.
 	case models.ReviewAccepted, models.ReviewReturned, models.ReviewShownInClass, models.ReviewSubmitted:
-	default:
+		return true
+	}
+	return false
+}
+
+func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error {
+	if !reviewStatusAllowed(status) {
 		return teacherclass.ErrBadRequest
 	}
 	p, err := u.gw.GetProject(projectID)
@@ -1036,9 +1082,18 @@ func draftVisible(role models.Role, p *models.ScratchProjectDB) bool {
 	return role == models.SuperAdmin || models.IsHandedIn(p.ReviewStatus)
 }
 
+// draftVisibleStatus is draftVisible for a file submission.
+func draftVisibleStatus(role models.Role, status string) bool {
+	return role == models.SuperAdmin || models.IsHandedIn(&status)
+}
+
 // isLate: the work was handed in after the assignment's due date.
 func isLate(a *models.ClassAssignmentDB, p *models.ScratchProjectDB) bool {
-	return a.DueAt != nil && p.SubmittedAt != nil && p.SubmittedAt.After(*a.DueAt)
+	return lateAt(a, p.SubmittedAt)
+}
+
+func lateAt(a *models.ClassAssignmentDB, submittedAt *time.Time) bool {
+	return a != nil && a.DueAt != nil && submittedAt != nil && submittedAt.After(*a.DueAt)
 }
 
 func deref(s *string) string {
@@ -1056,6 +1111,9 @@ func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classI
 	a, err := u.gw.GetAssignment(assignmentID)
 	if err != nil || a.EdxCohortID != inv.EdxCohortID {
 		return nil, teacherclass.ErrNotFound
+	}
+	if a.IsFileAssignment() {
+		return u.fileSubmissionDTOs(role, a)
 	}
 	list, err := u.gw.ListSubmissions(assignmentID)
 	if err != nil {
@@ -1088,6 +1146,14 @@ func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classI
 	return out, nil
 }
 
+// work is one student's work on an assignment for ProgressMatrix: a Scratch copy or a file
+// submission. The ids stay empty for a draft the teacher may not open.
+type work struct {
+	owner, status           string
+	projectID, submissionID string
+	late                    bool
+}
+
 // ProgressMatrix returns each assignment's status per project owner. It does not call
 // Open edX: the board joins these rows with the roster it already loaded from /members.
 func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID string) ([]teacherclass.AssignmentDTO, []teacherclass.ProgressRowDTO, error) {
@@ -1109,12 +1175,30 @@ func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID
 	if err != nil {
 		return nil, nil, err
 	}
-	byAssignment := map[string][]*models.ScratchProjectDB{}
+	byAssignment, err := u.fileWork(role, assignments)
+	if err != nil {
+		return nil, nil, err
+	}
+	byID := map[string]*models.ClassAssignmentDB{}
+	for i := range assignments {
+		byID[assignments[i].ID] = &assignments[i]
+	}
 	for j := range subs {
 		p := &subs[j]
-		if p.AssignmentID != nil {
-			byAssignment[*p.AssignmentID] = append(byAssignment[*p.AssignmentID], p)
+		if p.AssignmentID == nil {
+			continue
 		}
+		status := models.ReviewDraft
+		if p.ReviewStatus != nil && *p.ReviewStatus != "" {
+			status = *p.ReviewStatus
+		}
+		w := work{owner: p.OwnerUserID, status: status}
+		// A draft the teacher may not open shows as "draft" without a link to it.
+		if draftVisible(role, p) {
+			w.projectID = p.ID
+			w.late = isLate(byID[*p.AssignmentID], p)
+		}
+		byAssignment[*p.AssignmentID] = append(byAssignment[*p.AssignmentID], w)
 	}
 	rows := []teacherclass.ProgressRowDTO{}
 	rowOf := map[string]int{}
@@ -1122,26 +1206,23 @@ func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID
 		a := &assignments[i]
 		seen := map[string]struct{}{}
 		// Newest first: the latest project wins if a student somehow has two.
-		for _, p := range byAssignment[a.ID] {
-			if _, ok := seen[p.OwnerUserID]; ok {
+		for _, w := range byAssignment[a.ID] {
+			if _, ok := seen[w.owner]; ok {
 				continue
 			}
-			seen[p.OwnerUserID] = struct{}{}
-			status := models.ReviewDraft
-			if p.ReviewStatus != nil && *p.ReviewStatus != "" {
-				status = *p.ReviewStatus
+			seen[w.owner] = struct{}{}
+			cell := teacherclass.ProgressCellDTO{
+				AssignmentID: a.ID,
+				Status:       w.status,
+				ProjectID:    w.projectID,
+				SubmissionID: w.submissionID,
+				Late:         w.late,
 			}
-			cell := teacherclass.ProgressCellDTO{AssignmentID: a.ID, Status: status}
-			// A draft the teacher may not open shows as "draft" without a link to it.
-			if draftVisible(role, p) {
-				cell.ProjectID = p.ID
-				cell.Late = isLate(a, p)
-			}
-			idx, ok := rowOf[p.OwnerUserID]
+			idx, ok := rowOf[w.owner]
 			if !ok {
 				idx = len(rows)
-				rowOf[p.OwnerUserID] = idx
-				rows = append(rows, teacherclass.ProgressRowDTO{UserID: p.OwnerUserID})
+				rowOf[w.owner] = idx
+				rows = append(rows, teacherclass.ProgressRowDTO{UserID: w.owner})
 			}
 			rows[idx].Cells = append(rows[idx].Cells, cell)
 		}

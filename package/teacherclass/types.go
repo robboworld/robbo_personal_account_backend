@@ -2,6 +2,7 @@ package teacherclass
 
 import (
 	"errors"
+	"io"
 	"time"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -19,6 +20,14 @@ var (
 	ErrAssignmentClosed = errors.New("assignment_closed")
 	// The work is on review or reviewed: only a draft or returned work is handed in.
 	ErrAlreadyHandedIn = errors.New("already_handed_in")
+	// File assignments need "Мои файлы" and a required antivirus scan.
+	ErrFileAssignmentsDisabled = errors.New("file_assignments_disabled")
+	// The file's type is not one the assignment accepts.
+	ErrFileKindNotAllowed = errors.New("file_kind_not_allowed")
+	// The submission already has classes.maxSubmissionFiles files.
+	ErrTooManySubmissionFiles = errors.New("too_many_submission_files")
+	// A file assignment is handed in with at least one file.
+	ErrNoSubmissionFiles = errors.New("no_submission_files")
 )
 
 type CreateClassInput struct {
@@ -65,6 +74,19 @@ type CohortUserDTO struct {
 	Name     string `json:"name,omitempty"`
 }
 
+// FileRefDTO is a file of "Мои файлы" as a class sees it: no owner, no download URL.
+type FileRefDTO struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	SizeBytes  int64  `json:"sizeBytes"`
+	HasScripts bool   `json:"hasScripts"`
+}
+
+func FileRef(f *models.UserFileDB) FileRefDTO {
+	return FileRefDTO{ID: f.ID, Name: f.OriginalName, Kind: f.Kind, SizeBytes: f.SizeBytes, HasScripts: f.HasScripts}
+}
+
 type AssignmentDTO struct {
 	ID                 string     `json:"id"`
 	EdxCourseID        string     `json:"edxCourseId"`
@@ -77,10 +99,20 @@ type AssignmentDTO struct {
 	DueAt              *time.Time `json:"dueAt,omitempty"`
 	ClosedAt           *time.Time `json:"closedAt,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`
+	// Kind is "scratch" or "file". A file assignment accepts AllowedKinds (empty: any kind
+	// "Мои файлы" takes) and may come with the teacher's TemplateFile.
+	Kind         string      `json:"kind"`
+	AllowedKinds []string    `json:"allowedKinds"`
+	TemplateFile *FileRefDTO `json:"templateFile,omitempty"`
 	// Student view only: the student's own copy of the template and its review state.
 	MyProjectID     string `json:"myProjectId,omitempty"`
 	MyReviewStatus  string `json:"myReviewStatus,omitempty"`
 	MyReviewComment string `json:"myReviewComment,omitempty"`
+	// Student view of a file assignment: the submission and the files attached to it.
+	MySubmissionID string       `json:"mySubmissionId,omitempty"`
+	MyFiles        []FileRefDTO `json:"myFiles,omitempty"`
+	// MaxFiles a submission may hold (file assignments).
+	MaxFiles int `json:"maxFiles,omitempty"`
 	// CreateAssignment only: copies made, failed (issue-late retries them) and skipped
 	// (a cohort member without an LMS user id cannot own a project).
 	CopiesIssued  int `json:"copiesIssued,omitempty"`
@@ -94,19 +126,26 @@ type CreateAssignmentInput struct {
 	AssignmentKey     string
 	TemplateProjectID string
 	DueAt             *time.Time
+	// Kind is models.AssignmentScratch (default) or models.AssignmentFile.
+	Kind           string
+	AllowedKinds   []string
+	TemplateFileID string
 }
 
 // SubmissionDTO is one student's copy. The teacher gets a draft without ProjectID and
 // PreviewURL: when it was last saved, not what is in it.
 type SubmissionDTO struct {
-	ProjectID     string     `json:"projectId,omitempty"`
-	OwnerUserID   string     `json:"ownerUserId"`
-	Title         string     `json:"title"`
-	ReviewStatus  string     `json:"reviewStatus"`
-	ReviewComment string     `json:"reviewComment,omitempty"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
-	SubmittedAt   *time.Time `json:"submittedAt,omitempty"`
-	PreviewURL    string     `json:"previewUrl,omitempty"`
+	ProjectID string `json:"projectId,omitempty"`
+	// SubmissionID and Files are set for a file assignment; Files only for handed-in work.
+	SubmissionID  string       `json:"submissionId,omitempty"`
+	Files         []FileRefDTO `json:"files,omitempty"`
+	OwnerUserID   string       `json:"ownerUserId"`
+	Title         string       `json:"title"`
+	ReviewStatus  string       `json:"reviewStatus"`
+	ReviewComment string       `json:"reviewComment,omitempty"`
+	UpdatedAt     time.Time    `json:"updatedAt"`
+	SubmittedAt   *time.Time   `json:"submittedAt,omitempty"`
+	PreviewURL    string       `json:"previewUrl,omitempty"`
 	// Late: handed in after the assignment's due date.
 	Late bool `json:"late,omitempty"`
 }
@@ -115,6 +154,7 @@ type ProgressCellDTO struct {
 	AssignmentID string `json:"assignmentId"`
 	Status       string `json:"status"` // empty|draft|submitted|returned|accepted|shown_in_class|missing
 	ProjectID    string `json:"projectId,omitempty"`
+	SubmissionID string `json:"submissionId,omitempty"`
 	Late         bool   `json:"late,omitempty"`
 }
 
@@ -155,6 +195,25 @@ type Gateway interface {
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)
 	UpdateReview(projectID, status, comment string, submittedAt *time.Time) error
 	FindStudentAssignmentProject(assignmentID, studentUserID string) (*models.ScratchProjectDB, error)
+
+	// File assignments.
+	GetFileSubmission(id string) (*models.ClassFileSubmissionDB, error)
+	FindFileSubmission(assignmentID, studentUserID string) (*models.ClassFileSubmissionDB, error)
+	// EnsureFileSubmission returns the student's submission, creating a draft if there is none.
+	EnsureFileSubmission(assignmentID, studentUserID string) (*models.ClassFileSubmissionDB, error)
+	ListFileSubmissions(assignmentIDs []string) ([]models.ClassFileSubmissionDB, error)
+	// ListSubmissionFiles returns the live files of each submission, oldest attached first.
+	ListSubmissionFiles(submissionIDs []string) (map[string][]models.UserFileDB, error)
+	// AttachSubmissionFile adds the file unless the submission already holds maxFiles
+	// (ErrTooManySubmissionFiles); attaching it twice is a no-op.
+	AttachSubmissionFile(submissionID, fileID string, maxFiles int) error
+	DetachSubmissionFile(submissionID, fileID string) error
+	UpdateFileReview(submissionID, status, comment string, submittedAt *time.Time) error
+	// GetUserFiles returns the live "Мои файлы" rows among ids, by id.
+	GetUserFiles(ids []string) (map[string]models.UserFileDB, error)
+	// FileInUse: the file is handed in (not returned) or the starter file of an open
+	// assignment, in a class that is not archived.
+	FileInUse(ownerUserID, fileID string) (bool, error)
 }
 
 type UseCase interface {
@@ -182,4 +241,15 @@ type UseCase interface {
 	ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error
 	ListSubmissions(teacherID string, role models.Role, classID, assignmentID string) ([]SubmissionDTO, error)
 	ProgressMatrix(teacherID string, role models.Role, classID string) (assignments []AssignmentDTO, rows []ProgressRowDTO, err error)
+
+	// File assignments.
+	FileAssignmentsEnabled() bool
+	AttachFile(studentID, assignmentID, fileID string) (*AssignmentDTO, error)
+	DetachFile(studentID, assignmentID, fileID string) (*AssignmentDTO, error)
+	SubmitFiles(studentID, assignmentID string) error
+	// OpenStarterFile is the assignment's starter file for the class owner or a member.
+	OpenStarterFile(viewerID string, role models.Role, assignmentID string) (*models.UserFileDB, io.ReadSeekCloser, error)
+	// OpenSubmissionFile is a file of handed-in work for the class owner (any work for a SuperAdmin).
+	OpenSubmissionFile(teacherID string, role models.Role, submissionID, fileID string) (*models.UserFileDB, io.ReadSeekCloser, error)
+	ReviewFileSubmission(teacherID string, role models.Role, submissionID, status, comment string) error
 }

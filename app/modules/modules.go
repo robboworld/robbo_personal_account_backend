@@ -170,6 +170,9 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 	if err != nil {
 		return GatewayModule{}, err
 	}
+	// A file handed in for homework or given to a class as a starter file stays until the
+	// class no longer needs it.
+	userfiles.FileInUse = tcGw.Gateway.FileInUse
 	ppageaccess.CohortTeacherReader = func(teacherID, courseID, cohortID string) bool {
 		inv, err := tcGw.Gateway.GetInviteByCourseCohort(courseID, cohortID)
 		return err == nil && inv != nil && inv.OwnerTeacherID == teacherID && inv.ArchivedAt == nil
@@ -281,12 +284,12 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 	}
 	streakUC := streakusecase.SetupStreakUseCase(gateway.StreakGateway)
 	edxMod := edxusecase.SetupEdxApiUseCase()
-	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase)
 	quota := storage.NewQuota(gateway.LicensingGateway, gateway.ProjectPageGateway, gateway.UserFilesGateway)
 	userFilesUC, volume, err := setupUserFiles(gateway, quota)
 	if err != nil {
 		return UseCaseModule{}, err
 	}
+	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase, userFilesUC)
 	projectPageUC := ppageusecase.SetupProjectPageUseCase(
 		gateway.ProjectPageGateway,
 		gateway.ProjectsGateway,

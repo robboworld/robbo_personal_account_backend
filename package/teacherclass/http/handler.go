@@ -11,6 +11,8 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
+	ufhttp "github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles/http"
 )
 
 type Handler struct {
@@ -58,6 +60,8 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.GET("/classes/:classId/assignments/:assignmentId/submissions", h.ListSubmissions)
 		api.GET("/classes/:classId/progress", h.Progress)
 		api.POST("/submissions/:projectId/review", h.ReviewSubmission)
+		api.GET("/file-submissions/:submissionId/files/:fileId/download", h.DownloadSubmissionFile)
+		api.POST("/file-submissions/:submissionId/review", h.ReviewFileSubmission)
 	}
 
 	student := router.Group("/api/student")
@@ -65,6 +69,10 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		student.GET("/classes", h.ListStudentClasses)
 		student.GET("/classes/:classId/assignments", h.ListAssignmentsStudent)
 		student.POST("/projects/:projectId/submit", h.SubmitProject)
+		student.POST("/assignments/:assignmentId/files", h.AttachFile)
+		student.DELETE("/assignments/:assignmentId/files/:fileId", h.DetachFile)
+		student.POST("/assignments/:assignmentId/submit", h.SubmitFiles)
+		student.GET("/assignments/:assignmentId/starter", h.DownloadStarterFile)
 	}
 }
 
@@ -93,8 +101,15 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, teacherclass.ErrNotFound):
 		status = http.StatusNotFound
 	case errors.Is(err, teacherclass.ErrConflict), errors.Is(err, teacherclass.ErrAlreadyIn),
-		errors.Is(err, teacherclass.ErrAssignmentClosed), errors.Is(err, teacherclass.ErrAlreadyHandedIn):
+		errors.Is(err, teacherclass.ErrAssignmentClosed), errors.Is(err, teacherclass.ErrAlreadyHandedIn),
+		errors.Is(err, teacherclass.ErrFileAssignmentsDisabled), errors.Is(err, teacherclass.ErrFileKindNotAllowed),
+		errors.Is(err, teacherclass.ErrTooManySubmissionFiles), errors.Is(err, teacherclass.ErrNoSubmissionFiles):
 		status = http.StatusConflict
+	// From "Мои файлы": the ЛК shows the same messages as on upload.
+	case errors.Is(err, userfiles.ErrFileInfected):
+		status = http.StatusUnsupportedMediaType
+	case errors.Is(err, userfiles.ErrScanUnavailable):
+		status = http.StatusServiceUnavailable
 	}
 	if status == http.StatusInternalServerError {
 		// Unexpected errors carry internal hosts and SQL; log them, answer with a code.
@@ -328,6 +343,10 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 		AssignmentKey     string  `json:"assignmentKey"`
 		TemplateProjectID string  `json:"templateProjectId"`
 		DueAt             *string `json:"dueAt"`
+		// File assignments: kind "file", the accepted user_files kinds, a starter file id.
+		Kind           string   `json:"kind"`
+		AllowedKinds   []string `json:"allowedKinds"`
+		TemplateFileID string   `json:"templateFileId"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {
 		writeErr(c, teacherclass.ErrBadRequest)
@@ -352,6 +371,9 @@ func (h *Handler) CreateAssignment(c *gin.Context) {
 		AssignmentKey:     key,
 		TemplateProjectID: body.TemplateProjectID,
 		DueAt:             due,
+		Kind:              body.Kind,
+		AllowedKinds:      body.AllowedKinds,
+		TemplateFileID:    body.TemplateFileID,
 	})
 	if err != nil {
 		writeErr(c, err)
@@ -484,4 +506,102 @@ func (h *Handler) SubmitProject(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DownloadSubmissionFile(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	row, rc, err := h.uc.OpenSubmissionFile(userID, role, c.Param("submissionId"), c.Param("fileId"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	defer rc.Close()
+	ufhttp.ServeFile(c, row, rc)
+}
+
+func (h *Handler) ReviewFileSubmission(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	var body struct {
+		Status  string `json:"status"`
+		Comment string `json:"comment"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return
+	}
+	if err := h.uc.ReviewFileSubmission(userID, role, c.Param("submissionId"), body.Status, body.Comment); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+// fileWorkRoles may hand in files: as SubmitProject.
+func fileWorkRoles() []models.Role {
+	return []models.Role{models.Student, models.Teacher, models.SuperAdmin}
+}
+
+func (h *Handler) AttachFile(c *gin.Context) {
+	userID, _, ok := h.identity(c, fileWorkRoles())
+	if !ok {
+		return
+	}
+	var body struct {
+		FileID string `json:"fileId"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.FileID) == "" {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return
+	}
+	dto, err := h.uc.AttachFile(userID, c.Param("assignmentId"), strings.TrimSpace(body.FileID))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto)
+}
+
+func (h *Handler) DetachFile(c *gin.Context) {
+	userID, _, ok := h.identity(c, fileWorkRoles())
+	if !ok {
+		return
+	}
+	dto, err := h.uc.DetachFile(userID, c.Param("assignmentId"), c.Param("fileId"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto)
+}
+
+func (h *Handler) SubmitFiles(c *gin.Context) {
+	userID, _, ok := h.identity(c, fileWorkRoles())
+	if !ok {
+		return
+	}
+	if err := h.uc.SubmitFiles(userID, c.Param("assignmentId")); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DownloadStarterFile(c *gin.Context) {
+	userID, role, ok := h.identity(c, studentRoles())
+	if !ok {
+		return
+	}
+	row, rc, err := h.uc.OpenStarterFile(userID, role, c.Param("assignmentId"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	defer rc.Close()
+	ufhttp.ServeFile(c, row, rc)
 }

@@ -103,6 +103,15 @@ func (g *memGateway) SoftDelete(owner, id string) error {
 	return nil
 }
 
+func (g *memGateway) MarkScanned(id string, at time.Time) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if r, ok := g.rows[id]; ok {
+		r.ScannedAt = &at
+	}
+	return nil
+}
+
 func (g *memGateway) ListDeletedBefore(t time.Time, limit int) ([]string, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()

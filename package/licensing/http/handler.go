@@ -559,11 +559,13 @@ func (h *Handler) GetEntitlements(c *gin.Context) {
 		"usedBytesProjects": usage.Projects,
 		"usedBytesFiles":    usage.Files,
 		"filesEnabled":      filesEnabled,
-		"fileCount":         fileCount,
-		"maxFileSizeMb":     maxFileBytes >> 20,
-		"sessionLimit":      ent.SessionLimit,
-		"seatLimit":         ent.SeatLimit,
-		"capabilities":      ent.Capabilities,
+		// Classes may set file assignments: files reach the teacher only behind ClamAV.
+		"fileAssignmentsEnabled": filesEnabled && h.files.ExchangeEnabled(),
+		"fileCount":              fileCount,
+		"maxFileSizeMb":          maxFileBytes >> 20,
+		"sessionLimit":           ent.SessionLimit,
+		"seatLimit":              ent.SeatLimit,
+		"capabilities":           ent.Capabilities,
 	})
 }
 

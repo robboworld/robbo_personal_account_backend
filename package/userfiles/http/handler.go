@@ -238,6 +238,12 @@ func errorHandling(err error, c *gin.Context) {
 		coded(http.StatusConflict, "FILE_COUNT_EXCEEDED")
 	case errors.Is(err, storage.ErrStorageQuotaExceeded):
 		coded(http.StatusConflict, "STORAGE_QUOTA_EXCEEDED")
+	case errors.Is(err, userfiles.ErrFileInfected):
+		coded(http.StatusUnsupportedMediaType, "FILE_INFECTED")
+	case errors.Is(err, userfiles.ErrScanUnavailable):
+		coded(http.StatusServiceUnavailable, "SCAN_UNAVAILABLE")
+	case errors.Is(err, userfiles.ErrFileInUse):
+		coded(http.StatusConflict, "FILE_IN_USE")
 	default:
 		log.Printf("userfiles: %v", err)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})

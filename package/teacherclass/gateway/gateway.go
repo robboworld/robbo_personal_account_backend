@@ -141,6 +141,13 @@ func (g *GatewayImpl) CreateAssignment(a *models.ClassAssignmentDB) error {
 	now := time.Now().UTC()
 	a.CreatedAt = now
 	a.UpdatedAt = now
+	if a.Kind == "" {
+		a.Kind = models.AssignmentScratch
+	}
+	// allowed_kinds is NOT NULL: a nil slice is written as NULL.
+	if a.AllowedKinds == nil {
+		a.AllowedKinds = pq.StringArray{}
+	}
 	return g.db.Create(a).Error
 }
 

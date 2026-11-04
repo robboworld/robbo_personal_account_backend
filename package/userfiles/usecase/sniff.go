@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
@@ -71,6 +72,21 @@ var mimeByKind = map[string]string{
 	// FreeCAD has no registered type; this one is never sniffed into something a browser runs.
 	kindFCSTD: "application/x.freecad.fcstd",
 	kindSKP:   "application/vnd.sketchup.skp",
+}
+
+// AcceptedKinds are the kinds a stored file can have: WebP is kept as PNG.
+func AcceptedKinds() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, k := range kindByExt {
+		k = storedImageKind(k)
+		if !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // kindForName is the whitelist kind the file name claims, "" when it is not allowed.

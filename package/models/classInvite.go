@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/lib/pq"
+)
 
 type ClassInviteDB struct {
 	ID             string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey;column:id"`
@@ -47,9 +51,48 @@ type ClassAssignmentDB struct {
 	ClosedAt           *time.Time `gorm:"column:closed_at"`
 	CreatedAt          time.Time  `gorm:"column:created_at"`
 	UpdatedAt          time.Time  `gorm:"column:updated_at"`
+	// Kind is AssignmentScratch or AssignmentFile; an empty value reads as Scratch.
+	Kind string `gorm:"column:kind;default:scratch"`
+	// AllowedKinds are user_files.kind values a file assignment accepts; empty means any.
+	AllowedKinds pq.StringArray `gorm:"column:allowed_kinds;type:text[];not null;default:'{}'"`
+	// TemplateFileID is the teacher's optional starter file for a file assignment.
+	TemplateFileID *string `gorm:"column:template_file_id;type:uuid"`
 }
 
 func (ClassAssignmentDB) TableName() string { return "class_assignments" }
+
+const (
+	// AssignmentScratch: every student gets a copy of the template project (or an empty one).
+	AssignmentScratch = "scratch"
+	// AssignmentFile: students hand in files from "Мои файлы" made in any program.
+	AssignmentFile = "file"
+)
+
+// IsFileAssignment: students hand in files, not a Scratch project.
+func (a *ClassAssignmentDB) IsFileAssignment() bool { return a.Kind == AssignmentFile }
+
+// ClassFileSubmissionDB is one student's work on a file assignment.
+type ClassFileSubmissionDB struct {
+	ID            string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey;column:id"`
+	AssignmentID  string     `gorm:"column:assignment_id;type:uuid"`
+	StudentUserID string     `gorm:"column:student_user_id"`
+	ReviewStatus  string     `gorm:"column:review_status"`
+	ReviewComment string     `gorm:"column:review_comment"`
+	SubmittedAt   *time.Time `gorm:"column:submitted_at"`
+	CreatedAt     time.Time  `gorm:"column:created_at"`
+	UpdatedAt     time.Time  `gorm:"column:updated_at"`
+}
+
+func (ClassFileSubmissionDB) TableName() string { return "class_file_submissions" }
+
+// ClassSubmissionFileDB links a file in the student's "Мои файлы" to their submission.
+type ClassSubmissionFileDB struct {
+	SubmissionID string    `gorm:"primaryKey;column:submission_id;type:uuid"`
+	UserFileID   string    `gorm:"primaryKey;column:user_file_id;type:uuid"`
+	AddedAt      time.Time `gorm:"column:added_at"`
+}
+
+func (ClassSubmissionFileDB) TableName() string { return "class_submission_files" }
 
 // Class review statuses on scratch_projects.review_status
 const (
