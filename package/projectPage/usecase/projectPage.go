@@ -746,8 +746,10 @@ func (p *ProjectPageUseCaseImpl) GetProjectJSONByToken(projectId string, token s
 		return "", auth.ErrInvalidAccessToken
 	}
 	vmJSON := row.ScratchVMJSON
-	if vmJSON == "" {
-		vmJSON = "{}"
+	// A copy issued without a template holds "{}" until the first save, and the player has only
+	// this JSON then: scratch-vm cannot load it ("Non-ascii character in FixedAsciiString").
+	if vmJSON == "" || vmJSON == "{}" {
+		vmJSON = emptyProjectJson2
 	}
 	return vmJSON, nil
 }
