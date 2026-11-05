@@ -33,6 +33,7 @@ var historyCategories = map[string][]string{
 	},
 	"assignments": {
 		models.HistoryAssignmentCreated, models.HistoryAssignmentClosed, models.HistoryAssignmentReopened, models.HistoryAssignmentIssuedLate,
+		models.HistoryAssignmentDeleted,
 	},
 	"work":     {models.HistoryWorkSubmitted, models.HistoryWorkReviewed, models.HistoryWorkEdited, models.HistoryWorkRestored},
 	"messages": {models.HistoryMessageSent},

@@ -23,7 +23,7 @@ func (p *ProjectPageUseCaseImpl) sb3Archive(projectPageId string) ([]byte, error
 		return data, err
 	}
 	row, rowErr := p.projectPageGateway.GetScratchProjectById(projectPageId)
-	if rowErr != nil || row.AssignmentID == nil || row.TemplateProjectID == nil {
+	if rowErr != nil || row.TemplateProjectID == nil {
 		return nil, err
 	}
 	tpl, tplErr := p.projectPageGateway.GetTemplateSb3Archive(*row.TemplateProjectID)

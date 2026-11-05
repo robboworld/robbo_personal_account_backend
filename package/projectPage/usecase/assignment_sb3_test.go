@@ -160,9 +160,20 @@ func TestSb3ArchiveBuildsLegacyAssignmentCopy(t *testing.T) {
 	}
 }
 
+// Deleting the assignment leaves the student an old copy that still has no .sb3 of its own.
+func TestSb3ArchiveBuildsCopyOfDeletedAssignment(t *testing.T) {
+	detached := assignmentCopy()
+	detached.AssignmentID = nil
+	uc := &ProjectPageUseCaseImpl{projectPageGateway: &archivePages{row: detached, tpl: templateSb3(t)}}
+	data, err := uc.sb3Archive("copy-1")
+	if err != nil || len(data) == 0 {
+		t.Fatalf("got %d bytes, %v; want an archive built from the template", len(data), err)
+	}
+}
+
 func TestSb3ArchiveNotFound(t *testing.T) {
 	notCopy := assignmentCopy()
-	notCopy.AssignmentID = nil
+	notCopy.AssignmentID, notCopy.TemplateProjectID = nil, nil
 	cases := map[string]*archivePages{
 		"not an assignment copy":   {row: notCopy, tpl: templateSb3(t)},
 		"template without an .sb3": {row: assignmentCopy()},

@@ -18,6 +18,8 @@ type studentGateway struct {
 	assignments map[string]*models.ClassAssignmentDB
 	// unsaved lists copies the student never saved.
 	unsaved   map[string]bool
+	deleted   []string
+	deleteErr error
 	reviewed  string
 	reviewer  string
 	newStatus string
@@ -43,6 +45,14 @@ func (g *studentGateway) SetAssignmentClosed(id string, closed bool) error {
 		g.assignments = map[string]*models.ClassAssignmentDB{}
 	}
 	g.assignments[id] = a
+	return nil
+}
+
+func (g *studentGateway) DeleteAssignment(id string) error {
+	if g.deleteErr != nil {
+		return g.deleteErr
+	}
+	g.deleted = append(g.deleted, id)
 	return nil
 }
 

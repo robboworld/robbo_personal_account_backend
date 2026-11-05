@@ -188,6 +188,102 @@ func (g *GatewayImpl) SetAssignmentClosed(id string, closed bool) error {
 	return nil
 }
 
+// DeleteAssignment turns the copies into ordinary projects of their owners. File submissions go
+// with the assignment (ON DELETE CASCADE); their files stay in "Мои файлы".
+func (g *GatewayImpl) DeleteAssignment(id string) error {
+	return g.db.Transaction(func(tx *gorm.DB) error {
+		// Held to the end: a late copy issued meanwhile would miss the updates below.
+		var a models.ClassAssignmentDB
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id").Where("id = ?", id).First(&a).Error; err != nil {
+			return err
+		}
+		if err := dropUntouchedCopies(tx, id); err != nil {
+			return err
+		}
+		if err := restoreEditedWork(tx, id); err != nil {
+			return err
+		}
+		if err := detachCopies(tx, id); err != nil {
+			return err
+		}
+		return tx.Where("id = ?", id).Delete(&models.ClassAssignmentDB{}).Error
+	})
+}
+
+// dropUntouchedCopies: a copy never saved (as HasOwnSave) holds nothing of the student's, it would
+// only sit in their projects and quota. A copy they published is their decision.
+func dropUntouchedCopies(tx *gorm.DB, assignmentID string) error {
+	return tx.Exec(`
+		UPDATE scratch_projects p SET deleted_at = now()
+		WHERE p.assignment_id = ? AND p.deleted_at IS NULL AND NOT p.is_public
+			AND (p.review_status IS NULL OR p.review_status = ?)
+			AND NOT EXISTS (
+				SELECT 1 FROM scratch_project_versions v
+				WHERE v.project_id = p.id AND (v.save_source IS NULL OR v.save_source NOT LIKE ?)
+			)`, assignmentID, models.ReviewDraft, saveSourceAssignmentCopy+"%").Error
+}
+
+// restoreEditedWork: work that is with the teachers goes back as it was handed in. Nobody could
+// undo a teacher's edit after this, and retention would delete the student's version. On returned
+// work the current version may already be the student's rework, so it stays.
+func restoreEditedWork(tx *gorm.DB, assignmentID string) error {
+	var edited []models.ScratchProjectDB
+	if err := tx.Select("id, review_status, student_version_id").
+		Where("assignment_id = ? AND deleted_at IS NULL AND student_version_id IS NOT NULL", assignmentID).
+		Find(&edited).Error; err != nil {
+		return err
+	}
+	for i := range edited {
+		p := &edited[i]
+		if !models.IsReviewLocked(p.ReviewStatus) {
+			continue
+		}
+		var ver models.ScratchProjectVersionDB
+		if err := tx.Select("archive").Where("id = ?", *p.StudentVersionID).First(&ver).Error; err != nil {
+			return err
+		}
+		vmJSON, err := models.ProjectJSONFromSb3(ver.Archive)
+		if err != nil {
+			return err
+		}
+		// As RestoreStudentVersion: the stored preview shows the teacher's version.
+		updates := map[string]interface{}{
+			"current_version_id": *p.StudentVersionID,
+			"preview_image":      nil,
+			"preview_mime":       "",
+			"preview_updated_at": nil,
+		}
+		if vmJSON != "" {
+			updates["scratch_vm_json"] = vmJSON
+		}
+		if err := tx.Model(&models.ScratchProjectDB{}).Where("id = ?", p.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// detachCopies leaves nothing of the class on a copy: the class id is what lets its teachers read
+// the work (access.Resolve), and it is not a lock or a review any more. template_project_id stays:
+// a copy issued without an .sb3 gets its assets from the template (projectPage sb3Archive).
+func detachCopies(tx *gorm.DB, assignmentID string) error {
+	return tx.Model(&models.ScratchProjectDB{}).Where("assignment_id = ?", assignmentID).
+		Updates(map[string]interface{}{
+			"assignment_id":          nil,
+			"edx_course_id":          nil,
+			"edx_cohort_id":          nil,
+			"review_status":          nil,
+			"review_comment":         nil,
+			"submitted_at":           nil,
+			"submission_note":        "",
+			"reviewed_by_teacher_id": nil,
+			"reviewed_at":            nil,
+			"teacher_edited_by":      nil,
+			"teacher_edited_at":      nil,
+			"student_version_id":     nil,
+		}).Error
+}
+
 func (g *GatewayImpl) GetProject(id string) (*models.ScratchProjectDB, error) {
 	var p models.ScratchProjectDB
 	err := g.db.Where("id = ? AND deleted_at IS NULL", id).First(&p).Error

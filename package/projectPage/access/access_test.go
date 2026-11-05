@@ -106,6 +106,21 @@ func TestResolve_classTeacherReadsOnlyHandedIn(t *testing.T) {
 	}
 }
 
+// What DeleteAssignment leaves: the owner's project, nothing for the class's teachers.
+func TestResolve_workOfDeletedAssignment(t *testing.T) {
+	prev := CohortTeacherReader
+	CohortTeacherReader = func(string, string, string) bool { return true }
+	t.Cleanup(func() { CohortTeacherReader = prev })
+
+	p := &models.ScratchProjectDB{OwnerUserID: "student-1"}
+	if Resolve("teacher-1", p).CanRead || RunsClass("teacher-1", p) || TeacherCanEdit("teacher-1", p) {
+		t.Fatal("the class's teachers still reach the work")
+	}
+	if HomeworkLocked(p) || !Resolve("student-1", p).CanWrite {
+		t.Fatal("the owner cannot change their project")
+	}
+}
+
 func strPtr(s string) *string { return &s }
 
 func TestHomeworkLocked(t *testing.T) {

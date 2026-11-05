@@ -1,37 +1,12 @@
 package usecase
 
 import (
-	"archive/zip"
-	"bytes"
 	"encoding/json"
-	"io"
 	"strings"
 
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
 )
-
-func extractProjectJSONFromSb3(data []byte) (string, error) {
-	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	if err != nil {
-		return "", err
-	}
-	for _, f := range reader.File {
-		name := strings.ToLower(strings.TrimPrefix(f.Name, "./"))
-		if name == "project.json" {
-			rc, err := f.Open()
-			if err != nil {
-				return "", err
-			}
-			defer rc.Close()
-			body, err := io.ReadAll(rc)
-			if err != nil {
-				return "", err
-			}
-			return string(body), nil
-		}
-	}
-	return "", nil
-}
 
 // validateScratchVMJSON ensures project.json looks like a loadable Scratch 3 project.
 func validateScratchVMJSON(vmJSON string) error {
@@ -66,7 +41,7 @@ func validateSb3Archive(data []byte) error {
 	if len(data) < 4 || data[0] != 'P' || data[1] != 'K' {
 		return projectPage.ErrInvalidProjectFile
 	}
-	vmJSON, err := extractProjectJSONFromSb3(data)
+	vmJSON, err := models.ProjectJSONFromSb3(data)
 	if err != nil {
 		return projectPage.ErrInvalidProjectFile
 	}

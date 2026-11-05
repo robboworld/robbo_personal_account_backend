@@ -803,7 +803,7 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, uploader
 	if err := validateSb3Archive(data); err != nil {
 		return err
 	}
-	vmJSON, extractErr := extractProjectJSONFromSb3(data)
+	vmJSON, extractErr := models.ProjectJSONFromSb3(data)
 	if teacherEdit {
 		// Save without a change: the student must not hear that their work was changed.
 		if extractErr == nil && models.SameScratchContent(vmJSON, row.ScratchVMJSON) {
@@ -845,7 +845,7 @@ func (p *ProjectPageUseCaseImpl) RestoreStudentVersion(projectPageId string, tea
 	if err != nil {
 		return err
 	}
-	vmJSON, err := extractProjectJSONFromSb3(data)
+	vmJSON, err := models.ProjectJSONFromSb3(data)
 	if err != nil {
 		return err
 	}

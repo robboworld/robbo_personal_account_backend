@@ -63,6 +63,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.POST("/classes/:classId/assignments/:assignmentId/issue-late", h.IssueLate)
 		api.POST("/classes/:classId/assignments/:assignmentId/close", h.CloseAssignment)
 		api.POST("/classes/:classId/assignments/:assignmentId/reopen", h.ReopenAssignment)
+		api.DELETE("/classes/:classId/assignments/:assignmentId", h.DeleteAssignment)
 		api.GET("/classes/:classId/assignments/:assignmentId/submissions", h.ListSubmissions)
 		api.GET("/classes/:classId/progress", h.Progress)
 		api.POST("/submissions/:projectId/review", h.ReviewSubmission)
@@ -548,6 +549,18 @@ func (h *Handler) setAssignmentClosed(c *gin.Context, closed bool) {
 		return
 	}
 	c.JSON(http.StatusOK, dto)
+}
+
+func (h *Handler) DeleteAssignment(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	if err := h.uc.DeleteAssignment(userID, role, c.Param("classId"), c.Param("assignmentId")); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 func (h *Handler) ListSubmissions(c *gin.Context) {

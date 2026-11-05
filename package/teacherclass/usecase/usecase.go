@@ -1303,6 +1303,25 @@ func (u *UseCaseImpl) SetAssignmentClosed(teacherID string, role models.Role, cl
 	return &dto, nil
 }
 
+func (u *UseCaseImpl) DeleteAssignment(teacherID string, role models.Role, classID, assignmentID string) error {
+	inv, err := u.requireTeaching(teacherID, role, classID)
+	if err != nil {
+		return err
+	}
+	a, err := u.gw.GetAssignment(assignmentID)
+	if err != nil || a.EdxCohortID != inv.EdxCohortID {
+		return teacherclass.ErrNotFound
+	}
+	if err := u.gw.DeleteAssignment(a.ID); err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return teacherclass.ErrNotFound
+		}
+		return err
+	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryAssignmentDeleted, models.ClassHistoryEventDB{Title: a.Title})
+	return nil
+}
+
 // openAssignmentOf is an assignment that still takes the student's work, with its class.
 func (u *UseCaseImpl) openAssignmentOf(studentID, assignmentID string) (*models.ClassAssignmentDB, *models.ClassInviteDB, error) {
 	a, err := u.gw.GetAssignment(assignmentID)

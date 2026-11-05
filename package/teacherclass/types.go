@@ -291,6 +291,8 @@ type Gateway interface {
 	ListAssignments(courseID, cohortID string) ([]models.ClassAssignmentDB, error)
 	GetAssignment(id string) (*models.ClassAssignmentDB, error)
 	SetAssignmentClosed(id string, closed bool) error
+	// DeleteAssignment removes the assignment and its reviews; the students keep their work.
+	DeleteAssignment(id string) error
 
 	GetProject(id string) (*models.ScratchProjectDB, error)
 	// ForkProjectForStudent with a nil template issues an empty project.
@@ -371,6 +373,8 @@ type UseCase interface {
 	ListAssignments(viewerID string, role models.Role, classID string) ([]AssignmentDTO, error)
 	IssueToLatecomers(teacherID string, role models.Role, classID, assignmentID string) (issued int, err error)
 	SetAssignmentClosed(teacherID string, role models.Role, classID, assignmentID string, closed bool) (*AssignmentDTO, error)
+	// DeleteAssignment cannot be undone: the reviews go, the students' projects and files stay.
+	DeleteAssignment(teacherID string, role models.Role, classID, assignmentID string) error
 	// SubmitAssignment and SubmitFiles hand the work in; note is an optional text to the teacher.
 	SubmitAssignment(studentID, projectID, note string) error
 	// UpdateProjectNote and UpdateFileNote change that text while the work waits for review.

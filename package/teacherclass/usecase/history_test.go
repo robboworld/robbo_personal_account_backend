@@ -9,6 +9,7 @@ import (
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
+	"gorm.io/gorm"
 )
 
 // The other fakes drop the history: their tests are not about it.
@@ -274,6 +275,46 @@ func TestHistoryAssignmentClosedOnlyWhenItChanges(t *testing.T) {
 	}
 	if log.events[0].Title != "Лабиринт" {
 		t.Fatalf("event = %+v", log.events[0])
+	}
+}
+
+func TestDeleteAssignment(t *testing.T) {
+	withoutLMSNames(t)
+	gw := &studentGateway{assignments: map[string]*models.ClassAssignmentDB{
+		"a1": {ID: "a1", EdxCohortID: "7", Title: "Лабиринт"},
+		"a2": {ID: "a2", EdxCohortID: "8", Title: "Чужое"},
+	}}
+	log := &historyLog{Gateway: gw}
+	uc := &UseCaseImpl{gw: log}
+
+	if err := uc.DeleteAssignment("10", models.Teacher, "class-1", "a1"); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(gw.deleted, []string{"a1"}) {
+		t.Fatalf("deleted = %v", gw.deleted)
+	}
+	if got := log.actionsRecorded(); !slices.Equal(got, []string{models.HistoryAssignmentDeleted}) || log.events[0].Title != "Лабиринт" {
+		t.Fatalf("events = %+v", log.events)
+	}
+
+	// An assignment of another class looks like no assignment at all.
+	if err := uc.DeleteAssignment("10", models.Teacher, "class-1", "a2"); !errors.Is(err, teacherclass.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if err := uc.DeleteAssignment("11", models.Teacher, "class-1", "a1"); !errors.Is(err, teacherclass.ErrForbidden) {
+		t.Fatalf("err = %v, want ErrForbidden", err)
+	}
+	if len(gw.deleted) != 1 {
+		t.Fatalf("deleted = %v", gw.deleted)
+	}
+
+	// Another teacher got there first: no second line in the history.
+	gw.deleteErr = gorm.ErrRecordNotFound
+	if err := uc.DeleteAssignment("10", models.Teacher, "class-1", "a1"); !errors.Is(err, teacherclass.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if len(log.events) != 1 {
+		t.Fatalf("events = %+v", log.events)
 	}
 }
 

@@ -1,8 +1,12 @@
 package models
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"io"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -48,6 +52,30 @@ type ScratchProjectDB struct {
 
 func (ScratchProjectDB) TableName() string {
 	return "scratch_projects"
+}
+
+// ProjectJSONFromSb3 reads project.json out of an .sb3, "" when the archive has none.
+func ProjectJSONFromSb3(data []byte) (string, error) {
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return "", err
+	}
+	for _, f := range reader.File {
+		name := strings.ToLower(strings.TrimPrefix(f.Name, "./"))
+		if name == "project.json" {
+			rc, err := f.Open()
+			if err != nil {
+				return "", err
+			}
+			defer rc.Close()
+			body, err := io.ReadAll(rc)
+			if err != nil {
+				return "", err
+			}
+			return string(body), nil
+		}
+	}
+	return "", nil
 }
 
 // SameScratchContent compares two project.json: the editor writes a new .sb3 on every save,

@@ -53,6 +53,7 @@ const (
 	HistoryAssignmentClosed     = "assignment_closed"
 	HistoryAssignmentReopened   = "assignment_reopened"
 	HistoryAssignmentIssuedLate = "assignment_issued_late"
+	HistoryAssignmentDeleted    = "assignment_deleted"
 
 	HistoryWorkSubmitted = "work_submitted"
 	HistoryWorkReviewed  = "work_reviewed"
