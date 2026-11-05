@@ -38,6 +38,22 @@ type ClassMemberDB struct {
 
 func (ClassMemberDB) TableName() string { return "class_members" }
 
+// ClassCoTeacherDB is one term of a teacher running a class next to its owner. It counts while
+// RevokedAt is nil and ExpiresAt is ahead.
+type ClassCoTeacherDB struct {
+	ID         string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey;column:id"`
+	ClassID    string     `gorm:"column:class_id;type:uuid"`
+	TeacherID  string     `gorm:"column:teacher_id"`
+	GrantedBy  string     `gorm:"column:granted_by"`
+	GrantedAt  time.Time  `gorm:"column:granted_at"`
+	ExpiresAt  time.Time  `gorm:"column:expires_at"`
+	RevokedAt  *time.Time `gorm:"column:revoked_at"`
+	RevokedBy  *string    `gorm:"column:revoked_by"`
+	RemindedAt *time.Time `gorm:"column:reminded_at"`
+}
+
+func (ClassCoTeacherDB) TableName() string { return "class_co_teachers" }
+
 type ClassAssignmentDB struct {
 	ID                 string     `gorm:"type:uuid;default:gen_random_uuid();primaryKey;column:id"`
 	EdxCourseID        string     `gorm:"column:edx_course_id"`
@@ -80,9 +96,12 @@ type ClassFileSubmissionDB struct {
 	ReviewComment string     `gorm:"column:review_comment"`
 	SubmittedAt   *time.Time `gorm:"column:submitted_at"`
 	// SubmissionNote is what the student wrote to the teacher at the last hand-in.
-	SubmissionNote string    `gorm:"column:submission_note"`
-	CreatedAt      time.Time `gorm:"column:created_at"`
-	UpdatedAt      time.Time `gorm:"column:updated_at"`
+	SubmissionNote string `gorm:"column:submission_note"`
+	// ReviewedByTeacherID and ReviewedAt: who gave the current review; a new hand-in clears them.
+	ReviewedByTeacherID *string    `gorm:"column:reviewed_by_teacher_id"`
+	ReviewedAt          *time.Time `gorm:"column:reviewed_at"`
+	CreatedAt           time.Time  `gorm:"column:created_at"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at"`
 }
 
 func (ClassFileSubmissionDB) TableName() string { return "class_file_submissions" }

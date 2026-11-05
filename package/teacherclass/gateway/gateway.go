@@ -87,9 +87,12 @@ func (g *GatewayImpl) GetInviteByCourseCohort(courseID, cohortID string) (*model
 	return &inv, nil
 }
 
-func (g *GatewayImpl) ListInvitesByOwner(ownerTeacherID string) ([]models.ClassInviteDB, error) {
+func (g *GatewayImpl) ListInvitesByTeacher(teacherID string) ([]models.ClassInviteDB, error) {
 	var list []models.ClassInviteDB
-	err := g.db.Where("owner_teacher_id = ? AND archived_at IS NULL", ownerTeacherID).
+	err := g.db.Where(`archived_at IS NULL AND (owner_teacher_id = ? OR id IN (
+			SELECT class_id FROM class_co_teachers
+			WHERE teacher_id = ? AND revoked_at IS NULL AND expires_at > ?
+		))`, teacherID, teacherID, time.Now().UTC()).
 		Order("created_at DESC").Find(&list).Error
 	return list, err
 }
@@ -321,23 +324,29 @@ func (g *GatewayImpl) ListProjectsByCohortAssignment(cohortID, assignmentID stri
 }
 
 // reviewUpdates: the columns a review or a hand-in changes in either kind of work.
-func reviewUpdates(status, comment string, handIn *teacherclass.HandIn) map[string]interface{} {
+func reviewUpdates(status, comment, reviewerID string, handIn *teacherclass.HandIn) map[string]interface{} {
+	now := time.Now().UTC()
 	updates := map[string]interface{}{
 		"review_status":  status,
 		"review_comment": comment,
-		"updated_at":     time.Now().UTC(),
+		"updated_at":     now,
 	}
 	if handIn != nil {
 		updates["submitted_at"] = handIn.At
 		updates["submission_note"] = handIn.Note
+		updates["reviewed_by_teacher_id"] = nil
+		updates["reviewed_at"] = nil
+	} else {
+		updates["reviewed_by_teacher_id"] = reviewerID
+		updates["reviewed_at"] = now
 	}
 	return updates
 }
 
-func (g *GatewayImpl) UpdateReview(projectID, status, comment string, handIn *teacherclass.HandIn) error {
+func (g *GatewayImpl) UpdateReview(projectID, status, comment, reviewerID string, handIn *teacherclass.HandIn) error {
 	res := g.db.Model(&models.ScratchProjectDB{}).
 		Where("id = ? AND deleted_at IS NULL", projectID).
-		Updates(reviewUpdates(status, comment, handIn))
+		Updates(reviewUpdates(status, comment, reviewerID, handIn))
 	if res.Error != nil {
 		return res.Error
 	}

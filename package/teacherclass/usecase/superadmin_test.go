@@ -12,7 +12,7 @@ type allClassesGateway struct {
 	studentGateway
 }
 
-func (g *allClassesGateway) ListInvitesByOwner(owner string) ([]models.ClassInviteDB, error) {
+func (g *allClassesGateway) ListInvitesByTeacher(owner string) ([]models.ClassInviteDB, error) {
 	return []models.ClassInviteDB{{ID: "mine", OwnerTeacherID: owner}}, nil
 }
 

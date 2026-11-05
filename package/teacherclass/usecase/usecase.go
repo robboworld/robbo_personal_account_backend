@@ -80,9 +80,53 @@ func (u *UseCaseImpl) requireOwner(teacherID string, role models.Role, classID s
 	return inv, nil
 }
 
-// canManage: the class owner, or SuperAdmin for any class.
+// canManage: the class owner, or SuperAdmin for any class. What belongs to the class itself
+// (rename, archive, a new invite code, co-teachers) stops here.
 func canManage(inv *models.ClassInviteDB, teacherID string, role models.Role) bool {
 	return role == models.SuperAdmin || inv.OwnerTeacherID == teacherID
+}
+
+// canTeach adds a co-teacher with a running term to canManage: the roster, assignments, review.
+func (u *UseCaseImpl) canTeach(inv *models.ClassInviteDB, teacherID string, role models.Role) (bool, error) {
+	if canManage(inv, teacherID, role) {
+		return true, nil
+	}
+	if role != models.Teacher {
+		return false, nil
+	}
+	return u.gw.IsCoTeacher(inv.ID, teacherID)
+}
+
+// requireTeaching is requireOwner with canTeach.
+func (u *UseCaseImpl) requireTeaching(teacherID string, role models.Role, classID string) (*models.ClassInviteDB, error) {
+	inv, err := u.gw.GetInviteByID(classID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, teacherclass.ErrNotFound
+		}
+		return nil, err
+	}
+	teaches, err := u.canTeach(inv, teacherID, role)
+	if err != nil {
+		return nil, err
+	}
+	if !teaches {
+		return nil, teacherclass.ErrForbidden
+	}
+	return inv, nil
+}
+
+// coTeacherTerms maps the classes the teacher co-teaches to the end of the term.
+func (u *UseCaseImpl) coTeacherTerms(teacherID string) (map[string]time.Time, error) {
+	rows, err := u.gw.ListCoTeachings(teacherID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]time.Time, len(rows))
+	for i := range rows {
+		out[rows[i].ClassID] = rows[i].ExpiresAt
+	}
+	return out, nil
 }
 
 func genInviteCode() (string, error) {
@@ -281,14 +325,22 @@ func (u *UseCaseImpl) ListMyClasses(teacherID string, role models.Role) ([]teach
 	if role == models.SuperAdmin {
 		list, err = u.gw.ListAllInvites()
 	} else {
-		list, err = u.gw.ListInvitesByOwner(teacherID)
+		list, err = u.gw.ListInvitesByTeacher(teacherID)
 	}
+	if err != nil {
+		return nil, err
+	}
+	terms, err := u.coTeacherTerms(teacherID)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]teacherclass.ClassDTO, 0, len(list))
 	for i := range list {
-		out = append(out, *u.toDTO(&list[i]))
+		dto := u.toDTO(&list[i])
+		if until, ok := terms[dto.ID]; ok {
+			dto.CoTeacherUntil = &until
+		}
+		out = append(out, *dto)
 	}
 	u.fillOwnerNames(out)
 	return out, nil
@@ -358,12 +410,21 @@ func teacherCourseIDs(teacherID string, role models.Role) (map[string]bool, erro
 }
 
 func (u *UseCaseImpl) GetClass(teacherID string, role models.Role, classID string) (*teacherclass.ClassDTO, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
 	dto := u.toDTO(inv)
 	u.fillOwnerName(dto)
+	if role == models.Teacher && inv.OwnerTeacherID != teacherID {
+		terms, err := u.coTeacherTerms(teacherID)
+		if err != nil {
+			return nil, err
+		}
+		if until, ok := terms[inv.ID]; ok {
+			dto.CoTeacherUntil = &until
+		}
+	}
 	return dto, nil
 }
 
@@ -517,6 +578,11 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 	if !inv.IsActive {
 		return nil, teacherclass.ErrNotFound
 	}
+	if was, err := u.gw.WasCoTeacher(inv.ID, studentID); err != nil {
+		return nil, err
+	} else if was {
+		return nil, teacherclass.ErrCoTeacherCannotJoin
+	}
 	dto, err, _ := u.joins.Do(inv.ID+":"+studentID, func() (interface{}, error) {
 		return u.join(studentID, inv)
 	})
@@ -601,21 +667,38 @@ func (u *UseCaseImpl) removeFromRoster(studentID string, inv *models.ClassInvite
 	return nil
 }
 
-// ownerNotification is a row for the class owner; the roster has already changed by the time it
-// is sent, so a failure to send it is only logged. Nil when the owner is the student.
-func ownerNotification(studentID string, inv *models.ClassInviteDB, kind, dedupeKey string) *models.UserNotificationDB {
-	if inv.OwnerTeacherID == studentID {
-		return nil
-	}
+// classNotification is a row about the class that opens its board.
+func classNotification(recipientID string, inv *models.ClassInviteDB, kind, dedupeKey string) *models.UserNotificationDB {
 	actionURL := "/teacher/classes/" + inv.ID
 	return &models.UserNotificationDB{
-		RecipientUserID: inv.OwnerTeacherID,
+		RecipientUserID: recipientID,
 		Kind:            kind,
 		Severity:        "INFO",
 		Source:          "system",
 		ActionURL:       &actionURL,
 		DedupeKey:       &dedupeKey,
 	}
+}
+
+// teacherNotifications are rows for the owner and the co-teachers, without the student
+// themselves; the roster has already changed by the time they are sent, so a failure to send one
+// is only logged. dedupe_key is unique across recipients, so a co-teacher's row gets their own:
+// with the owner's key it would take the row away from the owner.
+func (u *UseCaseImpl) teacherNotifications(studentID string, inv *models.ClassInviteDB, kind, dedupeKey string) []*models.UserNotificationDB {
+	var rows []*models.UserNotificationDB
+	if inv.OwnerTeacherID != studentID {
+		rows = append(rows, classNotification(inv.OwnerTeacherID, inv, kind, dedupeKey))
+	}
+	coTeachers, err := u.gw.ListCoTeachers(inv.ID)
+	if err != nil {
+		log.Printf("teacherclass: class %s co-teachers: %v", inv.ID, err)
+	}
+	for i := range coTeachers {
+		if id := coTeachers[i].TeacherID; id != studentID {
+			rows = append(rows, classNotification(id, inv, kind, dedupeKey+":"+id))
+		}
+	}
+	return rows
 }
 
 func studentName(studentID string) string {
@@ -630,25 +713,21 @@ func studentName(studentID string) string {
 // off the roster, so a student who left and came back appears twice, after the "left" row.
 func (u *UseCaseImpl) notifyStudentJoined(studentID string, inv *models.ClassInviteDB) {
 	day := time.Now().UTC().Format("2006-01-02")
-	row := ownerNotification(studentID, inv, "class_members_joined", "class_members_joined:"+inv.ID+":"+day)
-	if row == nil {
-		return
-	}
-	if err := u.notify.AddToDigest(row, "Вступлений в класс: ", "«"+inv.DisplayName+"»: ", studentName(studentID)); err != nil {
-		log.Printf("teacherclass: notify class %s owner: %v", inv.ID, err)
+	for _, row := range u.teacherNotifications(studentID, inv, "class_members_joined", "class_members_joined:"+inv.ID+":"+day) {
+		if err := u.notify.AddToDigest(row, "Вступлений в класс: ", "«"+inv.DisplayName+"»: ", studentName(studentID)); err != nil {
+			log.Printf("teacherclass: notify class %s teacher: %v", inv.ID, err)
+		}
 	}
 }
 
 // notifyStudentLeft: one row per student and class, leaving again refreshes it.
 func (u *UseCaseImpl) notifyStudentLeft(studentID string, inv *models.ClassInviteDB) {
-	row := ownerNotification(studentID, inv, "class_member_left", "class_member_left:"+inv.ID+":"+studentID)
-	if row == nil {
-		return
-	}
-	row.Title = "Ученик покинул класс"
-	row.Body = fmt.Sprintf("%s больше не в классе «%s». Сданные работы остались на доске класса.", studentName(studentID), inv.DisplayName)
-	if err := u.notify.CreateOrUpdateByDedupe(row); err != nil {
-		log.Printf("teacherclass: notify class %s owner: %v", inv.ID, err)
+	for _, row := range u.teacherNotifications(studentID, inv, "class_member_left", "class_member_left:"+inv.ID+":"+studentID) {
+		row.Title = "Ученик покинул класс"
+		row.Body = fmt.Sprintf("%s больше не в классе «%s». Сданные работы остались на доске класса.", studentName(studentID), inv.DisplayName)
+		if err := u.notify.CreateOrUpdateByDedupe(row); err != nil {
+			log.Printf("teacherclass: notify class %s teacher: %v", inv.ID, err)
+		}
 	}
 }
 
@@ -770,7 +849,7 @@ func (u *UseCaseImpl) parseCohortUsers(body []byte) []teacherclass.CohortUserDTO
 }
 
 func (u *UseCaseImpl) ListMembers(teacherID string, role models.Role, classID string) ([]teacherclass.CohortUserDTO, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -831,7 +910,7 @@ func (u *UseCaseImpl) listLocalMembers(classID string) ([]teacherclass.CohortUse
 }
 
 func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -867,7 +946,7 @@ func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, clas
 // RemoveMember: member is the LMS username; a ЛК class also takes the user id, so a
 // member whose LMS profile could not be read can still be removed.
 func (u *UseCaseImpl) RemoveMember(teacherID string, role models.Role, classID, username string) error {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return err
 	}
@@ -928,7 +1007,7 @@ func assignmentDTO(a *models.ClassAssignmentDB) teacherclass.AssignmentDTO {
 }
 
 func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, classID string, in teacherclass.CreateAssignmentInput) (*teacherclass.AssignmentDTO, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -1018,8 +1097,14 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 		if err != nil {
 			return nil, teacherclass.ErrNotFound
 		}
-		if role == models.Teacher && inv.OwnerTeacherID != viewerID {
-			return nil, teacherclass.ErrForbidden
+		if role == models.Teacher {
+			teaches, err := u.canTeach(inv, viewerID, role)
+			if err != nil {
+				return nil, err
+			}
+			if !teaches {
+				return nil, teacherclass.ErrForbidden
+			}
 		}
 	} else {
 		inv, err = u.gw.GetInviteByID(classID)
@@ -1084,7 +1169,7 @@ var studentInCohort = func(userID, cohortID string) (bool, error) {
 }
 
 func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, classID, assignmentID string) (int, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return 0, err
 	}
@@ -1128,7 +1213,7 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, clas
 }
 
 func (u *UseCaseImpl) SetAssignmentClosed(teacherID string, role models.Role, classID, assignmentID string, closed bool) (*teacherclass.AssignmentDTO, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -1226,7 +1311,7 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID, note string) error 
 		return teacherclass.ErrWorkNotEdited
 	}
 	handIn := &teacherclass.HandIn{At: time.Now().UTC(), Note: note}
-	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", handIn); err != nil {
+	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", "", handIn); err != nil {
 		return err
 	}
 	u.notifyWorkSubmitted(studentID, a)
@@ -1267,13 +1352,18 @@ func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, proje
 		return teacherclass.ErrForbidden
 	}
 	inv, err := u.gw.GetInviteByCourseCohort(deref(p.EdxCourseID), *p.EdxCohortID)
-	if err != nil || !canManage(inv, teacherID, role) {
+	if err != nil {
+		return teacherclass.ErrForbidden
+	}
+	if teaches, err := u.canTeach(inv, teacherID, role); err != nil {
+		return err
+	} else if !teaches {
 		return teacherclass.ErrForbidden
 	}
 	if !draftVisible(role, p) {
 		return teacherclass.ErrNotFound
 	}
-	if err := u.gw.UpdateReview(projectID, status, comment, nil); err != nil {
+	if err := u.gw.UpdateReview(projectID, status, comment, teacherID, nil); err != nil {
 		return err
 	}
 	u.notifyWorkReviewed(p.OwnerUserID, p.ID, p.Title, status, comment)
@@ -1307,7 +1397,7 @@ func deref(s *string) string {
 }
 
 func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classID, assignmentID string) ([]teacherclass.SubmissionDTO, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, err
 	}
@@ -1344,10 +1434,30 @@ func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classI
 			dto.SubmittedAt = p.SubmittedAt
 			dto.PreviewURL = "/projectPage/" + p.ID + "/preview"
 			dto.Late = isLate(a, p)
+			dto.ReviewedBy = deref(p.ReviewedByTeacherID)
+			dto.ReviewedAt = p.ReviewedAt
 		}
 		out = append(out, dto)
 	}
+	fillReviewerNames(out)
 	return out, nil
+}
+
+// fillReviewerNames looks each teacher up once, however many works they reviewed.
+func fillReviewerNames(dtos []teacherclass.SubmissionDTO) {
+	names := make(map[string]string)
+	for i := range dtos {
+		id := dtos[i].ReviewedBy
+		if id == "" {
+			continue
+		}
+		name, ok := names[id]
+		if !ok {
+			name = ownerDisplayName(id)
+			names[id] = name
+		}
+		dtos[i].ReviewedByName = name
+	}
 }
 
 // work is one student's work on an assignment for ProgressMatrix: a Scratch copy or a file
@@ -1361,7 +1471,7 @@ type work struct {
 // ProgressMatrix returns each assignment's status per project owner. It does not call
 // Open edX: the board joins these rows with the roster it already loaded from /members.
 func (u *UseCaseImpl) ProgressMatrix(teacherID string, role models.Role, classID string) ([]teacherclass.AssignmentDTO, []teacherclass.ProgressRowDTO, error) {
-	inv, err := u.requireOwner(teacherID, role, classID)
+	inv, err := u.requireTeaching(teacherID, role, classID)
 	if err != nil {
 		return nil, nil, err
 	}

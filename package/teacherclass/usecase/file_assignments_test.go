@@ -23,6 +23,7 @@ type fileGateway struct {
 	links       map[string][]string // submission -> file ids
 	files       map[string]models.UserFileDB
 	maxSeen     int
+	coTeachers  map[string]bool
 }
 
 func newFileGateway() *fileGateway {
@@ -155,9 +156,13 @@ func (g *fileGateway) DetachSubmissionFile(subID, fileID string) error {
 	return gorm.ErrRecordNotFound
 }
 
-func (g *fileGateway) UpdateFileReview(subID, status, comment string, handIn *teacherclass.HandIn) error {
+func (g *fileGateway) UpdateFileReview(subID, status, comment, reviewerID string, handIn *teacherclass.HandIn) error {
 	s := g.subs[subID]
 	s.ReviewStatus, s.ReviewComment = status, comment
+	s.ReviewedByTeacherID = nil
+	if reviewerID != "" {
+		s.ReviewedByTeacherID = &reviewerID
+	}
 	if handIn != nil {
 		s.SubmittedAt = &handIn.At
 		s.SubmissionNote = handIn.Note
@@ -171,6 +176,15 @@ func (g *fileGateway) SetFileSubmissionNote(subID, note string) error {
 		return nil
 	}
 	return teacherclass.ErrNotOnReview
+}
+
+func (g *fileGateway) IsCoTeacher(_, id string) (bool, error)    { return g.coTeachers[id], nil }
+func (g *fileGateway) WasCoTeacher(string, string) (bool, error) { return false, nil }
+func (g *fileGateway) ListCoTeachers(string) ([]models.ClassCoTeacherDB, error) {
+	return nil, nil
+}
+func (g *fileGateway) ListCoTeachings(string) ([]models.ClassCoTeacherDB, error) {
+	return nil, nil
 }
 
 func (g *fileGateway) GetUserFiles(ids []string) (map[string]models.UserFileDB, error) {

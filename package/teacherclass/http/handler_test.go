@@ -40,6 +40,26 @@ func TestWriteErrKeepsDomainErrors(t *testing.T) {
 	}
 }
 
+func TestWriteErrCoTeacherStatuses(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := map[error]int{
+		teacherclass.ErrNotATeacher:         http.StatusNotFound,
+		teacherclass.ErrBadCoTeacherTerm:    http.StatusBadRequest,
+		teacherclass.ErrAlreadyCoTeacher:    http.StatusConflict,
+		teacherclass.ErrTooManyCoTeachers:   http.StatusConflict,
+		teacherclass.ErrCoTeacherCannotJoin: http.StatusForbidden,
+	}
+	for err, want := range cases {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/teacher/classes/c/co-teachers", nil)
+		writeErr(c, err)
+		if w.Code != want || !strings.Contains(w.Body.String(), err.Error()) {
+			t.Errorf("%v: status=%d body=%s", err, w.Code, w.Body.String())
+		}
+	}
+}
+
 func TestSubmissionNoteBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	read := func(body string) (string, bool, int) {

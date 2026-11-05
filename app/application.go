@@ -51,6 +51,7 @@ func InvokeWith(options ...fx.Option) *fx.App {
 		fx.Invoke(modules.StartSb3RetentionWorker),
 		fx.Invoke(modules.StartUserFilesGCWorker),
 		fx.Invoke(modules.StartStorageAlertWorker),
+		fx.Invoke(modules.StartCoTeacherReminderWorker),
 	}
 	for _, option := range options {
 		di = append(di, option)

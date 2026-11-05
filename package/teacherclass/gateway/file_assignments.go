@@ -131,9 +131,9 @@ func (g *GatewayImpl) DetachSubmissionFile(submissionID, fileID string) error {
 	})
 }
 
-func (g *GatewayImpl) UpdateFileReview(submissionID, status, comment string, handIn *teacherclass.HandIn) error {
+func (g *GatewayImpl) UpdateFileReview(submissionID, status, comment, reviewerID string, handIn *teacherclass.HandIn) error {
 	res := g.db.Model(&models.ClassFileSubmissionDB{}).Where("id = ?", submissionID).
-		Updates(reviewUpdates(status, comment, handIn))
+		Updates(reviewUpdates(status, comment, reviewerID, handIn))
 	if res.Error != nil {
 		return res.Error
 	}

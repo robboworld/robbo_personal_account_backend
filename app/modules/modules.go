@@ -175,14 +175,21 @@ func SetupGateway(postgresClient db_client.PostgresClient) (GatewayModule, error
 	userfiles.FileInUse = tcGw.Gateway.FileInUse
 	ppageaccess.CohortTeacherReader = func(teacherID, courseID, cohortID string) bool {
 		inv, err := tcGw.Gateway.GetInviteByCourseCohort(courseID, cohortID)
-		return err == nil && inv != nil && inv.OwnerTeacherID == teacherID && inv.ArchivedAt == nil
+		if err != nil || inv == nil || inv.ArchivedAt != nil {
+			return false
+		}
+		if inv.OwnerTeacherID == teacherID {
+			return true
+		}
+		coTeacher, err := tcGw.Gateway.IsCoTeacher(inv.ID, teacherID)
+		return err == nil && coTeacher
 	}
 	profileaccess.TeacherStudentReader = func(teacherID, studentID string) bool {
 		studentNum, err := strconv.ParseInt(strings.TrimSpace(studentID), 10, 64)
 		if err != nil || studentNum <= 0 {
 			return false
 		}
-		invites, err := tcGw.Gateway.ListInvitesByOwner(teacherID)
+		invites, err := tcGw.Gateway.ListInvitesByTeacher(teacherID)
 		if err != nil {
 			return false
 		}
@@ -428,6 +435,10 @@ func StartSb3RetentionWorker(usecase UseCaseModule, lc fx.Lifecycle) {
 
 func StartUserFilesGCWorker(usecase UseCaseModule, lc fx.Lifecycle) {
 	ufusecase.StartGCWorker(usecase.UserFilesUseCase, lc)
+}
+
+func StartCoTeacherReminderWorker(usecase UseCaseModule, lc fx.Lifecycle) {
+	tcusecase.StartCoTeacherReminderWorker(usecase.TeacherClassUseCase, lc)
 }
 
 func StartStorageAlertWorker(usecase UseCaseModule, lc fx.Lifecycle) {

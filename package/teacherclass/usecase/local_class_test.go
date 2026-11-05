@@ -97,6 +97,15 @@ func (g *localGateway) IsMemberOfAny(userID string, classIDs []string) (bool, er
 	return false, nil
 }
 
+func (g *localGateway) IsCoTeacher(string, string) (bool, error)  { return false, nil }
+func (g *localGateway) WasCoTeacher(string, string) (bool, error) { return false, nil }
+func (g *localGateway) ListCoTeachers(string) ([]models.ClassCoTeacherDB, error) {
+	return nil, nil
+}
+func (g *localGateway) ListCoTeachings(string) ([]models.ClassCoTeacherDB, error) {
+	return nil, nil
+}
+
 func (g *localGateway) ListAssignments(string, string) ([]models.ClassAssignmentDB, error) {
 	return nil, nil
 }

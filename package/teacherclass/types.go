@@ -32,6 +32,16 @@ var (
 	ErrNotOnReview = errors.New("work_not_on_review")
 	// The Scratch copy is still what the student was given: there is no work to hand in.
 	ErrWorkNotEdited = errors.New("work_not_edited")
+	// One error for "no such user" and "not a teacher": the form must not tell who is a teacher.
+	ErrNotATeacher = errors.New("not_a_teacher")
+	// The teacher already runs the class: its owner or a co-teacher with a running term.
+	ErrAlreadyCoTeacher = errors.New("already_co_teacher")
+	// The class already has classes.maxCoTeachers co-teachers.
+	ErrTooManyCoTeachers = errors.New("too_many_co_teachers")
+	// The term ends in the past or further than classes.coTeacherMaxDays ahead.
+	ErrBadCoTeacherTerm = errors.New("bad_co_teacher_term")
+	// A co-teacher knows the invite code: it must not let them back in as a student.
+	ErrCoTeacherCannotJoin = errors.New("co_teacher_cannot_join")
 )
 
 type CreateClassInput struct {
@@ -54,6 +64,16 @@ type ClassDTO struct {
 	LmsLinked      bool      `json:"lmsLinked"`
 	CreatedAt      time.Time `json:"createdAt"`
 	OwnerName      string    `json:"ownerName,omitempty"`
+	// CoTeacherUntil is set when the viewer runs the class as a co-teacher: the end of their term.
+	CoTeacherUntil *time.Time `json:"coTeacherUntil,omitempty"`
+}
+
+// CoTeacherDTO is a co-teacher with a running term. The email stays with the owner who typed it.
+type CoTeacherDTO struct {
+	TeacherID string    `json:"teacherId"`
+	Name      string    `json:"name,omitempty"`
+	GrantedAt time.Time `json:"grantedAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
 }
 
 // CourseDTO is a course a class can be created on.
@@ -156,6 +176,11 @@ type SubmissionDTO struct {
 	PreviewURL     string     `json:"previewUrl,omitempty"`
 	// Late: handed in after the assignment's due date.
 	Late bool `json:"late,omitempty"`
+	// ReviewedBy, its name and ReviewedAt: who gave the current review, empty for work
+	// reviewed before that was recorded.
+	ReviewedBy     string     `json:"reviewedBy,omitempty"`
+	ReviewedByName string     `json:"reviewedByName,omitempty"`
+	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
 }
 
 // HandIn is what a hand-in adds to a review update.
@@ -185,7 +210,8 @@ type Gateway interface {
 	GetInviteBySlug(slug string) (*models.ClassInviteDB, error)
 	GetInviteByCode(code string) (*models.ClassInviteDB, error)
 	GetInviteByCourseCohort(courseID, cohortID string) (*models.ClassInviteDB, error)
-	ListInvitesByOwner(ownerTeacherID string) ([]models.ClassInviteDB, error)
+	// ListInvitesByTeacher: the classes the teacher owns or co-teaches, newest first.
+	ListInvitesByTeacher(teacherID string) ([]models.ClassInviteDB, error)
 	ListAllInvites() ([]models.ClassInviteDB, error)
 	ListActiveInvites() ([]models.ClassInviteDB, error)
 
@@ -195,6 +221,24 @@ type Gateway interface {
 	ListMembers(classID string) ([]models.ClassMemberDB, error)
 	ListMemberClassIDs(userID string) ([]string, error)
 	IsMemberOfAny(userID string, classIDs []string) (bool, error)
+
+	// AddCoTeacher starts a term unless the teacher has a running one (ErrAlreadyCoTeacher) or
+	// the class has maxActive (ErrTooManyCoTeachers).
+	AddCoTeacher(row *models.ClassCoTeacherDB, maxActive int) error
+	// IsCoTeacher: the teacher has a running term in the class.
+	IsCoTeacher(classID, teacherID string) (bool, error)
+	// WasCoTeacher: the teacher has any term in the class, over or not.
+	WasCoTeacher(classID, teacherID string) (bool, error)
+	// ListCoTeachers returns the running terms of the class, oldest first.
+	ListCoTeachers(classID string) ([]models.ClassCoTeacherDB, error)
+	// ListCoTeachings returns the teacher's running terms in classes that are not archived.
+	ListCoTeachings(teacherID string) ([]models.ClassCoTeacherDB, error)
+	// SetCoTeacherExpiry moves the end of a running term; remindedAt replaces the reminder mark.
+	SetCoTeacherExpiry(classID, teacherID string, expiresAt time.Time, remindedAt *time.Time) (*models.ClassCoTeacherDB, error)
+	RevokeCoTeacher(classID, teacherID, revokedBy string) error
+	// ClaimExpiringCoTeachers marks the running terms ending by `before` as reminded and
+	// returns them, so each is reminded of once however many backends run.
+	ClaimExpiringCoTeachers(before time.Time) ([]models.ClassCoTeacherDB, error)
 
 	CreateAssignment(a *models.ClassAssignmentDB) error
 	ListAssignments(courseID, cohortID string) ([]models.ClassAssignmentDB, error)
@@ -209,9 +253,9 @@ type Gateway interface {
 	ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error)
 	ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error)
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)
-	// UpdateReview with a nil handIn is a review: it keeps the time and the note of the last
-	// hand-in.
-	UpdateReview(projectID, status, comment string, handIn *HandIn) error
+	// UpdateReview with a nil handIn is reviewerID's review: it keeps the time and the note of
+	// the last hand-in. A hand-in clears the reviewer.
+	UpdateReview(projectID, status, comment, reviewerID string, handIn *HandIn) error
 	// SetProjectNote replaces the student's note of work on review (ErrNotOnReview otherwise).
 	// The scratch_projects trigger moves updated_at, as it does on a review.
 	SetProjectNote(projectID, note string) error
@@ -229,7 +273,7 @@ type Gateway interface {
 	// (ErrTooManySubmissionFiles); attaching it twice is a no-op.
 	AttachSubmissionFile(submissionID, fileID string, maxFiles int) error
 	DetachSubmissionFile(submissionID, fileID string) error
-	UpdateFileReview(submissionID, status, comment string, handIn *HandIn) error
+	UpdateFileReview(submissionID, status, comment, reviewerID string, handIn *HandIn) error
 	// SetFileSubmissionNote is SetProjectNote for a file submission; updated_at stays.
 	SetFileSubmissionNote(submissionID, note string) error
 	// GetUserFiles returns the live "Мои файлы" rows among ids, by id.
@@ -254,6 +298,15 @@ type UseCase interface {
 	// LeaveClass takes the student off the roster; projects and handed-in work stay.
 	LeaveClass(studentID, classID string) error
 
+	// Co-teachers: the owner or a SuperAdmin appoints, extends and removes; a co-teacher may
+	// list them and remove themselves.
+	ListCoTeachers(teacherID string, role models.Role, classID string) ([]CoTeacherDTO, error)
+	AddCoTeacher(teacherID string, role models.Role, classID, email string, expiresAt time.Time) (*CoTeacherDTO, error)
+	ExtendCoTeacher(teacherID string, role models.Role, classID, coTeacherID string, expiresAt time.Time) (*CoTeacherDTO, error)
+	RemoveCoTeacher(teacherID string, role models.Role, classID, coTeacherID string) error
+	// RemindExpiringCoTeachers tells both sides that a term ends within a day; returns how many.
+	RemindExpiringCoTeachers(now time.Time) (int, error)
+
 	ListMembers(teacherID string, role models.Role, classID string) ([]CohortUserDTO, error)
 	AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error)
 	RemoveMember(teacherID string, role models.Role, classID, username string) error
@@ -276,9 +329,9 @@ type UseCase interface {
 	DetachFile(studentID, assignmentID, fileID string) (*AssignmentDTO, error)
 	SubmitFiles(studentID, assignmentID, note string) error
 	UpdateFileNote(studentID, assignmentID, note string) error
-	// OpenStarterFile is the assignment's starter file for the class owner or a member.
+	// OpenStarterFile is the assignment's starter file for the class's teachers or a member.
 	OpenStarterFile(viewerID string, role models.Role, assignmentID string) (*models.UserFileDB, io.ReadSeekCloser, error)
-	// OpenSubmissionFile is a file of handed-in work for the class owner (any work for a SuperAdmin).
+	// OpenSubmissionFile is a file of handed-in work for the class's teachers (any work for a SuperAdmin).
 	OpenSubmissionFile(teacherID string, role models.Role, submissionID, fileID string) (*models.UserFileDB, io.ReadSeekCloser, error)
 	ReviewFileSubmission(teacherID string, role models.Role, submissionID, status, comment string) error
 }

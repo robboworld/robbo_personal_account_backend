@@ -53,6 +53,10 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.GET("/classes/:classId/members", h.ListMembers)
 		api.POST("/classes/:classId/members", h.AddMembers)
 		api.DELETE("/classes/:classId/members/:username", h.RemoveMember)
+		api.GET("/classes/:classId/co-teachers", h.ListCoTeachers)
+		api.POST("/classes/:classId/co-teachers", h.AddCoTeacher)
+		api.PATCH("/classes/:classId/co-teachers/:teacherId", h.ExtendCoTeacher)
+		api.DELETE("/classes/:classId/co-teachers/:teacherId", h.RemoveCoTeacher)
 		api.GET("/classes/:classId/assignments", h.ListAssignmentsTeacher)
 		api.POST("/classes/:classId/assignments", h.CreateAssignment)
 		api.POST("/classes/:classId/assignments/:assignmentId/issue-late", h.IssueLate)
@@ -96,20 +100,21 @@ func (h *Handler) identity(c *gin.Context, roles []models.Role) (userID string, 
 func writeErr(c *gin.Context, err error) {
 	status := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, teacherclass.ErrBadRequest):
+	case errors.Is(err, teacherclass.ErrBadRequest), errors.Is(err, teacherclass.ErrBadCoTeacherTerm):
 		status = http.StatusBadRequest
 	case errors.Is(err, teacherclass.ErrUnauthorized):
 		status = http.StatusUnauthorized
-	case errors.Is(err, teacherclass.ErrForbidden):
+	case errors.Is(err, teacherclass.ErrForbidden), errors.Is(err, teacherclass.ErrCoTeacherCannotJoin):
 		status = http.StatusForbidden
-	case errors.Is(err, teacherclass.ErrNotFound):
+	case errors.Is(err, teacherclass.ErrNotFound), errors.Is(err, teacherclass.ErrNotATeacher):
 		status = http.StatusNotFound
 	case errors.Is(err, teacherclass.ErrConflict), errors.Is(err, teacherclass.ErrAlreadyIn),
 		errors.Is(err, teacherclass.ErrAssignmentClosed), errors.Is(err, teacherclass.ErrAlreadyHandedIn),
 		errors.Is(err, teacherclass.ErrFileAssignmentsDisabled), errors.Is(err, teacherclass.ErrFileKindNotAllowed),
 		errors.Is(err, teacherclass.ErrTooManySubmissionFiles), errors.Is(err, teacherclass.ErrNoSubmissionFiles),
 		errors.Is(err, teacherclass.ErrNotOnReview),
-		errors.Is(err, teacherclass.ErrWorkNotEdited):
+		errors.Is(err, teacherclass.ErrWorkNotEdited), errors.Is(err, teacherclass.ErrAlreadyCoTeacher),
+		errors.Is(err, teacherclass.ErrTooManyCoTeachers):
 		status = http.StatusConflict
 	// From "Мои файлы": the ЛК shows the same messages as on upload.
 	case errors.Is(err, userfiles.ErrFileInfected):
@@ -332,6 +337,95 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 	if err := h.uc.RemoveMember(userID, role, c.Param("classId"), c.Param("username")); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ListCoTeachers(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	list, err := h.uc.ListCoTeachers(userID, role, c.Param("classId"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": list})
+}
+
+// coTeacherExpiry reads the end of a term; a missing or malformed one is a bad request.
+func coTeacherExpiry(c *gin.Context, raw string) (time.Time, bool) {
+	expiresAt, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return time.Time{}, false
+	}
+	return expiresAt, true
+}
+
+func (h *Handler) AddCoTeacher(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	var body struct {
+		Email     string `json:"email"`
+		ExpiresAt string `json:"expiresAt"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return
+	}
+	expiresAt, ok := coTeacherExpiry(c, body.ExpiresAt)
+	if !ok {
+		return
+	}
+	dto, err := h.uc.AddCoTeacher(userID, role, c.Param("classId"), body.Email, expiresAt)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, dto)
+}
+
+func (h *Handler) ExtendCoTeacher(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	var body struct {
+		ExpiresAt string `json:"expiresAt"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return
+	}
+	expiresAt, ok := coTeacherExpiry(c, body.ExpiresAt)
+	if !ok {
+		return
+	}
+	dto, err := h.uc.ExtendCoTeacher(userID, role, c.Param("classId"), c.Param("teacherId"), expiresAt)
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto)
+}
+
+func (h *Handler) RemoveCoTeacher(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	// "me" is a co-teacher stepping down: the ЛК has no user id at hand on the board.
+	coTeacherID := c.Param("teacherId")
+	if coTeacherID == "me" {
+		coTeacherID = userID
+	}
+	if err := h.uc.RemoveCoTeacher(userID, role, c.Param("classId"), coTeacherID); err != nil {
 		writeErr(c, err)
 		return
 	}

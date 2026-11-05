@@ -110,7 +110,7 @@ func TestFileSubmissionLifecycle(t *testing.T) {
 	}
 
 	handIn := &teacherclass.HandIn{At: time.Now().UTC(), Note: "Крепление в part.stl"}
-	if err := g.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", handIn); err != nil {
+	if err := g.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", "", handIn); err != nil {
 		t.Fatal(err)
 	}
 	before, _ := g.GetFileSubmission(sub.ID)
@@ -124,7 +124,7 @@ func TestFileSubmissionLifecycle(t *testing.T) {
 	if !inUse(student, f1) || inUse(student, f3) || inUse("someone", f1) {
 		t.Fatal("only the handed-in files of their owner are in use")
 	}
-	if err := g.UpdateFileReview(sub.ID, models.ReviewReturned, "again", nil); err != nil {
+	if err := g.UpdateFileReview(sub.ID, models.ReviewReturned, "again", teacher, nil); err != nil {
 		t.Fatal(err)
 	}
 	if inUse(student, f1) {
@@ -137,7 +137,7 @@ func TestFileSubmissionLifecycle(t *testing.T) {
 	if got, err := g.GetFileSubmission(sub.ID); err != nil || got.SubmissionNote != handIn.Note || got.SubmittedAt == nil {
 		t.Fatalf("after a review = %+v, %v", got, err)
 	}
-	g.UpdateFileReview(sub.ID, models.ReviewAccepted, "", nil)
+	g.UpdateFileReview(sub.ID, models.ReviewAccepted, "", teacher, nil)
 	db.Exec(`UPDATE class_invites SET archived_at = now() WHERE id = ?`, inv.ID)
 	if inUse(student, f1) || inUse(teacher, starter) {
 		t.Fatal("an archived class frees its files")
@@ -178,7 +178,7 @@ func TestProjectNote(t *testing.T) {
 	if err != nil || got.SubmissionNote != "Стало" {
 		t.Fatalf("after the edit: %q, %v", got.SubmissionNote, err)
 	}
-	if err := g.UpdateReview(p.ID, models.ReviewAccepted, "", nil); err != nil {
+	if err := g.UpdateReview(p.ID, models.ReviewAccepted, "", "", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := g.SetProjectNote(p.ID, "поздно"); !errors.Is(err, teacherclass.ErrNotOnReview) {

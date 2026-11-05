@@ -30,9 +30,12 @@ type ScratchProjectDB struct {
 	ReviewComment     *string        `gorm:"column:review_comment"`
 	SubmittedAt       *time.Time     `gorm:"column:submitted_at"`
 	SubmissionNote    string         `gorm:"column:submission_note"`
-	CreatedAt         time.Time      `gorm:"column:created_at"`
-	UpdatedAt         time.Time      `gorm:"column:updated_at"`
-	DeletedAt         *time.Time     `gorm:"column:deleted_at"`
+	// ReviewedByTeacherID and ReviewedAt: who gave the current review; a new hand-in clears them.
+	ReviewedByTeacherID *string    `gorm:"column:reviewed_by_teacher_id"`
+	ReviewedAt          *time.Time `gorm:"column:reviewed_at"`
+	CreatedAt           time.Time  `gorm:"column:created_at"`
+	UpdatedAt           time.Time  `gorm:"column:updated_at"`
+	DeletedAt           *time.Time `gorm:"column:deleted_at"`
 }
 
 func (ScratchProjectDB) TableName() string {

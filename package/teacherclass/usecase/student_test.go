@@ -19,6 +19,7 @@ type studentGateway struct {
 	// unsaved lists copies the student never saved.
 	unsaved   map[string]bool
 	reviewed  string
+	reviewer  string
 	newStatus string
 	handIn    *teacherclass.HandIn
 }
@@ -77,11 +78,21 @@ func (g *studentGateway) HasOwnSave(id string) (bool, error) {
 	return !g.unsaved[id], nil
 }
 
-func (g *studentGateway) UpdateReview(projectID, status, _ string, handIn *teacherclass.HandIn) error {
+func (g *studentGateway) UpdateReview(projectID, status, _, reviewerID string, handIn *teacherclass.HandIn) error {
 	g.reviewed = projectID
+	g.reviewer = reviewerID
 	g.newStatus = status
 	g.handIn = handIn
 	return nil
+}
+
+func (g *studentGateway) IsCoTeacher(string, string) (bool, error)  { return false, nil }
+func (g *studentGateway) WasCoTeacher(string, string) (bool, error) { return false, nil }
+func (g *studentGateway) ListCoTeachers(string) ([]models.ClassCoTeacherDB, error) {
+	return nil, nil
+}
+func (g *studentGateway) ListCoTeachings(string) ([]models.ClassCoTeacherDB, error) {
+	return nil, nil
 }
 
 func strPtr(s string) *string { return &s }

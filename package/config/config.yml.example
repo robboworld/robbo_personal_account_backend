@@ -103,10 +103,14 @@ userFiles:
     timeout: 2m
     required: false
 
-# Classes. A file assignment's submission holds at most this many files.
-# Env: CLASSES_MAXSUBMISSIONFILES
+# Classes. A file assignment's submission holds at most this many files. A class has at most
+# maxCoTeachers co-teachers at a time, each for at most coTeacherMaxDays at a go.
+# Env: CLASSES_MAXSUBMISSIONFILES, CLASSES_MAXCOTEACHERS, CLASSES_COTEACHERMAXDAYS
 classes:
   maxSubmissionFiles: 10
+  maxCoTeachers: 3
+  coTeacherMaxDays: 90
+  coTeacherReminderInterval: 1h
 
 # Super admin "Хранилище": the low-space alert to every super admin's bell (at most daily while
 # low) and the top of accounts by stored bytes.

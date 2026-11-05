@@ -309,7 +309,7 @@ func (u *UseCaseImpl) SubmitFiles(studentID, assignmentID, note string) error {
 		return teacherclass.ErrNoSubmissionFiles
 	}
 	handIn := &teacherclass.HandIn{At: time.Now().UTC(), Note: note}
-	if err := u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", handIn); err != nil {
+	if err := u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", "", handIn); err != nil {
 		return err
 	}
 	u.notifyWorkSubmitted(studentID, a)
@@ -325,7 +325,11 @@ func (u *UseCaseImpl) OpenStarterFile(viewerID string, role models.Role, assignm
 	if err != nil {
 		return nil, nil, teacherclass.ErrNotFound
 	}
-	if !canManage(inv, viewerID, role) {
+	teaches, err := u.canTeach(inv, viewerID, role)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !teaches {
 		member, err := u.isClassMember(viewerID, inv)
 		if err != nil {
 			return nil, nil, err
@@ -355,7 +359,12 @@ func (u *UseCaseImpl) managedFileSubmission(teacherID string, role models.Role, 
 		return nil, nil, teacherclass.ErrNotFound
 	}
 	inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID)
-	if err != nil || !canManage(inv, teacherID, role) {
+	if err != nil {
+		return nil, nil, teacherclass.ErrForbidden
+	}
+	if teaches, err := u.canTeach(inv, teacherID, role); err != nil {
+		return nil, nil, err
+	} else if !teaches {
 		return nil, nil, teacherclass.ErrForbidden
 	}
 	// A draft is the student's own work, as with Scratch copies.
@@ -395,7 +404,7 @@ func (u *UseCaseImpl) ReviewFileSubmission(teacherID string, role models.Role, s
 	if err != nil {
 		return err
 	}
-	if err := u.gw.UpdateFileReview(sub.ID, status, comment, nil); err != nil {
+	if err := u.gw.UpdateFileReview(sub.ID, status, comment, teacherID, nil); err != nil {
 		return err
 	}
 	u.notifyWorkReviewed(sub.StudentUserID, sub.ID, a.Title, status, comment)
@@ -435,9 +444,12 @@ func (u *UseCaseImpl) fileSubmissionDTOs(role models.Role, a *models.ClassAssign
 			dto.SubmittedAt = s.SubmittedAt
 			dto.Late = lateAt(a, s.SubmittedAt)
 			dto.Files = fileRefs(files[s.ID])
+			dto.ReviewedBy = deref(s.ReviewedByTeacherID)
+			dto.ReviewedAt = s.ReviewedAt
 		}
 		out = append(out, dto)
 	}
+	fillReviewerNames(out)
 	return out, nil
 }
 
