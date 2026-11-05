@@ -1183,7 +1183,11 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 		return teacherclass.ErrForbidden
 	}
 	now := time.Now().UTC()
-	return u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now)
+	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now); err != nil {
+		return err
+	}
+	u.notifyWorkSubmitted(studentID, a)
+	return nil
 }
 
 // reviewStatusAllowed: Submitted puts reviewed work back in the queue. Draft is the
@@ -1214,7 +1218,11 @@ func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, proje
 	if !draftVisible(role, p) {
 		return teacherclass.ErrNotFound
 	}
-	return u.gw.UpdateReview(projectID, status, comment, nil)
+	if err := u.gw.UpdateReview(projectID, status, comment, nil); err != nil {
+		return err
+	}
+	u.notifyWorkReviewed(p.OwnerUserID, p.ID, p.Title, status, comment)
+	return nil
 }
 
 // draftVisible: a SuperAdmin sees every copy; the teacher only handed-in work (as access.Resolve).

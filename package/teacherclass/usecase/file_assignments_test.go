@@ -217,7 +217,7 @@ func newFileUseCase(t *testing.T) (*UseCaseImpl, *fileGateway) {
 	gw.files["f2"] = models.UserFileDB{ID: "f2", OwnerUserID: "797", OriginalName: "part.stl", Kind: "stl"}
 	gw.files["f3"] = models.UserFileDB{ID: "f3", OwnerUserID: "797", OriginalName: "notes.pdf", Kind: "pdf"}
 	gw.files["other"] = models.UserFileDB{ID: "other", OwnerUserID: "555", OriginalName: "x.stl", Kind: "stl"}
-	return &UseCaseImpl{gw: gw, files: &fakeFiles{gw: gw, exchange: true}}, gw
+	return &UseCaseImpl{gw: gw, files: &fakeFiles{gw: gw, exchange: true}, notify: &workNotifier{}}, gw
 }
 
 func createFileAssignment(t *testing.T, uc *UseCaseImpl) *teacherclass.AssignmentDTO {

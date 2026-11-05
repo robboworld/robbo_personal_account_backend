@@ -128,7 +128,7 @@ func TestSubmitOnlyAssignmentCopies(t *testing.T) {
 		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1")},
 		"x/797":  {ID: "own", OwnerUserID: "797"},
 	}}
-	uc := &UseCaseImpl{gw: gw}
+	uc := &UseCaseImpl{gw: gw, notify: &workNotifier{}}
 
 	if err := uc.SubmitAssignment("797", "own"); !errors.Is(err, teacherclass.ErrBadRequest) {
 		t.Fatalf("own project err = %v, want ErrBadRequest", err)
@@ -153,7 +153,7 @@ func TestSubmitOnlyDraftOrReturned(t *testing.T) {
 		gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
 			"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(status)},
 		}}
-		uc := &UseCaseImpl{gw: gw}
+		uc := &UseCaseImpl{gw: gw, notify: &workNotifier{}}
 		if err := uc.SubmitAssignment("797", "p1"); !errors.Is(err, want) {
 			t.Fatalf("submit from %s: err = %v, want %v", status, err, want)
 		}
@@ -168,7 +168,7 @@ func TestSubmitClosedAssignment(t *testing.T) {
 	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
 		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(models.ReviewDraft)},
 	}}
-	uc := &UseCaseImpl{gw: gw}
+	uc := &UseCaseImpl{gw: gw, notify: &workNotifier{}}
 
 	if _, err := uc.SetAssignmentClosed("10", models.Teacher, "class-1", "a1", true); err != nil {
 		t.Fatal(err)
@@ -193,7 +193,7 @@ func TestSubmitAfterDueIsAllowed(t *testing.T) {
 		},
 		assignments: map[string]*models.ClassAssignmentDB{"a1": {ID: "a1", EdxCohortID: "7", DueAt: &past}},
 	}
-	if err := (&UseCaseImpl{gw: gw}).SubmitAssignment("797", "p1"); err != nil {
+	if err := (&UseCaseImpl{gw: gw, notify: &workNotifier{}}).SubmitAssignment("797", "p1"); err != nil {
 		t.Fatalf("late submit err = %v", err)
 	}
 }

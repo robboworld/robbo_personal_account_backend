@@ -282,7 +282,11 @@ func (u *UseCaseImpl) SubmitFiles(studentID, assignmentID string) error {
 		return teacherclass.ErrNoSubmissionFiles
 	}
 	now := time.Now().UTC()
-	return u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", &now)
+	if err := u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", &now); err != nil {
+		return err
+	}
+	u.notifyWorkSubmitted(studentID, a)
+	return nil
 }
 
 func (u *UseCaseImpl) OpenStarterFile(viewerID string, role models.Role, assignmentID string) (*models.UserFileDB, io.ReadSeekCloser, error) {
@@ -360,11 +364,15 @@ func (u *UseCaseImpl) ReviewFileSubmission(teacherID string, role models.Role, s
 	if !reviewStatusAllowed(status) {
 		return teacherclass.ErrBadRequest
 	}
-	sub, _, err := u.managedFileSubmission(teacherID, role, submissionID)
+	sub, a, err := u.managedFileSubmission(teacherID, role, submissionID)
 	if err != nil {
 		return err
 	}
-	return u.gw.UpdateFileReview(sub.ID, status, comment, nil)
+	if err := u.gw.UpdateFileReview(sub.ID, status, comment, nil); err != nil {
+		return err
+	}
+	u.notifyWorkReviewed(sub.StudentUserID, sub.ID, a.Title, status, comment)
+	return nil
 }
 
 // fileSubmissionDTOs is ListSubmissions for a file assignment.

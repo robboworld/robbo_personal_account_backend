@@ -64,7 +64,7 @@ func submissionOf(list []teacherclass.SubmissionDTO, owner string) *teacherclass
 }
 
 func TestTeacherSeesDraftsWithoutContent(t *testing.T) {
-	uc := &UseCaseImpl{gw: newDraftsGateway()}
+	uc := &UseCaseImpl{gw: newDraftsGateway(), notify: &workNotifier{}}
 
 	subs, err := uc.ListSubmissions("10", models.Teacher, "class-1", "a1")
 	if err != nil {
@@ -106,7 +106,7 @@ func TestTeacherSeesDraftsWithoutContent(t *testing.T) {
 }
 
 func TestTeacherCannotSetDraft(t *testing.T) {
-	uc := &UseCaseImpl{gw: newDraftsGateway()}
+	uc := &UseCaseImpl{gw: newDraftsGateway(), notify: &workNotifier{}}
 	if err := uc.ReviewSubmission("10", models.Teacher, "sent", models.ReviewDraft, ""); !errors.Is(err, teacherclass.ErrBadRequest) {
 		t.Fatalf("review to draft err = %v, want ErrBadRequest", err)
 	}
@@ -133,7 +133,7 @@ func TestLateSubmission(t *testing.T) {
 }
 
 func TestSuperAdminSeesDrafts(t *testing.T) {
-	uc := &UseCaseImpl{gw: newDraftsGateway()}
+	uc := &UseCaseImpl{gw: newDraftsGateway(), notify: &workNotifier{}}
 
 	subs, err := uc.ListSubmissions("1", models.SuperAdmin, "class-1", "a1")
 	if err != nil {
