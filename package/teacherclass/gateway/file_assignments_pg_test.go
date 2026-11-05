@@ -10,8 +10,10 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
@@ -107,9 +109,18 @@ func TestFileSubmissionLifecycle(t *testing.T) {
 		t.Fatal("the starter file of an open assignment is in use")
 	}
 
-	if err := g.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", nil); err != nil {
+	handIn := &teacherclass.HandIn{At: time.Now().UTC(), Note: "Крепление в part.stl"}
+	if err := g.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", handIn); err != nil {
 		t.Fatal(err)
 	}
+	before, _ := g.GetFileSubmission(sub.ID)
+	if err := g.SetFileSubmissionNote(sub.ID, "Другой текст"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := g.GetFileSubmission(sub.ID); err != nil || got.SubmissionNote != "Другой текст" || !got.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Fatalf("after a note edit = %+v, %v; updated_at was %v", got, err, before.UpdatedAt)
+	}
+	handIn.Note = "Другой текст"
 	if !inUse(student, f1) || inUse(student, f3) || inUse("someone", f1) {
 		t.Fatal("only the handed-in files of their owner are in use")
 	}
@@ -118,6 +129,13 @@ func TestFileSubmissionLifecycle(t *testing.T) {
 	}
 	if inUse(student, f1) {
 		t.Fatal("returned work may be changed: its files are free")
+	}
+	if err := g.SetFileSubmissionNote(sub.ID, "поздно"); !errors.Is(err, teacherclass.ErrNotOnReview) {
+		t.Fatalf("note of returned work: %v", err)
+	}
+	// A review changes neither the time nor the note of the hand-in.
+	if got, err := g.GetFileSubmission(sub.ID); err != nil || got.SubmissionNote != handIn.Note || got.SubmittedAt == nil {
+		t.Fatalf("after a review = %+v, %v", got, err)
 	}
 	g.UpdateFileReview(sub.ID, models.ReviewAccepted, "", nil)
 	db.Exec(`UPDATE class_invites SET archived_at = now() WHERE id = ?`, inv.ID)
@@ -140,5 +158,33 @@ func TestFileSubmissionLifecycle(t *testing.T) {
 	byID, err := g.GetUserFiles([]string{starter, f2})
 	if err != nil || len(byID) != 1 {
 		t.Fatalf("GetUserFiles = %+v, %v; want only the live starter", byID, err)
+	}
+}
+
+// The note of a Scratch copy changes only on review.
+func TestProjectNote(t *testing.T) {
+	g, db := fileTestGateway(t)
+	status := models.ReviewSubmitted
+	p := &models.ScratchProjectDB{OwnerUserID: "s-" + uuid.NewString()[:8], Title: "cat",
+		Tags: pq.StringArray{}, ReviewStatus: &status, SubmissionNote: "Было"}
+	if err := db.Create(p).Error; err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Exec(`DELETE FROM scratch_projects WHERE id = ?`, p.ID) })
+	if err := g.SetProjectNote(p.ID, "Стало"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := g.GetProject(p.ID)
+	if err != nil || got.SubmissionNote != "Стало" {
+		t.Fatalf("after the edit: %q, %v", got.SubmissionNote, err)
+	}
+	if err := g.UpdateReview(p.ID, models.ReviewAccepted, "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := g.SetProjectNote(p.ID, "поздно"); !errors.Is(err, teacherclass.ErrNotOnReview) {
+		t.Fatalf("note of accepted work: %v", err)
+	}
+	if got, _ := g.GetProject(p.ID); got.SubmissionNote != "Стало" {
+		t.Fatalf("the refused edit changed the note: %q", got.SubmissionNote)
 	}
 }

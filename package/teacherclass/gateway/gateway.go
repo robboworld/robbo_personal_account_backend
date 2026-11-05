@@ -320,23 +320,43 @@ func (g *GatewayImpl) ListProjectsByCohortAssignment(cohortID, assignmentID stri
 	return list, err
 }
 
-func (g *GatewayImpl) UpdateReview(projectID, status, comment string, submittedAt *time.Time) error {
+// reviewUpdates: the columns a review or a hand-in changes in either kind of work.
+func reviewUpdates(status, comment string, handIn *teacherclass.HandIn) map[string]interface{} {
 	updates := map[string]interface{}{
 		"review_status":  status,
 		"review_comment": comment,
 		"updated_at":     time.Now().UTC(),
 	}
-	if submittedAt != nil {
-		updates["submitted_at"] = *submittedAt
+	if handIn != nil {
+		updates["submitted_at"] = handIn.At
+		updates["submission_note"] = handIn.Note
 	}
+	return updates
+}
+
+func (g *GatewayImpl) UpdateReview(projectID, status, comment string, handIn *teacherclass.HandIn) error {
 	res := g.db.Model(&models.ScratchProjectDB{}).
 		Where("id = ? AND deleted_at IS NULL", projectID).
-		Updates(updates)
+		Updates(reviewUpdates(status, comment, handIn))
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (g *GatewayImpl) SetProjectNote(projectID, note string) error {
+	// In the WHERE, not checked before: a review arriving at the same moment wins.
+	res := g.db.Model(&models.ScratchProjectDB{}).
+		Where("id = ? AND deleted_at IS NULL AND review_status = ?", projectID, models.ReviewSubmitted).
+		UpdateColumn("submission_note", note)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return teacherclass.ErrNotOnReview
 	}
 	return nil
 }

@@ -28,6 +28,8 @@ var (
 	ErrTooManySubmissionFiles = errors.New("too_many_submission_files")
 	// A file assignment is handed in with at least one file.
 	ErrNoSubmissionFiles = errors.New("no_submission_files")
+	// The student's note changes only while the work waits for review.
+	ErrNotOnReview = errors.New("work_not_on_review")
 	// The Scratch copy is still what the student was given: there is no work to hand in.
 	ErrWorkNotEdited = errors.New("work_not_edited")
 )
@@ -110,6 +112,8 @@ type AssignmentDTO struct {
 	MyProjectID     string `json:"myProjectId,omitempty"`
 	MyReviewStatus  string `json:"myReviewStatus,omitempty"`
 	MyReviewComment string `json:"myReviewComment,omitempty"`
+	// MySubmissionNote is what the student wrote at the last hand-in, of either kind of work.
+	MySubmissionNote string `json:"mySubmissionNote,omitempty"`
 	// Student view of a file assignment: the submission and the files attached to it.
 	MySubmissionID string       `json:"mySubmissionId,omitempty"`
 	MyFiles        []FileRefDTO `json:"myFiles,omitempty"`
@@ -145,11 +149,19 @@ type SubmissionDTO struct {
 	Title         string       `json:"title"`
 	ReviewStatus  string       `json:"reviewStatus"`
 	ReviewComment string       `json:"reviewComment,omitempty"`
-	UpdatedAt     time.Time    `json:"updatedAt"`
-	SubmittedAt   *time.Time   `json:"submittedAt,omitempty"`
-	PreviewURL    string       `json:"previewUrl,omitempty"`
+	// SubmissionNote is the student's text to the teacher; only for handed-in work, like Files.
+	SubmissionNote string     `json:"submissionNote,omitempty"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	SubmittedAt    *time.Time `json:"submittedAt,omitempty"`
+	PreviewURL     string     `json:"previewUrl,omitempty"`
 	// Late: handed in after the assignment's due date.
 	Late bool `json:"late,omitempty"`
+}
+
+// HandIn is what a hand-in adds to a review update.
+type HandIn struct {
+	At   time.Time
+	Note string
 }
 
 type ProgressCellDTO struct {
@@ -197,7 +209,12 @@ type Gateway interface {
 	ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error)
 	ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error)
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)
-	UpdateReview(projectID, status, comment string, submittedAt *time.Time) error
+	// UpdateReview with a nil handIn is a review: it keeps the time and the note of the last
+	// hand-in.
+	UpdateReview(projectID, status, comment string, handIn *HandIn) error
+	// SetProjectNote replaces the student's note of work on review (ErrNotOnReview otherwise).
+	// The scratch_projects trigger moves updated_at, as it does on a review.
+	SetProjectNote(projectID, note string) error
 	FindStudentAssignmentProject(assignmentID, studentUserID string) (*models.ScratchProjectDB, error)
 
 	// File assignments.
@@ -212,7 +229,9 @@ type Gateway interface {
 	// (ErrTooManySubmissionFiles); attaching it twice is a no-op.
 	AttachSubmissionFile(submissionID, fileID string, maxFiles int) error
 	DetachSubmissionFile(submissionID, fileID string) error
-	UpdateFileReview(submissionID, status, comment string, submittedAt *time.Time) error
+	UpdateFileReview(submissionID, status, comment string, handIn *HandIn) error
+	// SetFileSubmissionNote is SetProjectNote for a file submission; updated_at stays.
+	SetFileSubmissionNote(submissionID, note string) error
 	// GetUserFiles returns the live "Мои файлы" rows among ids, by id.
 	GetUserFiles(ids []string) (map[string]models.UserFileDB, error)
 	// FileInUse: the file is handed in (not returned) or the starter file of an open
@@ -243,7 +262,10 @@ type UseCase interface {
 	ListAssignments(viewerID string, role models.Role, classID string) ([]AssignmentDTO, error)
 	IssueToLatecomers(teacherID string, role models.Role, classID, assignmentID string) (issued int, err error)
 	SetAssignmentClosed(teacherID string, role models.Role, classID, assignmentID string, closed bool) (*AssignmentDTO, error)
-	SubmitAssignment(studentID, projectID string) error
+	// SubmitAssignment and SubmitFiles hand the work in; note is an optional text to the teacher.
+	SubmitAssignment(studentID, projectID, note string) error
+	// UpdateProjectNote and UpdateFileNote change that text while the work waits for review.
+	UpdateProjectNote(studentID, projectID, note string) error
 	ReviewSubmission(teacherID string, role models.Role, projectID, status, comment string) error
 	ListSubmissions(teacherID string, role models.Role, classID, assignmentID string) ([]SubmissionDTO, error)
 	ProgressMatrix(teacherID string, role models.Role, classID string) (assignments []AssignmentDTO, rows []ProgressRowDTO, err error)
@@ -252,7 +274,8 @@ type UseCase interface {
 	FileAssignmentsEnabled() bool
 	AttachFile(studentID, assignmentID, fileID string) (*AssignmentDTO, error)
 	DetachFile(studentID, assignmentID, fileID string) (*AssignmentDTO, error)
-	SubmitFiles(studentID, assignmentID string) error
+	SubmitFiles(studentID, assignmentID, note string) error
+	UpdateFileNote(studentID, assignmentID, note string) error
 	// OpenStarterFile is the assignment's starter file for the class owner or a member.
 	OpenStarterFile(viewerID string, role models.Role, assignmentID string) (*models.UserFileDB, io.ReadSeekCloser, error)
 	// OpenSubmissionFile is a file of handed-in work for the class owner (any work for a SuperAdmin).

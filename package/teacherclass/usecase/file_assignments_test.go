@@ -155,13 +155,22 @@ func (g *fileGateway) DetachSubmissionFile(subID, fileID string) error {
 	return gorm.ErrRecordNotFound
 }
 
-func (g *fileGateway) UpdateFileReview(subID, status, comment string, submittedAt *time.Time) error {
+func (g *fileGateway) UpdateFileReview(subID, status, comment string, handIn *teacherclass.HandIn) error {
 	s := g.subs[subID]
 	s.ReviewStatus, s.ReviewComment = status, comment
-	if submittedAt != nil {
-		s.SubmittedAt = submittedAt
+	if handIn != nil {
+		s.SubmittedAt = &handIn.At
+		s.SubmissionNote = handIn.Note
 	}
 	return nil
+}
+
+func (g *fileGateway) SetFileSubmissionNote(subID, note string) error {
+	if s := g.subs[subID]; s.ReviewStatus == models.ReviewSubmitted {
+		s.SubmissionNote = note
+		return nil
+	}
+	return teacherclass.ErrNotOnReview
 }
 
 func (g *fileGateway) GetUserFiles(ids []string) (map[string]models.UserFileDB, error) {
@@ -285,7 +294,10 @@ func TestAttachAndSubmitFiles(t *testing.T) {
 	uc, gw := newFileUseCase(t)
 	a := createFileAssignment(t, uc)
 
-	if err := uc.SubmitFiles("797", a.ID); !errors.Is(err, teacherclass.ErrNoSubmissionFiles) {
+	if err := uc.UpdateFileNote("797", a.ID, "x"); !errors.Is(err, teacherclass.ErrNotOnReview) {
+		t.Fatalf("a note before any work: %v", err)
+	}
+	if err := uc.SubmitFiles("797", a.ID, ""); !errors.Is(err, teacherclass.ErrNoSubmissionFiles) {
 		t.Fatalf("submit before any file: %v", err)
 	}
 	if _, err := uc.AttachFile("797", a.ID, "f3"); !errors.Is(err, teacherclass.ErrFileKindNotAllowed) {
@@ -326,7 +338,10 @@ func TestAttachAndSubmitFiles(t *testing.T) {
 		t.Fatalf("teacher opening a draft: %v", err)
 	}
 
-	if err := uc.SubmitFiles("797", a.ID); err != nil {
+	if err := uc.SubmitFiles("797", a.ID, strings.Repeat("я", maxSubmissionNoteChars+1)); !errors.Is(err, teacherclass.ErrBadRequest) {
+		t.Fatalf("a note over the limit: %v", err)
+	}
+	if err := uc.SubmitFiles("797", a.ID, " Крепление в part.stl "); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := uc.AttachFile("797", a.ID, "f1"); !errors.Is(err, teacherclass.ErrAlreadyHandedIn) {
@@ -337,8 +352,20 @@ func TestAttachAndSubmitFiles(t *testing.T) {
 	}
 
 	subs, err = uc.ListSubmissions("10", models.Teacher, "class-1", a.ID)
-	if err != nil || len(subs[0].Files) != 2 || subs[0].SubmittedAt == nil {
+	if err != nil || len(subs[0].Files) != 2 || subs[0].SubmittedAt == nil || subs[0].SubmissionNote != "Крепление в part.stl" {
 		t.Fatalf("handed-in work on the board: %+v, %v", subs, err)
+	}
+	// While the work waits for review the student may change the note, and only that.
+	if err := uc.UpdateFileNote("797", a.ID, " Крепление в part.stl "); err != nil {
+		t.Fatal(err)
+	}
+	// A review keeps the note: it is what the student said about this hand-in.
+	if err := uc.ReviewFileSubmission("10", models.Teacher, dto.MySubmissionID, models.ReviewSubmitted, "смотрю"); err != nil {
+		t.Fatal(err)
+	}
+	mine, err := uc.ListAssignments("797", models.Student, "class-1")
+	if err != nil || len(mine) != 1 || mine[0].MySubmissionNote != "Крепление в part.stl" {
+		t.Fatalf("the student's view of the note: %+v, %v", mine, err)
 	}
 	row, rc, err := uc.OpenSubmissionFile("10", models.Teacher, dto.MySubmissionID, "f2")
 	if err != nil || row.ID != "f2" {
@@ -365,7 +392,7 @@ func TestAttachAndSubmitFiles(t *testing.T) {
 	if dto.MyReviewComment != "Добавь крепление" {
 		t.Fatalf("comment = %q", dto.MyReviewComment)
 	}
-	if err := uc.SubmitFiles("797", a.ID); err != nil {
+	if err := uc.SubmitFiles("797", a.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -381,7 +408,7 @@ func TestFileAssignmentClosed(t *testing.T) {
 	if _, err := uc.AttachFile("797", a.ID, "f2"); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
 		t.Fatalf("attach to a closed assignment: %v", err)
 	}
-	if err := uc.SubmitFiles("797", a.ID); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
+	if err := uc.SubmitFiles("797", a.ID, ""); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
 		t.Fatalf("submit to a closed assignment: %v", err)
 	}
 	if _, err := uc.IssueToLatecomers("10", models.Teacher, "class-1", a.ID); err == nil {
@@ -428,7 +455,7 @@ func TestStudentListAndProgressWithFiles(t *testing.T) {
 	if c := rows[0].Cells[0]; c.Status != models.ReviewDraft || c.SubmissionID != "" {
 		t.Fatalf("draft cell = %+v, want no link", c)
 	}
-	if err := uc.SubmitFiles("797", a.ID); err != nil {
+	if err := uc.SubmitFiles("797", a.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	_, rows, _ = uc.ProgressMatrix("10", models.Teacher, "class-1")

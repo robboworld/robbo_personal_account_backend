@@ -79,8 +79,10 @@ type ClassFileSubmissionDB struct {
 	ReviewStatus  string     `gorm:"column:review_status"`
 	ReviewComment string     `gorm:"column:review_comment"`
 	SubmittedAt   *time.Time `gorm:"column:submitted_at"`
-	CreatedAt     time.Time  `gorm:"column:created_at"`
-	UpdatedAt     time.Time  `gorm:"column:updated_at"`
+	// SubmissionNote is what the student wrote to the teacher at the last hand-in.
+	SubmissionNote string    `gorm:"column:submission_note"`
+	CreatedAt      time.Time `gorm:"column:created_at"`
+	UpdatedAt      time.Time `gorm:"column:updated_at"`
 }
 
 func (ClassFileSubmissionDB) TableName() string { return "class_file_submissions" }

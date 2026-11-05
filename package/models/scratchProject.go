@@ -29,6 +29,7 @@ type ScratchProjectDB struct {
 	ReviewStatus      *string        `gorm:"column:review_status"`
 	ReviewComment     *string        `gorm:"column:review_comment"`
 	SubmittedAt       *time.Time     `gorm:"column:submitted_at"`
+	SubmissionNote    string         `gorm:"column:submission_note"`
 	CreatedAt         time.Time      `gorm:"column:created_at"`
 	UpdatedAt         time.Time      `gorm:"column:updated_at"`
 	DeletedAt         *time.Time     `gorm:"column:deleted_at"`

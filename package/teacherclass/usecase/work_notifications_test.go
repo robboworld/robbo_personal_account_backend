@@ -30,7 +30,7 @@ func submittedFileWork(t *testing.T, uc *UseCaseImpl, gw *fileGateway) string {
 	if _, err := uc.AttachFile("797", dto.ID, "f1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := uc.SubmitFiles("797", dto.ID); err != nil {
+	if err := uc.SubmitFiles("797", dto.ID, ""); err != nil {
 		t.Fatal(err)
 	}
 	for id := range gw.subs {
@@ -136,7 +136,7 @@ func TestSubmitAssignmentNotifiesOwner(t *testing.T) {
 	notify := &workNotifier{}
 	uc := &UseCaseImpl{gw: handInGateway(), notify: notify}
 
-	if err := uc.SubmitAssignment("797", "p1"); err != nil {
+	if err := uc.SubmitAssignment("797", "p1", ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(notify.sent) != 1 {
@@ -156,7 +156,7 @@ func TestRefusedHandInNotifiesNobody(t *testing.T) {
 	notify := &workNotifier{}
 	uc := &UseCaseImpl{gw: handInGateway(), notify: notify}
 
-	if err := uc.SubmitAssignment("798", "p1"); err == nil {
+	if err := uc.SubmitAssignment("798", "p1", ""); err == nil {
 		t.Fatal("someone else's copy was handed in")
 	}
 	if len(notify.sent) != 0 {
@@ -170,7 +170,7 @@ func TestFailedNotificationKeepsScratchHandIn(t *testing.T) {
 	gw := handInGateway()
 	uc := &UseCaseImpl{gw: gw, notify: &workNotifier{err: errors.New("bell down")}}
 
-	if err := uc.SubmitAssignment("797", "p1"); err != nil {
+	if err := uc.SubmitAssignment("797", "p1", ""); err != nil {
 		t.Fatal(err)
 	}
 	if gw.reviewed != "p1" {

@@ -2,6 +2,7 @@ package http
 
 import (
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -70,9 +71,11 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		student.POST("/classes/:classId/leave", h.LeaveClass)
 		student.GET("/classes/:classId/assignments", h.ListAssignmentsStudent)
 		student.POST("/projects/:projectId/submit", h.SubmitProject)
+		student.PUT("/projects/:projectId/note", h.UpdateProjectNote)
 		student.POST("/assignments/:assignmentId/files", h.AttachFile)
 		student.DELETE("/assignments/:assignmentId/files/:fileId", h.DetachFile)
 		student.POST("/assignments/:assignmentId/submit", h.SubmitFiles)
+		student.PUT("/assignments/:assignmentId/note", h.UpdateFileNote)
 		student.GET("/assignments/:assignmentId/starter", h.DownloadStarterFile)
 	}
 }
@@ -105,6 +108,7 @@ func writeErr(c *gin.Context, err error) {
 		errors.Is(err, teacherclass.ErrAssignmentClosed), errors.Is(err, teacherclass.ErrAlreadyHandedIn),
 		errors.Is(err, teacherclass.ErrFileAssignmentsDisabled), errors.Is(err, teacherclass.ErrFileKindNotAllowed),
 		errors.Is(err, teacherclass.ErrTooManySubmissionFiles), errors.Is(err, teacherclass.ErrNoSubmissionFiles),
+		errors.Is(err, teacherclass.ErrNotOnReview),
 		errors.Is(err, teacherclass.ErrWorkNotEdited):
 		status = http.StatusConflict
 	// From "Мои файлы": the ЛК shows the same messages as on upload.
@@ -510,12 +514,74 @@ func (h *Handler) ListAssignmentsStudent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": list})
 }
 
+// submissionNoteBody reads the optional text of a hand-in. An empty body is a hand-in without
+// one: an ЛК tab opened before the text appeared still sends that.
+func submissionNoteBody(c *gin.Context) (string, bool) {
+	var body struct {
+		Note string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil && !errors.Is(err, io.EOF) {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return "", false
+	}
+	return body.Note, true
+}
+
+// noteEditBody reads a changed note. Unlike a hand-in, an empty body is an error: only an
+// explicit "" removes the text.
+func noteEditBody(c *gin.Context) (string, bool) {
+	var body struct {
+		Note *string `json:"note"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil || body.Note == nil {
+		writeErr(c, teacherclass.ErrBadRequest)
+		return "", false
+	}
+	return *body.Note, true
+}
+
+func (h *Handler) UpdateProjectNote(c *gin.Context) {
+	userID, _, ok := h.identity(c, fileWorkRoles())
+	if !ok {
+		return
+	}
+	note, ok := noteEditBody(c)
+	if !ok {
+		return
+	}
+	if err := h.uc.UpdateProjectNote(userID, c.Param("projectId"), note); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) UpdateFileNote(c *gin.Context) {
+	userID, _, ok := h.identity(c, fileWorkRoles())
+	if !ok {
+		return
+	}
+	note, ok := noteEditBody(c)
+	if !ok {
+		return
+	}
+	if err := h.uc.UpdateFileNote(userID, c.Param("assignmentId"), note); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) SubmitProject(c *gin.Context) {
 	userID, _, ok := h.identity(c, []models.Role{models.Student, models.Teacher, models.SuperAdmin})
 	if !ok {
 		return
 	}
-	if err := h.uc.SubmitAssignment(userID, c.Param("projectId")); err != nil {
+	note, ok := submissionNoteBody(c)
+	if !ok {
+		return
+	}
+	if err := h.uc.SubmitAssignment(userID, c.Param("projectId"), note); err != nil {
 		writeErr(c, err)
 		return
 	}
@@ -599,7 +665,11 @@ func (h *Handler) SubmitFiles(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.uc.SubmitFiles(userID, c.Param("assignmentId")); err != nil {
+	note, ok := submissionNoteBody(c)
+	if !ok {
+		return
+	}
+	if err := h.uc.SubmitFiles(userID, c.Param("assignmentId"), note); err != nil {
 		writeErr(c, err)
 		return
 	}

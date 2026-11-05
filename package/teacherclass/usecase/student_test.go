@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ type studentGateway struct {
 	unsaved   map[string]bool
 	reviewed  string
 	newStatus string
+	handIn    *teacherclass.HandIn
 }
 
 // GetAssignment: an entry of assignments, else an open assignment of cohort 7.
@@ -75,9 +77,10 @@ func (g *studentGateway) HasOwnSave(id string) (bool, error) {
 	return !g.unsaved[id], nil
 }
 
-func (g *studentGateway) UpdateReview(projectID, status string, _ string, _ *time.Time) error {
+func (g *studentGateway) UpdateReview(projectID, status, _ string, handIn *teacherclass.HandIn) error {
 	g.reviewed = projectID
 	g.newStatus = status
+	g.handIn = handIn
 	return nil
 }
 
@@ -136,14 +139,95 @@ func TestSubmitOnlyAssignmentCopies(t *testing.T) {
 	}}
 	uc := &UseCaseImpl{gw: gw, notify: &workNotifier{}}
 
-	if err := uc.SubmitAssignment("797", "own"); !errors.Is(err, teacherclass.ErrBadRequest) {
+	if err := uc.SubmitAssignment("797", "own", ""); !errors.Is(err, teacherclass.ErrBadRequest) {
 		t.Fatalf("own project err = %v, want ErrBadRequest", err)
 	}
-	if err := uc.SubmitAssignment("798", "p1"); !errors.Is(err, teacherclass.ErrForbidden) {
+	if err := uc.SubmitAssignment("798", "p1", ""); !errors.Is(err, teacherclass.ErrForbidden) {
 		t.Fatalf("someone else's copy err = %v, want ErrForbidden", err)
 	}
-	if err := uc.SubmitAssignment("797", "p1"); err != nil || gw.reviewed != "p1" {
+	if err := uc.SubmitAssignment("797", "p1", ""); err != nil || gw.reviewed != "p1" {
 		t.Fatalf("submit err=%v reviewed=%q", err, gw.reviewed)
+	}
+}
+
+func TestSubmitCarriesTheStudentNote(t *testing.T) {
+	withCohortMembers(t, "797")
+	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
+		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1")},
+	}}
+	uc := &UseCaseImpl{gw: gw, notify: &workNotifier{}}
+
+	// The limit is in characters: 2000 Cyrillic letters are 4000 bytes.
+	tooLong := strings.Repeat("я", maxSubmissionNoteChars+1)
+	for _, bad := range []string{tooLong, "a\x00b"} {
+		if err := uc.SubmitAssignment("797", "p1", bad); !errors.Is(err, teacherclass.ErrBadRequest) {
+			t.Fatalf("note of %d bytes: err = %v, want ErrBadRequest", len(bad), err)
+		}
+		if gw.reviewed != "" {
+			t.Fatal("a rejected note must not hand the work in")
+		}
+	}
+	longest := strings.Repeat("я", maxSubmissionNoteChars)
+	for in, want := range map[string]string{"  кот ходит по сцене\n": "кот ходит по сцене", longest: longest, "": ""} {
+		if err := uc.SubmitAssignment("797", "p1", in); err != nil {
+			t.Fatal(err)
+		}
+		if gw.handIn == nil || gw.handIn.Note != want || gw.handIn.At.IsZero() {
+			t.Fatalf("hand-in = %+v, want the note %q", gw.handIn, want)
+		}
+	}
+}
+
+func (g *studentGateway) SetProjectNote(projectID, note string) error {
+	for _, p := range g.projects {
+		if p.ID == projectID && deref(p.ReviewStatus) == models.ReviewSubmitted {
+			p.SubmissionNote = note
+			return nil
+		}
+	}
+	return teacherclass.ErrNotOnReview
+}
+
+func TestUpdateProjectNote(t *testing.T) {
+	withCohortMembers(t, "797")
+	own := &models.ScratchProjectDB{ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"),
+		ReviewStatus: strPtr(models.ReviewSubmitted), SubmissionNote: "было"}
+	gw := &studentGateway{
+		projects: map[string]*models.ScratchProjectDB{"a1/797": own, "x/797": {ID: "own", OwnerUserID: "797"}},
+		assignments: map[string]*models.ClassAssignmentDB{
+			"a1": {ID: "a1", EdxCourseID: "c1", EdxCohortID: "1"},
+		},
+	}
+	uc := &UseCaseImpl{gw: gw}
+
+	if err := uc.UpdateProjectNote("798", "p1", "чужое"); !errors.Is(err, teacherclass.ErrForbidden) {
+		t.Fatalf("someone else's work: %v", err)
+	}
+	if err := uc.UpdateProjectNote("797", "own", "x"); !errors.Is(err, teacherclass.ErrBadRequest) {
+		t.Fatalf("not an assignment copy: %v", err)
+	}
+	if err := uc.UpdateProjectNote("797", "p1", strings.Repeat("я", maxSubmissionNoteChars+1)); !errors.Is(err, teacherclass.ErrBadRequest) {
+		t.Fatalf("over the limit: %v", err)
+	}
+	if err := uc.UpdateProjectNote("797", "p1", "  стало\n"); err != nil || own.SubmissionNote != "стало" {
+		t.Fatalf("edit: err=%v note=%q", err, own.SubmissionNote)
+	}
+	if err := uc.UpdateProjectNote("797", "p1", ""); err != nil || own.SubmissionNote != "" {
+		t.Fatalf("removing the text: err=%v note=%q", err, own.SubmissionNote)
+	}
+	if gw.reviewed != "" {
+		t.Fatal("a note edit must not touch the review")
+	}
+
+	closed := time.Now()
+	gw.assignments["a1"].ClosedAt = &closed
+	if err := uc.UpdateProjectNote("797", "p1", "x"); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
+		t.Fatalf("closed assignment: %v", err)
+	}
+	gw.assignments["a1"].ClosedAt = nil
+	own.ReviewStatus = strPtr(models.ReviewAccepted)
+	if err := uc.UpdateProjectNote("797", "p1", "x"); !errors.Is(err, teacherclass.ErrNotOnReview) {
+		t.Fatalf("accepted work: %v", err)
 	}
 }
 
@@ -160,7 +244,7 @@ func TestSubmitOnlyDraftOrReturned(t *testing.T) {
 			"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(status)},
 		}}
 		uc := &UseCaseImpl{gw: gw, notify: &workNotifier{}}
-		if err := uc.SubmitAssignment("797", "p1"); !errors.Is(err, want) {
+		if err := uc.SubmitAssignment("797", "p1", ""); !errors.Is(err, want) {
 			t.Fatalf("submit from %s: err = %v, want %v", status, err, want)
 		}
 		if want != nil && gw.reviewed != "" {
@@ -179,13 +263,13 @@ func TestSubmitClosedAssignment(t *testing.T) {
 	if _, err := uc.SetAssignmentClosed("10", models.Teacher, "class-1", "a1", true); err != nil {
 		t.Fatal(err)
 	}
-	if err := uc.SubmitAssignment("797", "p1"); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
+	if err := uc.SubmitAssignment("797", "p1", ""); !errors.Is(err, teacherclass.ErrAssignmentClosed) {
 		t.Fatalf("closed: err = %v, want ErrAssignmentClosed", err)
 	}
 	if _, err := uc.SetAssignmentClosed("10", models.Teacher, "class-1", "a1", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := uc.SubmitAssignment("797", "p1"); err != nil {
+	if err := uc.SubmitAssignment("797", "p1", ""); err != nil {
 		t.Fatalf("reopened: err = %v", err)
 	}
 }
@@ -199,7 +283,7 @@ func TestSubmitAfterDueIsAllowed(t *testing.T) {
 		},
 		assignments: map[string]*models.ClassAssignmentDB{"a1": {ID: "a1", EdxCohortID: "7", DueAt: &past}},
 	}
-	if err := (&UseCaseImpl{gw: gw, notify: &workNotifier{}}).SubmitAssignment("797", "p1"); err != nil {
+	if err := (&UseCaseImpl{gw: gw, notify: &workNotifier{}}).SubmitAssignment("797", "p1", ""); err != nil {
 		t.Fatalf("late submit err = %v", err)
 	}
 }
@@ -209,7 +293,7 @@ func TestSubmitNeedsMembership(t *testing.T) {
 	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
 		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(models.ReviewDraft)},
 	}}
-	if err := (&UseCaseImpl{gw: gw}).SubmitAssignment("797", "p1"); !errors.Is(err, teacherclass.ErrForbidden) {
+	if err := (&UseCaseImpl{gw: gw}).SubmitAssignment("797", "p1", ""); !errors.Is(err, teacherclass.ErrForbidden) {
 		t.Fatalf("left the class: err = %v, want ErrForbidden", err)
 	}
 	if gw.reviewed != "" {

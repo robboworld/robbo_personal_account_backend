@@ -140,6 +140,7 @@ func (u *UseCaseImpl) fillMyFileWork(dto *teacherclass.AssignmentDTO, assignment
 	dto.MySubmissionID = sub.ID
 	dto.MyReviewStatus = sub.ReviewStatus
 	dto.MyReviewComment = sub.ReviewComment
+	dto.MySubmissionNote = sub.SubmissionNote
 	dto.MyFiles = fileRefs(files[sub.ID])
 	return nil
 }
@@ -255,7 +256,33 @@ func (u *UseCaseImpl) DetachFile(studentID, assignmentID, fileID string) (*teach
 	return u.studentAssignmentDTO(a, studentID)
 }
 
-func (u *UseCaseImpl) SubmitFiles(studentID, assignmentID string) error {
+func (u *UseCaseImpl) UpdateFileNote(studentID, assignmentID, note string) error {
+	note, err := submissionNote(note)
+	if err != nil {
+		return err
+	}
+	a, err := u.studentFileAssignment(studentID, assignmentID)
+	if err != nil {
+		return err
+	}
+	if a.ClosedAt != nil {
+		return teacherclass.ErrAssignmentClosed
+	}
+	sub, err := u.gw.FindFileSubmission(a.ID, studentID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return teacherclass.ErrNotOnReview
+	}
+	if err != nil {
+		return err
+	}
+	return u.gw.SetFileSubmissionNote(sub.ID, note)
+}
+
+func (u *UseCaseImpl) SubmitFiles(studentID, assignmentID, note string) error {
+	note, err := submissionNote(note)
+	if err != nil {
+		return err
+	}
 	a, err := u.studentFileAssignment(studentID, assignmentID)
 	if err != nil {
 		return err
@@ -281,8 +308,8 @@ func (u *UseCaseImpl) SubmitFiles(studentID, assignmentID string) error {
 	if len(files[sub.ID]) == 0 {
 		return teacherclass.ErrNoSubmissionFiles
 	}
-	now := time.Now().UTC()
-	if err := u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", &now); err != nil {
+	handIn := &teacherclass.HandIn{At: time.Now().UTC(), Note: note}
+	if err := u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", handIn); err != nil {
 		return err
 	}
 	u.notifyWorkSubmitted(studentID, a)
@@ -404,6 +431,7 @@ func (u *UseCaseImpl) fileSubmissionDTOs(role models.Role, a *models.ClassAssign
 		// As with Scratch drafts: the board shows the status and the last change, not the files.
 		if draftVisibleStatus(role, s.ReviewStatus) {
 			dto.ReviewComment = s.ReviewComment
+			dto.SubmissionNote = s.SubmissionNote
 			dto.SubmittedAt = s.SubmittedAt
 			dto.Late = lateAt(a, s.SubmittedAt)
 			dto.Files = fileRefs(files[s.ID])

@@ -131,21 +131,27 @@ func (g *GatewayImpl) DetachSubmissionFile(submissionID, fileID string) error {
 	})
 }
 
-func (g *GatewayImpl) UpdateFileReview(submissionID, status, comment string, submittedAt *time.Time) error {
-	updates := map[string]interface{}{
-		"review_status":  status,
-		"review_comment": comment,
-		"updated_at":     time.Now().UTC(),
-	}
-	if submittedAt != nil {
-		updates["submitted_at"] = *submittedAt
-	}
-	res := g.db.Model(&models.ClassFileSubmissionDB{}).Where("id = ?", submissionID).Updates(updates)
+func (g *GatewayImpl) UpdateFileReview(submissionID, status, comment string, handIn *teacherclass.HandIn) error {
+	res := g.db.Model(&models.ClassFileSubmissionDB{}).Where("id = ?", submissionID).
+		Updates(reviewUpdates(status, comment, handIn))
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
 		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func (g *GatewayImpl) SetFileSubmissionNote(submissionID, note string) error {
+	res := g.db.Model(&models.ClassFileSubmissionDB{}).
+		Where("id = ? AND review_status = ?", submissionID, models.ReviewSubmitted).
+		UpdateColumn("submission_note", note)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return teacherclass.ErrNotOnReview
 	}
 	return nil
 }

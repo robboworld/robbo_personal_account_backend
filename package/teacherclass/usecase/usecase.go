@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
@@ -1056,6 +1057,7 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 				dto.MyProjectID = p.ID
 				dto.MyReviewStatus = deref(p.ReviewStatus)
 				dto.MyReviewComment = deref(p.ReviewComment)
+				dto.MySubmissionNote = p.SubmissionNote
 			}
 		}
 	}
@@ -1144,7 +1146,57 @@ func (u *UseCaseImpl) SetAssignmentClosed(teacherID string, role models.Role, cl
 	return &dto, nil
 }
 
-func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
+// openAssignmentOf is an assignment that still takes the student's work.
+func (u *UseCaseImpl) openAssignmentOf(studentID, assignmentID string) (*models.ClassAssignmentDB, error) {
+	a, err := u.gw.GetAssignment(assignmentID)
+	if err != nil {
+		return nil, teacherclass.ErrNotFound
+	}
+	// The due date only marks late work; closing the assignment stops hand-ins.
+	if a.ClosedAt != nil {
+		return nil, teacherclass.ErrAssignmentClosed
+	}
+	// The copy outlives membership: a student who left keeps it but hands in nothing.
+	inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID)
+	if err != nil {
+		return nil, teacherclass.ErrNotFound
+	}
+	member, err := u.isClassMember(studentID, inv)
+	if err != nil {
+		return nil, err
+	}
+	if !member {
+		return nil, teacherclass.ErrForbidden
+	}
+	return a, nil
+}
+
+func (u *UseCaseImpl) UpdateProjectNote(studentID, projectID, note string) error {
+	note, err := submissionNote(note)
+	if err != nil {
+		return err
+	}
+	p, err := u.gw.GetProject(projectID)
+	if err != nil {
+		return teacherclass.ErrNotFound
+	}
+	if p.OwnerUserID != studentID {
+		return teacherclass.ErrForbidden
+	}
+	if p.AssignmentID == nil || strings.TrimSpace(*p.AssignmentID) == "" {
+		return teacherclass.ErrBadRequest
+	}
+	if _, err := u.openAssignmentOf(studentID, *p.AssignmentID); err != nil {
+		return err
+	}
+	return u.gw.SetProjectNote(projectID, note)
+}
+
+func (u *UseCaseImpl) SubmitAssignment(studentID, projectID, note string) error {
+	note, err := submissionNote(note)
+	if err != nil {
+		return err
+	}
 	p, err := u.gw.GetProject(projectID)
 	if err != nil {
 		return teacherclass.ErrNotFound
@@ -1162,25 +1214,9 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	default:
 		return teacherclass.ErrAlreadyHandedIn
 	}
-	a, err := u.gw.GetAssignment(*p.AssignmentID)
-	if err != nil {
-		return teacherclass.ErrNotFound
-	}
-	// The due date only marks late work; closing the assignment stops hand-ins.
-	if a.ClosedAt != nil {
-		return teacherclass.ErrAssignmentClosed
-	}
-	// The copy outlives membership: a student who left keeps it but hands in nothing.
-	inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID)
-	if err != nil {
-		return teacherclass.ErrNotFound
-	}
-	member, err := u.isClassMember(studentID, inv)
+	a, err := u.openAssignmentOf(studentID, *p.AssignmentID)
 	if err != nil {
 		return err
-	}
-	if !member {
-		return teacherclass.ErrForbidden
 	}
 	unedited, err := u.workUnedited(p, a)
 	if err != nil {
@@ -1189,12 +1225,24 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	if unedited {
 		return teacherclass.ErrWorkNotEdited
 	}
-	now := time.Now().UTC()
-	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now); err != nil {
+	handIn := &teacherclass.HandIn{At: time.Now().UTC(), Note: note}
+	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", handIn); err != nil {
 		return err
 	}
 	u.notifyWorkSubmitted(studentID, a)
 	return nil
+}
+
+// maxSubmissionNoteChars limits the text a student adds to a hand-in.
+const maxSubmissionNoteChars = 2000
+
+// submissionNote cleans up the student's text; Postgres TEXT cannot hold a NUL.
+func submissionNote(note string) (string, error) {
+	note = strings.TrimSpace(note)
+	if utf8.RuneCountInString(note) > maxSubmissionNoteChars || strings.ContainsRune(note, 0) {
+		return "", teacherclass.ErrBadRequest
+	}
+	return note, nil
 }
 
 // reviewStatusAllowed: Submitted puts reviewed work back in the queue. Draft is the
@@ -1292,6 +1340,7 @@ func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classI
 		if draftVisible(role, p) {
 			dto.ProjectID = p.ID
 			dto.ReviewComment = deref(p.ReviewComment)
+			dto.SubmissionNote = p.SubmissionNote
 			dto.SubmittedAt = p.SubmittedAt
 			dto.PreviewURL = "/projectPage/" + p.ID + "/preview"
 			dto.Late = isLate(a, p)
