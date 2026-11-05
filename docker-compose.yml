@@ -91,6 +91,20 @@ services:
   clamd:
     image: clamav/clamav:1.5.4
     profiles: [antivirus]
+    # Past a limit clamd stops looking and answers OK unless AlertExceedsMax is on: padding
+    # entries in a zip hid a virus from it. The limits sit above what zipcheck.go lets through
+    # (20000 entries, 1 GB unpacked). In the entrypoint because a release ships compose files only.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        grep -q '^AlertExceedsMax' /etc/clamav/clamd.conf || cat >> /etc/clamav/clamd.conf <<'EOF'
+        AlertExceedsMax yes
+        MaxFiles 25000
+        MaxScanSize 1200M
+        MaxFileSize 1200M
+        EOF
+        exec /init
     restart: unless-stopped
     mem_limit: ${CLAMD_MEM_LIMIT:-3g}
     volumes:
