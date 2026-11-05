@@ -11,6 +11,7 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/db_client"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/projectPage/access"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
 	"gorm.io/gorm"
@@ -440,7 +441,6 @@ func (r *ProjectPageGatewayImpl) SaveSb3Archive(projectPageId, userID string, ar
 	if len(archive) == 0 {
 		return projectPage.ErrBadRequest
 	}
-	hash := sha256.Sum256(archive)
 	return r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
 		storageProjectID, err := r.resolveStorageProjectID(tx, projectPageId)
 		if err != nil {
@@ -449,48 +449,154 @@ func (r *ProjectPageGatewayImpl) SaveSb3Archive(projectPageId, userID string, ar
 			}
 			return err
 		}
+		return saveSb3Version(tx, storageProjectID, userID, archive, saveSource)
+	})
+}
 
-		var existing models.ScratchProjectVersionDB
-		dupErr := tx.Where("project_id = ? AND checksum_sha256 = ?", storageProjectID, hash[:]).
-			First(&existing).Error
-		if dupErr == nil {
-			return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", storageProjectID).
-				Update("current_version_id", existing.ID).Error
-		}
-		if dupErr != nil && !errors.Is(dupErr, gorm.ErrRecordNotFound) {
-			return dupErr
-		}
+func saveSb3Version(tx *gorm.DB, storageProjectID, userID string, archive []byte, saveSource string) error {
+	hash := sha256.Sum256(archive)
+	var existing models.ScratchProjectVersionDB
+	dupErr := tx.Where("project_id = ? AND checksum_sha256 = ?", storageProjectID, hash[:]).
+		First(&existing).Error
+	if dupErr == nil {
+		return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", storageProjectID).
+			Update("current_version_id", existing.ID).Error
+	}
+	if dupErr != nil && !errors.Is(dupErr, gorm.ErrRecordNotFound) {
+		return dupErr
+	}
 
-		var project models.ScratchProjectDB
-		if err := tx.Where("id = ? AND deleted_at IS NULL", storageProjectID).First(&project).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return projectPage.ErrPageNotFound
-			}
+	var project models.ScratchProjectDB
+	if err := tx.Where("id = ? AND deleted_at IS NULL", storageProjectID).First(&project).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return projectPage.ErrPageNotFound
+		}
+		return err
+	}
+
+	nextSeq := project.VersionCounter + 1
+	if nextSeq < 1 {
+		nextSeq = 1
+	}
+	src := saveSource
+	ver := models.ScratchProjectVersionDB{
+		ProjectID:       storageProjectID,
+		VersionSeq:      nextSeq,
+		Archive:         archive,
+		SizeBytes:       int64(len(archive)),
+		ChecksumSHA256:  hash[:],
+		CreatedByUserID: userID,
+		SaveSource:      &src,
+	}
+	if err := tx.Create(&ver).Error; err != nil {
+		return err
+	}
+	return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", storageProjectID).Updates(map[string]interface{}{
+		"version_counter":    nextSeq,
+		"current_version_id": ver.ID,
+	}).Error
+}
+
+// TouchProjectEditor records the editor's signal.
+func (r *ProjectPageGatewayImpl) TouchProjectEditor(projectID, userID, role string) error {
+	return r.projectStorageDB.Exec(`
+		INSERT INTO scratch_project_editors (project_id, user_id, role) VALUES (?, ?, ?)
+		ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role, last_seen_at = now()
+	`, projectID, userID, role).Error
+}
+
+// ListProjectEditors returns who sent a signal in the last models.EditingTTLSeconds.
+func (r *ProjectPageGatewayImpl) ListProjectEditors(projectID string) ([]models.ScratchProjectEditorDB, error) {
+	var rows []models.ScratchProjectEditorDB
+	err := r.projectStorageDB.
+		Where("project_id = ? AND last_seen_at > now() - make_interval(secs => ?)", projectID, models.EditingTTLSeconds).
+		Order("last_seen_at DESC").Find(&rows).Error
+	return rows, err
+}
+
+// saveSourceTeacherEdit marks a version a teacher saved over the student's work.
+const saveSourceTeacherEdit = "lk.teacher_edit"
+
+// lockWorkWithTeacher locks the project row and checks the work is still with the teachers: the
+// caller's check came before the upload, and a return to the student may have happened since.
+func (r *ProjectPageGatewayImpl) lockWorkWithTeacher(tx *gorm.DB, projectPageId string) (*models.ScratchProjectDB, error) {
+	storageProjectID, err := r.resolveStorageProjectID(tx, projectPageId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, projectPage.ErrPageNotFound
+		}
+		return nil, err
+	}
+	var project models.ScratchProjectDB
+	err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Omit("scratch_vm_json", "preview_image").
+		Where("id = ? AND deleted_at IS NULL", storageProjectID).
+		First(&project).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, projectPage.ErrPageNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !access.HomeworkLocked(&project) {
+		return nil, projectPage.ErrWorkNotWithTeacher
+	}
+	return &project, nil
+}
+
+// SaveTeacherEdit saves a teacher's version of handed-in work. The first one keeps the student's
+// version: retention keeps only the current one, so it would be gone for good.
+func (r *ProjectPageGatewayImpl) SaveTeacherEdit(projectPageId, teacherID string, archive []byte) error {
+	if len(archive) == 0 {
+		return projectPage.ErrBadRequest
+	}
+	return r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
+		project, err := r.lockWorkWithTeacher(tx, projectPageId)
+		if err != nil {
 			return err
 		}
-
-		nextSeq := project.VersionCounter + 1
-		if nextSeq < 1 {
-			nextSeq = 1
-		}
-		src := saveSource
-		ver := models.ScratchProjectVersionDB{
-			ProjectID:       storageProjectID,
-			VersionSeq:      nextSeq,
-			Archive:         archive,
-			SizeBytes:       int64(len(archive)),
-			ChecksumSHA256:  hash[:],
-			CreatedByUserID: userID,
-			SaveSource:      &src,
-		}
-		if err := tx.Create(&ver).Error; err != nil {
+		if err := saveSb3Version(tx, project.ID, teacherID, archive, saveSourceTeacherEdit); err != nil {
 			return err
 		}
-		return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", storageProjectID).Updates(map[string]interface{}{
-			"version_counter":    nextSeq,
-			"current_version_id": ver.ID,
+		updates := map[string]interface{}{
+			"teacher_edited_by": teacherID,
+			"teacher_edited_at": time.Now().UTC(),
+		}
+		if project.StudentVersionID == nil {
+			updates["student_version_id"] = project.CurrentVersionID
+		}
+		return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", project.ID).Updates(updates).Error
+	})
+}
+
+// RestoreStudentVersion makes the kept version current again and drops the marks of the edit. The
+// stored preview shows the teacher's version, so it goes too: GetPreviewImage derives a new one.
+func (r *ProjectPageGatewayImpl) RestoreStudentVersion(projectPageId string) ([]byte, error) {
+	var archive []byte
+	err := r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
+		project, err := r.lockWorkWithTeacher(tx, projectPageId)
+		if err != nil {
+			return err
+		}
+		if project.StudentVersionID == nil {
+			return projectPage.ErrSb3ArchiveNotFound
+		}
+		var ver models.ScratchProjectVersionDB
+		if err := tx.Select("archive").Where("id = ?", *project.StudentVersionID).First(&ver).Error; err != nil {
+			return err
+		}
+		archive = ver.Archive
+		return tx.Model(&models.ScratchProjectDB{}).Where("id = ?", project.ID).Updates(map[string]interface{}{
+			"current_version_id": *project.StudentVersionID,
+			"student_version_id": nil,
+			"teacher_edited_by":  nil,
+			"teacher_edited_at":  nil,
+			"preview_image":      nil,
+			"preview_mime":       "",
+			"preview_updated_at": nil,
 		}).Error
 	})
+	return archive, err
 }
 
 // sb3RankedVersions numbers each project's versions newest first (rn), and within
@@ -517,6 +623,7 @@ func (r *ProjectPageGatewayImpl) ListSb3PruneCandidates(policy projectPage.Sb3Re
 		FROM (`+sb3RankedVersions+`) ranked
 		JOIN scratch_projects p ON p.id = ranked.project_id
 		WHERE ranked.id IS DISTINCT FROM p.current_version_id
+		  AND ranked.id IS DISTINCT FROM p.student_version_id
 		  AND `+sb3NotKept+`
 		LIMIT ?
 	`, policy.KeepLast, policy.KeepDailyDays, policy.KeepDailyDays, limit).Scan(&ids).Error
@@ -525,13 +632,14 @@ func (r *ProjectPageGatewayImpl) ListSb3PruneCandidates(policy projectPage.Sb3Re
 
 // PruneSb3Versions deletes the project's .sb3 versions the policy does not keep.
 // The project row is locked so a concurrent save cannot point current_version_id
-// at a version being deleted (the FK would silently reset it to NULL).
+// at a version being deleted (the FK would silently reset it to NULL). The version a teacher's
+// edit replaced stays as well: it is the student's work.
 func (r *ProjectPageGatewayImpl) PruneSb3Versions(projectID string, policy projectPage.Sb3RetentionPolicy) (int64, error) {
 	var deleted int64
 	err := r.projectStorageDB.Transaction(func(tx *gorm.DB) error {
-		var current struct{ CurrentVersionID *string }
+		var current struct{ CurrentVersionID, StudentVersionID *string }
 		lockErr := tx.Raw(`
-			SELECT current_version_id FROM scratch_projects WHERE id = ? FOR UPDATE
+			SELECT current_version_id, student_version_id FROM scratch_projects WHERE id = ? FOR UPDATE
 		`, projectID).Scan(&current).Error
 		if lockErr != nil {
 			return lockErr
@@ -540,12 +648,13 @@ func (r *ProjectPageGatewayImpl) PruneSb3Versions(projectID string, policy proje
 			DELETE FROM scratch_project_versions
 			WHERE project_id = ?
 			  AND id IS DISTINCT FROM ?
+			  AND id IS DISTINCT FROM ?
 			  AND id IN (
 			    SELECT ranked.id
 			    FROM (`+sb3RankedVersions+` WHERE project_id = ?) ranked
 			    WHERE `+sb3NotKept+`
 			  )
-		`, projectID, current.CurrentVersionID, projectID,
+		`, projectID, current.CurrentVersionID, current.StudentVersionID, projectID,
 			policy.KeepLast, policy.KeepDailyDays, policy.KeepDailyDays)
 		deleted = res.RowsAffected
 		return res.Error

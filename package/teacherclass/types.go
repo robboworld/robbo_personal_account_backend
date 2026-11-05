@@ -134,6 +134,11 @@ type AssignmentDTO struct {
 	MyReviewComment string `json:"myReviewComment,omitempty"`
 	// MySubmissionNote is what the student wrote at the last hand-in, of either kind of work.
 	MySubmissionNote string `json:"mySubmissionNote,omitempty"`
+	// MyEditedAt and its name: the teacher changed the student's Scratch work (until the next hand-in).
+	MyEditedAt     *time.Time `json:"myEditedAt,omitempty"`
+	MyEditedByName string     `json:"myEditedByName,omitempty"`
+	// MyEditors: the teachers editing the student's work right now.
+	MyEditors []models.ProjectEditor `json:"myEditors,omitempty"`
 	// Student view of a file assignment: the submission and the files attached to it.
 	MySubmissionID string       `json:"mySubmissionId,omitempty"`
 	MyFiles        []FileRefDTO `json:"myFiles,omitempty"`
@@ -181,6 +186,16 @@ type SubmissionDTO struct {
 	ReviewedBy     string     `json:"reviewedBy,omitempty"`
 	ReviewedByName string     `json:"reviewedByName,omitempty"`
 	ReviewedAt     *time.Time `json:"reviewedAt,omitempty"`
+	// EditedBy, its name and EditedAt: the teacher who last changed the blocks, until the next
+	// hand-in. CanEdit: the viewer may save the work now. CanRestore: they may also put the
+	// student's version back.
+	EditedBy     string     `json:"editedBy,omitempty"`
+	EditedByName string     `json:"editedByName,omitempty"`
+	EditedAt     *time.Time `json:"editedAt,omitempty"`
+	CanEdit      bool       `json:"canEdit,omitempty"`
+	CanRestore   bool       `json:"canRestore,omitempty"`
+	// Editors: who has the work open in the editor right now.
+	Editors []models.ProjectEditor `json:"editors,omitempty"`
 }
 
 // HandIn is what a hand-in adds to a review update.
@@ -283,6 +298,8 @@ type Gateway interface {
 	// HasOwnSave reports whether the project has a version other than the one it was issued with.
 	HasOwnSave(projectID string) (bool, error)
 	ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error)
+	// ListActiveEditors returns who is editing these projects now (models.EditingTTLSeconds).
+	ListActiveEditors(projectIDs []string) ([]models.ScratchProjectEditorDB, error)
 	ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error)
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)
 	// UpdateReview with a nil handIn is reviewerID's review: it keeps the time and the note of
@@ -343,6 +360,8 @@ type UseCase interface {
 	ListHistory(teacherID string, role models.Role, classID, category, cursor string) (*HistoryPageDTO, error)
 	// RecordClassMessage puts a message sent from the class board into the history.
 	RecordClassMessage(teacherID string, role models.Role, classID string, recipientIDs []string)
+	// RecordTeacherEdit tells the class about a teacher's change to handed-in Scratch work.
+	RecordTeacherEdit(teacherID string, p *models.ScratchProjectDB, restored bool)
 
 	ListMembers(teacherID string, role models.Role, classID string) ([]CohortUserDTO, error)
 	AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error)

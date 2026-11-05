@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 	"unicode"
@@ -157,7 +158,20 @@ func (p *ProjectPageUseCaseImpl) enrichAndCheckRead(projectPageId, viewerId stri
 	core.AuthorAvatarId = author.AvatarID
 	core.IsOwner = acc.IsOwner
 	core.ReviewLocked = access.HomeworkLocked(row)
+	fillTeacherEdit(core, row, viewerId, acc.IsOwner)
 	return core, row, acc, nil
+}
+
+// fillTeacherEdit: a copy can be public, but what its teacher did is for the class only.
+func fillTeacherEdit(core *models.ProjectPageCore, row *models.ScratchProjectDB, viewerId string, isOwner bool) {
+	core.TeacherCanEdit = access.TeacherCanEdit(viewerId, row)
+	if row.TeacherEditedAt == nil || (!isOwner && !access.RunsClass(viewerId, row)) {
+		return
+	}
+	core.TeacherEditedAt = models.RFC3339UTC(*row.TeacherEditedAt)
+	if row.TeacherEditedBy != nil {
+		core.TeacherEditedByName = lookupAuthorInfo(*row.TeacherEditedBy).Name
+	}
 }
 
 // checkOwnerWrite: only the owner writes to a project, and not to homework handed in to the
@@ -170,6 +184,27 @@ func checkOwnerWrite(viewerId string, row *models.ScratchProjectDB) error {
 		return projectPage.ErrHomeworkLocked
 	}
 	return nil
+}
+
+// checkTeacherEdit: a teacher hears why work they just had is refused, so the editor can offer to
+// keep their changes. Anyone else gets a plain 403 that says nothing about the review.
+func checkTeacherEdit(viewerId string, row *models.ScratchProjectDB) error {
+	if access.TeacherCanEdit(viewerId, row) {
+		return nil
+	}
+	if row.ReviewStatus != nil && *row.ReviewStatus == models.ReviewReturned && access.RunsClass(viewerId, row) {
+		return projectPage.ErrWorkNotWithTeacher
+	}
+	return auth.ErrNotAccess
+}
+
+// checkSaveAccess: the owner saves their project, a teacher of the class saves work that is with
+// the teachers. teacherEdit tells the two apart.
+func checkSaveAccess(viewerId string, row *models.ScratchProjectDB) (teacherEdit bool, err error) {
+	if access.Resolve(viewerId, row).IsOwner {
+		return false, checkOwnerWrite(viewerId, row)
+	}
+	return true, checkTeacherEdit(viewerId, row)
 }
 
 func (p *ProjectPageUseCaseImpl) enrichPublicList(pages []*models.ProjectPageCore) {
@@ -314,8 +349,65 @@ func (p *ProjectPageUseCaseImpl) GetProjectPageById(projectPageId string, viewer
 	projectPage *models.ProjectPageCore,
 	err error,
 ) {
-	core, _, _, err := p.enrichAndCheckRead(projectPageId, viewerId, role)
-	return core, err
+	core, row, acc, err := p.enrichAndCheckRead(projectPageId, viewerId, role)
+	if err != nil {
+		return nil, err
+	}
+	p.fillEditing(core, row, viewerId, acc.IsOwner)
+	return core, nil
+}
+
+// fillEditing is not in enrichAndCheckRead: that one also runs for every preview and download.
+// The mark is not worth failing the page: an error is only logged.
+func (p *ProjectPageUseCaseImpl) fillEditing(core *models.ProjectPageCore, row *models.ScratchProjectDB, viewerId string, isOwner bool) {
+	core.EditingTracked = access.EditingRole(viewerId, row) != ""
+	if row.AssignmentID == nil || !models.IsHandedIn(row.ReviewStatus) {
+		return
+	}
+	if !isOwner && !access.RunsClass(viewerId, row) {
+		return
+	}
+	rows, err := p.projectPageGateway.ListProjectEditors(row.ID)
+	if err != nil {
+		log.Printf("projectPage: editors of %s: %v", row.ID, err)
+		return
+	}
+	for _, e := range rows {
+		if !isOwner || e.Role == models.EditorTeacher {
+			core.Editors = append(core.Editors, projectEditor(e))
+		}
+	}
+}
+
+func projectEditor(e models.ScratchProjectEditorDB) models.ProjectEditor {
+	return models.ProjectEditor{Role: e.Role, Name: lookupAuthorInfo(e.UserID).Name}
+}
+
+// TouchEditing is the editor's signal that the viewer still has the work open. Someone who does
+// not count as editing gets Tracked false, not an error: the status may change while the tab is open.
+func (p *ProjectPageUseCaseImpl) TouchEditing(projectPageId string, userId string) (*projectPage.EditingState, error) {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return nil, err
+	}
+	role := access.EditingRole(userId, row)
+	if role == "" {
+		return &projectPage.EditingState{}, nil
+	}
+	if err := p.projectPageGateway.TouchProjectEditor(row.ID, userId, role); err != nil {
+		return nil, err
+	}
+	rows, err := p.projectPageGateway.ListProjectEditors(row.ID)
+	if err != nil {
+		return nil, err
+	}
+	state := &projectPage.EditingState{Tracked: true}
+	for _, e := range rows {
+		if e.UserID != userId {
+			state.Others = append(state.Others, projectEditor(e))
+		}
+	}
+	return state, nil
 }
 
 func (p *ProjectPageUseCaseImpl) GetPublicProjectPages(page, pageSize int, filter projectPage.PublicListFilter) (
@@ -357,7 +449,7 @@ func (p *ProjectPageUseCaseImpl) SavePreviewImage(projectPageId string, ownerId 
 	if err != nil {
 		return err
 	}
-	if err := checkOwnerWrite(ownerId, row); err != nil {
+	if _, err := checkSaveAccess(ownerId, row); err != nil {
 		return err
 	}
 	return p.projectPageGateway.SavePreviewImage(projectPageId, data, mime)
@@ -406,8 +498,8 @@ func sb3DownloadFilename(title, fallbackPageID string) string {
 	return out + ".sb3"
 }
 
-func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
-	core, err := p.GetProjectPageById(projectPageId, viewerId, models.Anonymous)
+func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, viewerId string, role models.Role) (data []byte, filename string, err error) {
+	core, err := p.GetProjectPageById(projectPageId, viewerId, role)
 	if err != nil {
 		return nil, "", err
 	}
@@ -420,7 +512,7 @@ func (p *ProjectPageUseCaseImpl) DownloadProjectSb3(projectPageId string, viewer
 }
 
 func (p *ProjectPageUseCaseImpl) PlayProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
-	return p.DownloadProjectSb3(projectPageId, viewerId)
+	return p.DownloadProjectSb3(projectPageId, viewerId, models.Anonymous)
 }
 
 func (p *ProjectPageUseCaseImpl) PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error) {
@@ -690,12 +782,13 @@ func (p *ProjectPageUseCaseImpl) IssuePlayToken(projectPageId string, viewerId s
 	}, nil
 }
 
-func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId string, data []byte) error {
+func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, uploaderId string, data []byte) error {
 	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
 	if err != nil {
 		return err
 	}
-	if err := checkOwnerWrite(ownerId, row); err != nil {
+	teacherEdit, err := checkSaveAccess(uploaderId, row)
+	if err != nil {
 		return err
 	}
 	// Both limits are the owner's: the project takes the owner's storage, whoever saves it.
@@ -708,11 +801,21 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 	if err := validateSb3Archive(data); err != nil {
 		return err
 	}
-	if err := p.projectPageGateway.SaveSb3Archive(projectPageId, ownerId, data, "lk.upload"); err != nil {
+	vmJSON, extractErr := extractProjectJSONFromSb3(data)
+	if teacherEdit {
+		// Save without a change: the student must not hear that their work was changed.
+		if extractErr == nil && models.SameScratchContent(vmJSON, row.ScratchVMJSON) {
+			return nil
+		}
+		err = p.projectPageGateway.SaveTeacherEdit(projectPageId, uploaderId, data)
+	} else {
+		err = p.projectPageGateway.SaveSb3Archive(projectPageId, uploaderId, data, "lk.upload")
+	}
+	if err != nil {
 		return err
 	}
 	p.pruneAfterSave(row.ID)
-	if vmJSON, extractErr := extractProjectJSONFromSb3(data); extractErr == nil && strings.TrimSpace(vmJSON) != "" {
+	if extractErr == nil && strings.TrimSpace(vmJSON) != "" {
 		updateErr := p.projectGateway.UpdateProject(&models.ProjectCore{
 			ID:   row.ID,
 			Json: vmJSON,
@@ -721,7 +824,40 @@ func (p *ProjectPageUseCaseImpl) UploadProjectSb3(projectPageId string, ownerId 
 			return updateErr
 		}
 	}
+	if teacherEdit {
+		recordTeacherEdit(uploaderId, row, false)
+	}
 	return nil
+}
+
+// RestoreStudentVersion undoes a teacher's edit: the work is again what the student handed in.
+func (p *ProjectPageUseCaseImpl) RestoreStudentVersion(projectPageId string, teacherId string) error {
+	row, err := p.projectPageGateway.GetScratchProjectById(projectPageId)
+	if err != nil {
+		return err
+	}
+	if err := checkTeacherEdit(teacherId, row); err != nil {
+		return err
+	}
+	data, err := p.projectPageGateway.RestoreStudentVersion(projectPageId)
+	if err != nil {
+		return err
+	}
+	vmJSON, err := extractProjectJSONFromSb3(data)
+	if err != nil {
+		return err
+	}
+	if err := p.projectGateway.UpdateProject(&models.ProjectCore{ID: row.ID, Json: vmJSON}); err != nil {
+		return err
+	}
+	recordTeacherEdit(teacherId, row, true)
+	return nil
+}
+
+func recordTeacherEdit(teacherId string, row *models.ScratchProjectDB, restored bool) {
+	if projectPage.TeacherEditRecorder != nil {
+		projectPage.TeacherEditRecorder(teacherId, row, restored)
+	}
 }
 
 func (p *ProjectPageUseCaseImpl) enforceProjectSizeLimit(ownerId string, newSize int64) error {

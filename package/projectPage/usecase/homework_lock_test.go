@@ -40,6 +40,9 @@ func (g *lockPageGateway) SaveSb3Archive(string, string, []byte, string) error {
 	return nil
 }
 func (g *lockPageGateway) GetCurrentVersionSizeBytes(string) (int64, error) { return 0, nil }
+func (g *lockPageGateway) ListProjectEditors(string) ([]models.ScratchProjectEditorDB, error) {
+	return nil, nil
+}
 func (g *lockPageGateway) PruneSb3Versions(string, projectPage.Sb3RetentionPolicy) (int64, error) {
 	return 0, nil
 }

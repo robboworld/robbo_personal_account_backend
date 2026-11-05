@@ -4,6 +4,18 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 )
 
+// TeacherEditRecorder tells the class that a teacher changed handed-in work (restored: put the
+// student's version back). A hook, like access.CohortTeacherReader: this package knows nothing
+// about classes.
+var TeacherEditRecorder func(teacherID string, work *models.ScratchProjectDB, restored bool)
+
+// EditingState answers the editor's signal. Tracked is false once the viewer no longer counts as
+// editing; Others are the rest of the people editing the same work.
+type EditingState struct {
+	Tracked bool                   `json:"tracked"`
+	Others  []models.ProjectEditor `json:"others,omitempty"`
+}
+
 type UseCase interface {
 	CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error)
 	UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string, role models.Role) (projectPageUpdated *models.ProjectPageCore, err error)
@@ -13,12 +25,14 @@ type UseCase interface {
 	GetProjectPageById(projectPageId string, viewerId string, role models.Role) (projectPage *models.ProjectPageCore, err error)
 	GetPreviewImage(projectPageId string, viewerId string, role models.Role) (data []byte, mime string, err error)
 	SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error
-	DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error)
+	DownloadProjectSb3(projectPageId string, viewerId string, role models.Role) (data []byte, filename string, err error)
 	PlayProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error)
 	IssuePlayToken(projectPageId string, viewerId string, role models.Role, backendBaseURL string) (*PlayTokenHTTP, error)
 	PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error)
 	GetProjectJSONByToken(projectId string, token string) (json string, err error)
-	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
+	UploadProjectSb3(projectPageId string, uploaderId string, data []byte) error
+	RestoreStudentVersion(projectPageId string, teacherId string) error
+	TouchEditing(projectPageId string, userId string) (*EditingState, error)
 	MaxSb3UploadBytes(ownerId string) (int64, error)
 	PruneSb3Versions(policy Sb3RetentionPolicy) (deleted int64, err error)
 	ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error)

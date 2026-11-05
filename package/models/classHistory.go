@@ -8,6 +8,7 @@ import "time"
 //   - HistoryAssignmentIssuedLate: how many copies were issued;
 //   - HistoryWorkSubmitted: HistoryLate for late work;
 //   - HistoryWorkReviewed: the review status;
+//   - HistoryWorkEdited, HistoryWorkRestored: nothing, the blocks are the work itself;
 //   - HistoryMessageSent: how many students got it; TargetUserID is set for one student;
 //   - HistoryMemberRemoved: the LMS login when its user id could not be found.
 type ClassHistoryEventDB struct {
@@ -55,6 +56,8 @@ const (
 
 	HistoryWorkSubmitted = "work_submitted"
 	HistoryWorkReviewed  = "work_reviewed"
+	HistoryWorkEdited    = "work_edited"
+	HistoryWorkRestored  = "work_restored"
 
 	HistoryMessageSent = "message_sent"
 )

@@ -209,3 +209,82 @@ func TestReviewSubmissionNotifiesStudent(t *testing.T) {
 		t.Fatalf("back to the queue: %+v", notify.sent)
 	}
 }
+
+// editNotifyGateway is a class of owner "10" with co-teacher "11".
+type editNotifyGateway struct {
+	*historyLog
+	inv *models.ClassInviteDB
+}
+
+func (g *editNotifyGateway) GetInviteByCourseCohort(string, string) (*models.ClassInviteDB, error) {
+	return g.inv, nil
+}
+func (g *editNotifyGateway) ListCoTeachers(string) ([]models.ClassCoTeacherDB, error) {
+	return []models.ClassCoTeacherDB{{TeacherID: "11"}}, nil
+}
+
+func editedWork(t *testing.T) (*UseCaseImpl, *editNotifyGateway, *workNotifier, *models.ScratchProjectDB) {
+	t.Helper()
+	withoutLMSNames(t)
+	gw := &editNotifyGateway{
+		historyLog: &historyLog{},
+		inv:        &models.ClassInviteDB{ID: "c1", OwnerTeacherID: "10", DisplayName: "5 А"},
+	}
+	notify := &workNotifier{}
+	return &UseCaseImpl{gw: gw, notify: notify}, gw, notify,
+		&models.ScratchProjectDB{ID: "p1", OwnerUserID: "797", Title: "Лабиринт"}
+}
+
+func TestTeacherEditTellsStudentAndOtherTeachers(t *testing.T) {
+	uc, gw, notify, work := editedWork(t)
+	uc.RecordTeacherEdit("10", work, false)
+
+	event := gw.only(t, models.HistoryWorkEdited)
+	if event.TargetUserID != "797" || event.Title != "Лабиринт" || event.ActorRole != models.HistoryActorOwner {
+		t.Fatalf("event = %+v", event)
+	}
+	if len(notify.sent) != 2 {
+		t.Fatalf("notifications = %+v", notify.sent)
+	}
+	student, coTeacher := notify.sent[0], notify.sent[1]
+	if student.RecipientUserID != "797" || student.Title != "Учитель изменил вашу работу" || student.Body != "«Лабиринт»" {
+		t.Fatalf("student = %+v", student)
+	}
+	if student.ActionURL == nil || *student.ActionURL != "/projects/p1" {
+		t.Fatalf("action = %v", student.ActionURL)
+	}
+	if coTeacher.RecipientUserID != "11" || !strings.Contains(coTeacher.Body, "«Лабиринт»") {
+		t.Fatalf("co-teacher = %+v", coTeacher)
+	}
+	// dedupe_key is unique across recipients: the rows must not take each other's place.
+	if *student.DedupeKey == *coTeacher.DedupeKey {
+		t.Fatalf("same dedupe key %q", *student.DedupeKey)
+	}
+}
+
+func TestCoTeacherEditIsNamedAsSuch(t *testing.T) {
+	uc, gw, notify, work := editedWork(t)
+	uc.RecordTeacherEdit("11", work, false)
+
+	if event := gw.only(t, models.HistoryWorkEdited); event.ActorRole != models.HistoryActorCoTeacher {
+		t.Fatalf("event = %+v", event)
+	}
+	if len(notify.sent) != 2 || notify.sent[1].RecipientUserID != "10" {
+		t.Fatalf("notifications = %+v", notify.sent)
+	}
+}
+
+func TestRestoreReplacesTheEditNotification(t *testing.T) {
+	uc, gw, notify, work := editedWork(t)
+	uc.RecordTeacherEdit("10", work, false)
+	key := *notify.sent[0].DedupeKey
+	notify.sent = nil
+
+	uc.RecordTeacherEdit("10", work, true)
+	if *notify.sent[0].DedupeKey != key || !strings.Contains(notify.sent[0].Title, "отменил") {
+		t.Fatalf("student = %+v", notify.sent[0])
+	}
+	if got := gw.actionsRecorded(); len(got) != 2 || got[1] != models.HistoryWorkRestored {
+		t.Fatalf("history = %v", got)
+	}
+}

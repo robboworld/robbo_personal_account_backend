@@ -60,3 +60,35 @@ func (u *UseCaseImpl) notifyWorkReviewed(studentID, workID, workTitle, status, c
 		log.Printf("teacherclass: notify work %s student: %v", workID, err)
 	}
 }
+
+// notifyWorkEdited: one row per work for the student and one for each other teacher of the class;
+// the next save refreshes them, and a teacher saves many times over one review.
+func (u *UseCaseImpl) notifyWorkEdited(teacherID string, inv *models.ClassInviteDB, p *models.ScratchProjectDB, restored bool) {
+	title, teachersTitle := "Учитель изменил вашу работу", "Учитель изменил работу ученика"
+	if restored {
+		title, teachersTitle = "Учитель отменил свои изменения в вашей работе", "Учитель отменил изменения в работе ученика"
+	}
+	actionURL := "/projects/" + p.ID
+	dedupeKey := "class_work_edited:" + p.ID
+	row := &models.UserNotificationDB{
+		RecipientUserID: p.OwnerUserID,
+		Title:           title,
+		Body:            "«" + p.Title + "»",
+		Kind:            "class_work_edited",
+		Severity:        "INFO",
+		Source:          "system",
+		ActionURL:       &actionURL,
+		DedupeKey:       &dedupeKey,
+	}
+	if err := u.notify.CreateOrUpdateByDedupe(row); err != nil {
+		log.Printf("teacherclass: notify work %s student: %v", p.ID, err)
+	}
+	// Whoever saved knows: the board and the editor show it.
+	for _, row := range u.teacherNotifications(teacherID, inv, "class_work_edited", "class_work_edited_teachers:"+p.ID) {
+		row.Title = teachersTitle
+		row.Body = studentName(p.OwnerUserID) + ": «" + p.Title + "», класс «" + inv.DisplayName + "»"
+		if err := u.notify.CreateOrUpdateByDedupe(row); err != nil {
+			log.Printf("teacherclass: notify class %s teacher: %v", inv.ID, err)
+		}
+	}
+}

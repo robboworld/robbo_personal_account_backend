@@ -60,8 +60,8 @@ func (p *ProjectPageDelegateImpl) GetProjectPageById(projectPageId string, viewe
 	return
 }
 
-func (p *ProjectPageDelegateImpl) DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
-	return p.UseCase.DownloadProjectSb3(projectPageId, viewerId)
+func (p *ProjectPageDelegateImpl) DownloadProjectSb3(projectPageId string, viewerId string, role models.Role) (data []byte, filename string, err error) {
+	return p.UseCase.DownloadProjectSb3(projectPageId, viewerId, role)
 }
 
 func (p *ProjectPageDelegateImpl) PlayProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error) {
@@ -80,8 +80,16 @@ func (p *ProjectPageDelegateImpl) GetProjectJSONByToken(projectId string, token 
 	return p.UseCase.GetProjectJSONByToken(projectId, token)
 }
 
-func (p *ProjectPageDelegateImpl) UploadProjectSb3(projectPageId string, ownerId string, data []byte) error {
-	return p.UseCase.UploadProjectSb3(projectPageId, ownerId, data)
+func (p *ProjectPageDelegateImpl) UploadProjectSb3(projectPageId string, uploaderId string, data []byte) error {
+	return p.UseCase.UploadProjectSb3(projectPageId, uploaderId, data)
+}
+
+func (p *ProjectPageDelegateImpl) RestoreStudentVersion(projectPageId string, teacherId string) error {
+	return p.UseCase.RestoreStudentVersion(projectPageId, teacherId)
+}
+
+func (p *ProjectPageDelegateImpl) TouchEditing(projectPageId string, userId string) (*projectPage.EditingState, error) {
+	return p.UseCase.TouchEditing(projectPageId, userId)
 }
 
 func (p *ProjectPageDelegateImpl) ListEnabledReactionTypes() ([]models.ReactionTypeHTTP, error) {

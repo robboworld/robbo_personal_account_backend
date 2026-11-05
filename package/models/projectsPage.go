@@ -25,6 +25,16 @@ type ProjectPageCore struct {
 	ReactionCount    int64
 	// ReviewLocked: a handed-in assignment copy the owner may not change (access.HomeworkLocked).
 	ReviewLocked bool
+	// TeacherCanEdit: the viewer runs the class and may save this work (access.TeacherCanEdit).
+	TeacherCanEdit bool
+	// TeacherEditedAt, TeacherEditedByName: the last teacher's change, for the owner and the
+	// teachers of the class only.
+	TeacherEditedAt     string
+	TeacherEditedByName string
+	// EditingTracked: the viewer's editor should send its signal (access.EditingRole).
+	EditingTracked bool
+	// Editors: who is editing the work now. The owner sees only the teachers.
+	Editors []ProjectEditor
 }
 
 type ProjectPageDB struct {
@@ -86,6 +96,12 @@ func (ht *ProjectPageHTTP) ToCore() *ProjectPageCore {
 		IsOwner:          ht.IsOwner,
 		ReactionCount:    ht.ReactionCount,
 		ReviewLocked:     ht.ReviewLocked,
+
+		TeacherCanEdit:      ht.TeacherCanEdit,
+		TeacherEditedAt:     ht.TeacherEditedAt,
+		TeacherEditedByName: ht.TeacherEditedByName,
+		EditingTracked:      ht.EditingTracked,
+		Editors:             ht.Editors,
 	}
 }
 
@@ -112,4 +128,9 @@ func (ht *ProjectPageHTTP) FromCore(projectPage *ProjectPageCore) {
 	ht.IsOwner = projectPage.IsOwner
 	ht.ReactionCount = projectPage.ReactionCount
 	ht.ReviewLocked = projectPage.ReviewLocked
+	ht.TeacherCanEdit = projectPage.TeacherCanEdit
+	ht.TeacherEditedAt = projectPage.TeacherEditedAt
+	ht.TeacherEditedByName = projectPage.TeacherEditedByName
+	ht.EditingTracked = projectPage.EditingTracked
+	ht.Editors = projectPage.Editors
 }

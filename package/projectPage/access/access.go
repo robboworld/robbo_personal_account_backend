@@ -50,6 +50,39 @@ func HomeworkLocked(p *models.ScratchProjectDB) bool {
 	return p.AssignmentID != nil && strings.TrimSpace(*p.AssignmentID) != "" && models.IsReviewLocked(p.ReviewStatus)
 }
 
+// RunsClass: the viewer is the owner or a co-teacher of the class the project was issued in.
+func RunsClass(viewerUserID string, p *models.ScratchProjectDB) bool {
+	if CohortTeacherReader == nil || normalizeUserID(viewerUserID) == "" {
+		return false
+	}
+	if p.EdxCohortID == nil || strings.TrimSpace(*p.EdxCohortID) == "" {
+		return false
+	}
+	return CohortTeacherReader(viewerUserID, derefStr(p.EdxCourseID), *p.EdxCohortID)
+}
+
+// TeacherCanEdit: who runs the class may change work only while it is with them. Its owner cannot
+// save then (HomeworkLocked), so the two never overwrite each other. Returned work is the
+// student's again. A SuperAdmin reads class work but does not change a child's work.
+func TeacherCanEdit(viewerUserID string, p *models.ScratchProjectDB) bool {
+	return HomeworkLocked(p) &&
+		normalizeUserID(p.OwnerUserID) != normalizeUserID(viewerUserID) &&
+		RunsClass(viewerUserID, p)
+}
+
+// EditingRole: who may save handed-in work now counts as editing it, "" for anyone else. A student
+// is counted on returned work only: a draft stays private, locked work cannot be saved.
+func EditingRole(viewerUserID string, p *models.ScratchProjectDB) string {
+	if TeacherCanEdit(viewerUserID, p) {
+		return models.EditorTeacher
+	}
+	if p.AssignmentID != nil && p.ReviewStatus != nil && *p.ReviewStatus == models.ReviewReturned &&
+		normalizeUserID(p.OwnerUserID) == normalizeUserID(viewerUserID) {
+		return models.EditorStudent
+	}
+	return ""
+}
+
 // SuperAdminReadsClassWork mirrors teacherclass canManage: a SuperAdmin manages every class,
 // so it reads class homework (projects keyed to a cohort). Other private projects stay closed.
 func SuperAdminReadsClassWork(role models.Role, p *models.ScratchProjectDB) bool {

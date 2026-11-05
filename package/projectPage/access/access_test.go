@@ -134,3 +134,47 @@ func TestHomeworkLocked(t *testing.T) {
 		t.Error("copy without a status is a draft, not locked")
 	}
 }
+
+func withClassTeacher(t *testing.T, teacherID string) {
+	t.Helper()
+	saved := CohortTeacherReader
+	t.Cleanup(func() { CohortTeacherReader = saved })
+	CohortTeacherReader = func(id, _, _ string) bool { return id == teacherID }
+}
+
+func TestTeacherCanEdit(t *testing.T) {
+	withClassTeacher(t, "teacher-1")
+	cohort, assignment := "lk:class-1", "a-1"
+	copyWith := func(status string) *models.ScratchProjectDB {
+		return &models.ScratchProjectDB{
+			OwnerUserID: "student-1", EdxCohortID: &cohort, AssignmentID: &assignment, ReviewStatus: &status,
+		}
+	}
+	for _, status := range []string{models.ReviewSubmitted, models.ReviewAccepted, models.ReviewShownInClass} {
+		if !TeacherCanEdit("teacher-1", copyWith(status)) {
+			t.Errorf("%s: the class teacher may edit", status)
+		}
+	}
+	// Returned work and a draft are the student's: a teacher's save would race theirs.
+	for _, status := range []string{models.ReviewReturned, models.ReviewDraft} {
+		if TeacherCanEdit("teacher-1", copyWith(status)) {
+			t.Errorf("%s: the class teacher may not edit", status)
+		}
+	}
+	if TeacherCanEdit("teacher-2", copyWith(models.ReviewSubmitted)) {
+		t.Error("a teacher of another class edited the work")
+	}
+	if TeacherCanEdit("", copyWith(models.ReviewSubmitted)) {
+		t.Error("a guest edited the work")
+	}
+	// The class owner handed in a copy of their own: the lock holds for them as for anyone.
+	own := copyWith(models.ReviewSubmitted)
+	own.OwnerUserID = "teacher-1"
+	if TeacherCanEdit("teacher-1", own) {
+		t.Error("the teacher edited their own handed-in copy")
+	}
+	plain := &models.ScratchProjectDB{OwnerUserID: "student-1", IsPublic: true}
+	if TeacherCanEdit("teacher-1", plain) {
+		t.Error("a teacher edited a project outside any class")
+	}
+}

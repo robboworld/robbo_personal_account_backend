@@ -34,7 +34,7 @@ var historyCategories = map[string][]string{
 	"assignments": {
 		models.HistoryAssignmentCreated, models.HistoryAssignmentClosed, models.HistoryAssignmentReopened, models.HistoryAssignmentIssuedLate,
 	},
-	"work":     {models.HistoryWorkSubmitted, models.HistoryWorkReviewed},
+	"work":     {models.HistoryWorkSubmitted, models.HistoryWorkReviewed, models.HistoryWorkEdited, models.HistoryWorkRestored},
 	"messages": {models.HistoryMessageSent},
 }
 
@@ -74,6 +74,24 @@ func (u *UseCaseImpl) recordSubmitted(inv *models.ClassInviteDB, studentID strin
 		e.Detail = models.HistoryLate
 	}
 	u.recordStudentAction(inv, studentID, models.HistoryWorkSubmitted, e)
+}
+
+// RecordTeacherEdit is called by projectPage, which saves the .sb3 and knows nothing about classes.
+// Only who runs the class gets here (access.TeacherCanEdit), a SuperAdmin does not.
+func (u *UseCaseImpl) RecordTeacherEdit(teacherID string, p *models.ScratchProjectDB, restored bool) {
+	inv, err := u.gw.GetInviteByCourseCohort(deref(p.EdxCourseID), deref(p.EdxCohortID))
+	if err != nil {
+		log.Printf("teacherclass: project %s edit history: %v", p.ID, err)
+		return
+	}
+	action := models.HistoryWorkEdited
+	if restored {
+		action = models.HistoryWorkRestored
+	}
+	u.recordTeacherAction(inv, teacherID, models.Teacher, action, models.ClassHistoryEventDB{
+		TargetUserID: p.OwnerUserID, Title: p.Title,
+	})
+	u.notifyWorkEdited(teacherID, inv, p, restored)
 }
 
 // RecordClassMessage is called by notifications, which sends the message and knows nothing about

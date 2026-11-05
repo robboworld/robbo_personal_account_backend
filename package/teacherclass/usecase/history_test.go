@@ -16,6 +16,17 @@ func (g *localGateway) AddHistoryEvent(*models.ClassHistoryEventDB) error   { re
 func (g *studentGateway) AddHistoryEvent(*models.ClassHistoryEventDB) error { return nil }
 func (g *fileGateway) AddHistoryEvent(*models.ClassHistoryEventDB) error    { return nil }
 
+// The live mark of who is editing a work is not what these fakes are about.
+func (g *localGateway) ListActiveEditors([]string) ([]models.ScratchProjectEditorDB, error) {
+	return nil, nil
+}
+func (g *studentGateway) ListActiveEditors([]string) ([]models.ScratchProjectEditorDB, error) {
+	return nil, nil
+}
+func (g *fileGateway) ListActiveEditors([]string) ([]models.ScratchProjectEditorDB, error) {
+	return nil, nil
+}
+
 // historyLog keeps what a fake gateway is told to record; err makes the writes fail.
 type historyLog struct {
 	teacherclass.Gateway

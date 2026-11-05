@@ -1176,6 +1176,7 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 	if err := u.fillTemplateFiles(out, list); err != nil {
 		return nil, err
 	}
+	var myProjects []string
 	for i := range list {
 		dto := &out[i]
 		if studentView && list[i].IsFileAssignment() {
@@ -1188,6 +1189,21 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 				dto.MyReviewStatus = deref(p.ReviewStatus)
 				dto.MyReviewComment = deref(p.ReviewComment)
 				dto.MySubmissionNote = p.SubmissionNote
+				if p.TeacherEditedAt != nil {
+					dto.MyEditedAt = p.TeacherEditedAt
+					dto.MyEditedByName = ownerDisplayName(deref(p.TeacherEditedBy))
+				}
+				myProjects = append(myProjects, p.ID)
+			}
+		}
+	}
+	if len(myProjects) > 0 {
+		editors := u.activeEditors(myProjects)
+		for i := range out {
+			for _, e := range editors[out[i].MyProjectID] {
+				if e.Role == models.EditorTeacher {
+					out[i].MyEditors = append(out[i].MyEditors, e)
+				}
 			}
 		}
 	}
@@ -1496,27 +1512,66 @@ func (u *UseCaseImpl) ListSubmissions(teacherID string, role models.Role, classI
 			dto.Late = isLate(a, p)
 			dto.ReviewedBy = deref(p.ReviewedByTeacherID)
 			dto.ReviewedAt = p.ReviewedAt
+			dto.EditedBy = deref(p.TeacherEditedBy)
+			dto.EditedAt = p.TeacherEditedAt
+			// As access.TeacherCanEdit: a SuperAdmin reads class work but does not change it.
+			dto.CanEdit = (role != models.SuperAdmin || inv.OwnerTeacherID == teacherID) && models.IsReviewLocked(p.ReviewStatus)
+			dto.CanRestore = dto.CanEdit && p.StudentVersionID != nil
 		}
 		out = append(out, dto)
 	}
 	fillReviewerNames(out)
+	ids := make([]string, 0, len(out))
+	for i := range out {
+		if out[i].ProjectID != "" {
+			ids = append(ids, out[i].ProjectID)
+		}
+	}
+	editors := u.activeEditors(ids)
+	for i := range out {
+		out[i].Editors = editors[out[i].ProjectID]
+	}
 	return out, nil
 }
 
-// fillReviewerNames looks each teacher up once, however many works they reviewed.
+// activeEditors is who is editing each project now. The live mark is not worth failing the list:
+// an error is only logged.
+func (u *UseCaseImpl) activeEditors(projectIDs []string) map[string][]models.ProjectEditor {
+	rows, err := u.gw.ListActiveEditors(projectIDs)
+	if err != nil {
+		log.Printf("teacherclass: active editors: %v", err)
+		return nil
+	}
+	out := make(map[string][]models.ProjectEditor, len(rows))
+	names := make(map[string]string)
+	for _, e := range rows {
+		name, ok := names[e.UserID]
+		if !ok {
+			name = ownerDisplayName(e.UserID)
+			names[e.UserID] = name
+		}
+		out[e.ProjectID] = append(out[e.ProjectID], models.ProjectEditor{Role: e.Role, Name: name})
+	}
+	return out
+}
+
+// fillReviewerNames looks each teacher up once, however many works they reviewed or changed.
 func fillReviewerNames(dtos []teacherclass.SubmissionDTO) {
 	names := make(map[string]string)
-	for i := range dtos {
-		id := dtos[i].ReviewedBy
+	nameOf := func(id string) string {
 		if id == "" {
-			continue
+			return ""
 		}
 		name, ok := names[id]
 		if !ok {
 			name = ownerDisplayName(id)
 			names[id] = name
 		}
-		dtos[i].ReviewedByName = name
+		return name
+	}
+	for i := range dtos {
+		dtos[i].ReviewedByName = nameOf(dtos[i].ReviewedBy)
+		dtos[i].EditedByName = nameOf(dtos[i].EditedBy)
 	}
 }
 

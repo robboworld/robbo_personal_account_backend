@@ -9,12 +9,14 @@ type Delegate interface {
 	GetProjectPageById(projectPageId string, viewerId string, role models.Role) (projectPage models.ProjectPageHTTP, err error)
 	GetAllProjectPagesByUserId(authorId string, viewerId string, page string, pageSize string) (projectPages []*models.ProjectPageHTTP, countRows int, err error)
 	GetPublicProjectPages(page string, pageSize string, filter PublicListFilter) (projectPages []*models.ProjectPageHTTP, countRows int, err error)
-	DownloadProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error)
+	DownloadProjectSb3(projectPageId string, viewerId string, role models.Role) (data []byte, filename string, err error)
 	PlayProjectSb3(projectPageId string, viewerId string) (data []byte, filename string, err error)
 	IssuePlayToken(projectPageId string, viewerId string, role models.Role, backendBaseURL string) (*PlayTokenHTTP, error)
 	PlayProjectSb3ByToken(projectPageId string, token string) (data []byte, filename string, err error)
 	GetProjectJSONByToken(projectId string, token string) (json string, err error)
-	UploadProjectSb3(projectPageId string, ownerId string, data []byte) error
+	UploadProjectSb3(projectPageId string, uploaderId string, data []byte) error
+	RestoreStudentVersion(projectPageId string, teacherId string) error
+	TouchEditing(projectPageId string, userId string) (*EditingState, error)
 	MaxSb3UploadBytes(ownerId string) (int64, error)
 	GetPreviewImage(projectPageId string, viewerId string, role models.Role) (data []byte, mime string, err error)
 	SavePreviewImage(projectPageId string, ownerId string, data []byte, mime string) error

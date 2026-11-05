@@ -74,6 +74,12 @@ func (s *stubCommentGateway) GetTemplateSb3Archive(string) ([]byte, error)   { p
 func (s *stubCommentGateway) SaveSb3Archive(string, string, []byte, string) error {
 	panic("unused")
 }
+func (s *stubCommentGateway) SaveTeacherEdit(string, string, []byte) error { panic("unused") }
+func (s *stubCommentGateway) RestoreStudentVersion(string) ([]byte, error) { panic("unused") }
+func (s *stubCommentGateway) TouchProjectEditor(string, string, string) error { panic("unused") }
+func (s *stubCommentGateway) ListProjectEditors(string) ([]models.ScratchProjectEditorDB, error) {
+	panic("unused")
+}
 func (s *stubCommentGateway) ListSb3PruneCandidates(projectPage.Sb3RetentionPolicy, int) ([]string, error) {
 	panic("unused")
 }

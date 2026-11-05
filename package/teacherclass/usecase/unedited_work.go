@@ -3,7 +3,6 @@ package usecase
 import (
 	"encoding/json"
 	"errors"
-	"reflect"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 	"gorm.io/gorm"
@@ -33,27 +32,7 @@ func (u *UseCaseImpl) workUnedited(p *models.ScratchProjectDB, a *models.ClassAs
 	if err != nil {
 		return false, err
 	}
-	return tpl != nil && sameScratchProject(p.ScratchVMJSON, tpl.ScratchVMJSON), nil
-}
-
-// sameScratchProject compares two project.json. meta names the browser and the VM of the save;
-// monitors get new ids at every load.
-func sameScratchProject(a, b string) bool {
-	content := func(vmJSON string) (map[string]interface{}, bool) {
-		var project map[string]interface{}
-		if err := json.Unmarshal([]byte(vmJSON), &project); err != nil || project["targets"] == nil {
-			return nil, false
-		}
-		delete(project, "meta")
-		delete(project, "monitors")
-		return project, true
-	}
-	left, ok := content(a)
-	if !ok {
-		return false
-	}
-	right, ok := content(b)
-	return ok && reflect.DeepEqual(left, right)
+	return tpl != nil && models.SameScratchContent(p.ScratchVMJSON, tpl.ScratchVMJSON), nil
 }
 
 // scratchDefaultAssets are the costumes and sounds of the project RobboScratch opens with

@@ -94,6 +94,8 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 		projectPageGroup.GET("/:projectPageId/play", h.PlayProjectSb3)
 		projectPageGroup.GET("/:projectPageId/download", h.DownloadProjectSb3)
 		projectPageGroup.POST("/:projectPageId/upload", h.UploadProjectSb3)
+		projectPageGroup.POST("/:projectPageId/restore-student-version", h.RestoreStudentVersion)
+		projectPageGroup.POST("/:projectPageId/editing", h.TouchEditing)
 		projectPageGroup.GET("/:projectPageId/preview", h.GetProjectPreview)
 		projectPageGroup.POST("/:projectPageId/preview", h.UploadProjectPreview)
 		projectPageGroup.PUT("/:projectPageId/landing-featured", h.SetLandingFeatured)
@@ -415,7 +417,7 @@ func (h *Handler) DownloadProjectSb3(c *gin.Context) {
 			ErrorHandling(accessErr, c)
 			return
 		}
-		data, filename, err = h.projectPageDelegate.DownloadProjectSb3(projectPageId, userId)
+		data, filename, err = h.projectPageDelegate.DownloadProjectSb3(projectPageId, userId, role)
 	}
 	if err != nil {
 		log.Println(err)
@@ -498,6 +500,43 @@ func (h *Handler) UploadProjectSb3(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// RestoreStudentVersion undoes a teacher's edit of handed-in work.
+func (h *Handler) RestoreStudentVersion(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, projectCreateRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	if err := h.projectPageDelegate.RestoreStudentVersion(c.Param("projectPageId"), userId); err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// TouchEditing is the editor's signal that the work is still open in it.
+func (h *Handler) TouchEditing(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, projectCreateRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	state, err := h.projectPageDelegate.TouchEditing(c.Param("projectPageId"), userId)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, state)
 }
 
 type getAllProjectPageResponse struct {
@@ -903,6 +942,11 @@ func ErrorHandling(err error, c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
 			"error": err.Error(),
 			"code":  "HOMEWORK_LOCKED",
+		})
+	case errors.Is(err, projectPage.ErrWorkNotWithTeacher):
+		c.AbortWithStatusJSON(http.StatusConflict, gin.H{
+			"error": err.Error(),
+			"code":  "WORK_NOT_WITH_TEACHER",
 		})
 	case errors.Is(err, projectPage.ErrProfanityDetected):
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "profanity_detected"})

@@ -298,6 +298,7 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 	}
 	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase, userFilesUC, gateway.NotificationsGateway)
 	notifications.ClassMessageRecorder = tcUC.UseCase.RecordClassMessage
+	projectPage.TeacherEditRecorder = tcUC.UseCase.RecordTeacherEdit
 	projectPageUC := ppageusecase.SetupProjectPageUseCase(
 		gateway.ProjectPageGateway,
 		gateway.ProjectsGateway,

@@ -25,4 +25,6 @@ var (
 	// ErrHomeworkLocked — the assignment copy is with the teacher (submitted, accepted or shown
 	// in class): nothing may change it until the teacher returns it for rework.
 	ErrHomeworkLocked = errors.New("HOMEWORK_LOCKED")
+	// ErrWorkNotWithTeacher — the work went back to the student while a teacher was editing it.
+	ErrWorkNotWithTeacher = errors.New("WORK_NOT_WITH_TEACHER")
 )

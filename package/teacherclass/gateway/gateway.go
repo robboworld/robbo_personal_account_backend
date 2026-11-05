@@ -302,6 +302,17 @@ func (g *GatewayImpl) ListSubmissions(assignmentID string) ([]models.ScratchProj
 	return list, err
 }
 
+func (g *GatewayImpl) ListActiveEditors(projectIDs []string) ([]models.ScratchProjectEditorDB, error) {
+	var rows []models.ScratchProjectEditorDB
+	if len(projectIDs) == 0 {
+		return rows, nil
+	}
+	err := g.db.
+		Where("project_id IN ? AND last_seen_at > now() - make_interval(secs => ?)", projectIDs, models.EditingTTLSeconds).
+		Order("last_seen_at DESC").Find(&rows).Error
+	return rows, err
+}
+
 // ListSubmissionsForAssignments is ListSubmissions for several assignments in one query.
 func (g *GatewayImpl) ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error) {
 	var list []models.ScratchProjectDB
@@ -344,9 +355,16 @@ func reviewUpdates(status, comment, reviewerID string, handIn *teacherclass.Hand
 }
 
 func (g *GatewayImpl) UpdateReview(projectID, status, comment, reviewerID string, handIn *teacherclass.HandIn) error {
+	updates := reviewUpdates(status, comment, reviewerID, handIn)
+	if handIn != nil {
+		// A teacher's edit of the last hand-in is over: retention may take the old version now.
+		updates["teacher_edited_by"] = nil
+		updates["teacher_edited_at"] = nil
+		updates["student_version_id"] = nil
+	}
 	res := g.db.Model(&models.ScratchProjectDB{}).
 		Where("id = ? AND deleted_at IS NULL", projectID).
-		Updates(reviewUpdates(status, comment, reviewerID, handIn))
+		Updates(updates)
 	if res.Error != nil {
 		return res.Error
 	}

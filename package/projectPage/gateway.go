@@ -29,6 +29,10 @@ type Gateway interface {
 	GetLatestSb3Archive(projectPageId string) (archive []byte, err error)
 	GetTemplateSb3Archive(templateProjectID string) (archive []byte, err error)
 	SaveSb3Archive(projectPageId, userID string, archive []byte, saveSource string) error
+	SaveTeacherEdit(projectPageId, teacherID string, archive []byte) error
+	RestoreStudentVersion(projectPageId string) (archive []byte, err error)
+	TouchProjectEditor(projectID, userID, role string) error
+	ListProjectEditors(projectID string) ([]models.ScratchProjectEditorDB, error)
 	ListSb3PruneCandidates(policy Sb3RetentionPolicy, limit int) (projectIDs []string, err error)
 	PruneSb3Versions(projectID string, policy Sb3RetentionPolicy) (deleted int64, err error)
 	GetTotalStorageBytesForOwner(ownerUserID string) (int64, error)

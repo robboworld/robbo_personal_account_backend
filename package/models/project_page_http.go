@@ -21,6 +21,13 @@ type ProjectPageHTTP struct {
 	IsOwner          bool     `json:"isOwner"`
 	ReactionCount    int64    `json:"reactionCount"`
 	ReviewLocked     bool     `json:"reviewLocked"`
+
+	TeacherCanEdit      bool   `json:"teacherCanEdit,omitempty"`
+	TeacherEditedAt     string `json:"teacherEditedAt,omitempty"`
+	TeacherEditedByName string `json:"teacherEditedByName,omitempty"`
+
+	EditingTracked bool            `json:"editingTracked,omitempty"`
+	Editors        []ProjectEditor `json:"editors,omitempty"`
 }
 
 func (ProjectPageHTTP) IsProjectPageResult() {}
