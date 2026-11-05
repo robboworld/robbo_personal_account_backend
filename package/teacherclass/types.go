@@ -228,6 +228,8 @@ type UseCase interface {
 	PreviewJoin(codeOrSlug string) (*JoinPreviewDTO, error)
 	JoinClass(studentID string, codeOrSlug string) (*ClassDTO, error)
 	ListStudentClasses(studentID string) ([]ClassDTO, error)
+	// LeaveClass takes the student off the roster; projects and handed-in work stay.
+	LeaveClass(studentID, classID string) error
 
 	ListMembers(teacherID string, role models.Role, classID string) ([]CohortUserDTO, error)
 	AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error)

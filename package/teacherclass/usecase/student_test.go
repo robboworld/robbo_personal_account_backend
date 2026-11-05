@@ -45,6 +45,10 @@ func (g *studentGateway) GetInviteByID(string) (*models.ClassInviteDB, error) {
 	return &models.ClassInviteDB{ID: "class-1", EdxCourseID: "course-v1:R+S+1", EdxCohortID: "7", OwnerTeacherID: "10", LmsLinked: true}, nil
 }
 
+func (g *studentGateway) GetInviteByCourseCohort(string, string) (*models.ClassInviteDB, error) {
+	return g.GetInviteByID("class-1")
+}
+
 func (g *studentGateway) ListAssignments(string, string) ([]models.ClassAssignmentDB, error) {
 	return []models.ClassAssignmentDB{{ID: "a1", Title: "Maze"}, {ID: "a2", Title: "Cat"}}, nil
 }
@@ -119,6 +123,7 @@ func TestStudentAssignmentsCarryOwnProject(t *testing.T) {
 }
 
 func TestSubmitOnlyAssignmentCopies(t *testing.T) {
+	withCohortMembers(t, "797")
 	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
 		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1")},
 		"x/797":  {ID: "own", OwnerUserID: "797"},
@@ -137,6 +142,7 @@ func TestSubmitOnlyAssignmentCopies(t *testing.T) {
 }
 
 func TestSubmitOnlyDraftOrReturned(t *testing.T) {
+	withCohortMembers(t, "797")
 	for status, want := range map[string]error{
 		models.ReviewDraft:        nil,
 		models.ReviewReturned:     nil,
@@ -158,6 +164,7 @@ func TestSubmitOnlyDraftOrReturned(t *testing.T) {
 }
 
 func TestSubmitClosedAssignment(t *testing.T) {
+	withCohortMembers(t, "797")
 	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
 		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(models.ReviewDraft)},
 	}}
@@ -178,6 +185,7 @@ func TestSubmitClosedAssignment(t *testing.T) {
 }
 
 func TestSubmitAfterDueIsAllowed(t *testing.T) {
+	withCohortMembers(t, "797")
 	past := time.Now().Add(-time.Hour)
 	gw := &studentGateway{
 		projects: map[string]*models.ScratchProjectDB{
@@ -187,6 +195,19 @@ func TestSubmitAfterDueIsAllowed(t *testing.T) {
 	}
 	if err := (&UseCaseImpl{gw: gw}).SubmitAssignment("797", "p1"); err != nil {
 		t.Fatalf("late submit err = %v", err)
+	}
+}
+
+func TestSubmitNeedsMembership(t *testing.T) {
+	withCohortMembers(t)
+	gw := &studentGateway{projects: map[string]*models.ScratchProjectDB{
+		"a1/797": {ID: "p1", OwnerUserID: "797", AssignmentID: strPtr("a1"), ReviewStatus: strPtr(models.ReviewDraft)},
+	}}
+	if err := (&UseCaseImpl{gw: gw}).SubmitAssignment("797", "p1"); !errors.Is(err, teacherclass.ErrForbidden) {
+		t.Fatalf("left the class: err = %v, want ErrForbidden", err)
+	}
+	if gw.reviewed != "" {
+		t.Fatal("work of a student who left went to review")
 	}
 }
 

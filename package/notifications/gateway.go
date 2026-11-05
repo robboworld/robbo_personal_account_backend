@@ -8,6 +8,9 @@ import (
 
 type Gateway interface {
 	CreateOrUpdateByDedupe(notification *models.UserNotificationDB) error
+	// AddToDigest keeps one row per DedupeKey for repeated events: the title is titlePrefix and
+	// their count, the body is bodyPrefix and the items. The caller decides what counts as an event.
+	AddToDigest(notification *models.UserNotificationDB, titlePrefix, bodyPrefix, item string) error
 	CreatePersonal(notification *models.UserNotificationDB) error
 	// CreateTeacherSend writes one send of senderID unless they already made dailyLimit sends
 	// since `since` (0 = no limit); returns the sends made before this one.

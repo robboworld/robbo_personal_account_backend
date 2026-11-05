@@ -14,10 +14,12 @@ import (
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/edx"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/notifications"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/teacherclass"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/userfiles"
 	"github.com/spf13/viper"
 	"go.uber.org/fx"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 )
 
@@ -26,6 +28,12 @@ type UseCaseImpl struct {
 	edx edx.UseCase
 	// files is "Мои файлы": file assignments are handed in from there.
 	files userfiles.UseCase
+	// notify tells the teacher about what happens in their class.
+	notify notifications.Gateway
+	// joins runs one join per class and student at a time. Without it, requests that overlap
+	// (two tabs, a retry) all see a non-member: the teacher's count grows by each of them and
+	// every assignment is copied once per request.
+	joins singleflight.Group
 }
 
 type UseCaseModule struct {
@@ -33,8 +41,8 @@ type UseCaseModule struct {
 	teacherclass.UseCase
 }
 
-func SetupTeacherClassUseCase(gw teacherclass.Gateway, edxUC edx.UseCase, files userfiles.UseCase) UseCaseModule {
-	return UseCaseModule{UseCase: &UseCaseImpl{gw: gw, edx: edxUC, files: files}}
+func SetupTeacherClassUseCase(gw teacherclass.Gateway, edxUC edx.UseCase, files userfiles.UseCase, notify notifications.Gateway) UseCaseModule {
+	return UseCaseModule{UseCase: &UseCaseImpl{gw: gw, edx: edxUC, files: files, notify: notify}}
 }
 
 func (u *UseCaseImpl) toDTO(inv *models.ClassInviteDB) *teacherclass.ClassDTO {
@@ -240,7 +248,7 @@ func (u *UseCaseImpl) fillOwnerNames(dtos []teacherclass.ClassDTO) {
 	}
 }
 
-// ownerDisplayName returns the teacher's name from the LMS profile, "" when unknown.
+// ownerDisplayName returns the user's name from the LMS profile, "" when unknown.
 // A variable so tests can stand in for LMS MySQL.
 var ownerDisplayName = func(ownerID string) string {
 	id, err := lmsdb.ParseLMSUserID(ownerID)
@@ -476,19 +484,28 @@ func (u *UseCaseImpl) addToClass(inv *models.ClassInviteDB, userID string) error
 	if !inv.LmsLinked {
 		return u.gw.AddMember(inv.ID, strconv.FormatInt(id, 10))
 	}
-	reader, err := lmsdb.NewReaderFromConfig()
+	username, err := lmsUsername(id)
 	if err != nil {
 		return err
+	}
+	if err := u.enrollAndAdd(username, inv.EdxCourseID, inv.EdxCohortID); err != nil {
+		return fmt.Errorf("%w: join cohort: %v", teacherclass.ErrInternal, err)
+	}
+	return nil
+}
+
+// lmsUsername is the user's LMS login. A variable so tests can stand in for LMS MySQL.
+var lmsUsername = func(id int64) (string, error) {
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return "", err
 	}
 	defer reader.Close()
 	user, err := reader.LookupAuthUserByID(id)
 	if err != nil || user == nil {
-		return teacherclass.ErrBadRequest
+		return "", teacherclass.ErrBadRequest
 	}
-	if err := u.enrollAndAdd(user.Username, inv.EdxCourseID, inv.EdxCohortID); err != nil {
-		return fmt.Errorf("%w: join cohort: %v", teacherclass.ErrInternal, err)
-	}
-	return nil
+	return user.Username, nil
 }
 
 func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teacherclass.ClassDTO, error) {
@@ -498,6 +515,22 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 	}
 	if !inv.IsActive {
 		return nil, teacherclass.ErrNotFound
+	}
+	dto, err, _ := u.joins.Do(inv.ID+":"+studentID, func() (interface{}, error) {
+		return u.join(studentID, inv)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return dto.(*teacherclass.ClassDTO), nil
+}
+
+func (u *UseCaseImpl) join(studentID string, inv *models.ClassInviteDB) (*teacherclass.ClassDTO, error) {
+	// Opening the invite link again is not news to the teacher.
+	wasMember, err := u.isClassMember(studentID, inv)
+	if err != nil {
+		log.Printf("teacherclass: class %s membership: %v", inv.ID, err)
+		wasMember = true
 	}
 	if err := u.addToClass(inv, studentID); err != nil {
 		return nil, err
@@ -518,9 +551,104 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 		}
 		_, _ = u.gw.ForkProjectForStudent(tpl, studentID, a.Title, a)
 	}
+	if !wasMember {
+		u.notifyStudentJoined(studentID, inv)
+	}
 	dto := u.toDTO(inv)
 	u.fillOwnerName(dto)
 	return dto, nil
+}
+
+// LeaveClass takes the student off the roster. The course enrollment of a linked class stays,
+// and so do the student's copies: the teacher still reviews handed-in work, and joining again
+// picks the copies up.
+func (u *UseCaseImpl) LeaveClass(studentID, classID string) error {
+	inv, err := u.gw.GetInviteByID(classID)
+	if err != nil {
+		return teacherclass.ErrNotFound
+	}
+	member, err := u.isClassMember(studentID, inv)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return teacherclass.ErrNotFound
+	}
+	if err := u.removeFromRoster(studentID, inv); err != nil {
+		return err
+	}
+	u.notifyStudentLeft(studentID, inv)
+	return nil
+}
+
+func (u *UseCaseImpl) removeFromRoster(studentID string, inv *models.ClassInviteDB) error {
+	if !inv.LmsLinked {
+		return u.gw.RemoveMember(inv.ID, studentID)
+	}
+	id, err := lmsdb.ParseLMSUserID(studentID)
+	if err != nil {
+		return teacherclass.ErrBadRequest
+	}
+	username, err := lmsUsername(id)
+	if err != nil {
+		return err
+	}
+	cohortID, _ := strconv.Atoi(inv.EdxCohortID)
+	if err := u.edx.RemoveCohortUser(username, inv.EdxCourseID, cohortID); err != nil {
+		return fmt.Errorf("%w: leave cohort: %v", teacherclass.ErrInternal, err)
+	}
+	return nil
+}
+
+// ownerNotification is a row for the class owner; the roster has already changed by the time it
+// is sent, so a failure to send it is only logged. Nil when the owner is the student.
+func ownerNotification(studentID string, inv *models.ClassInviteDB, kind, dedupeKey string) *models.UserNotificationDB {
+	if inv.OwnerTeacherID == studentID {
+		return nil
+	}
+	actionURL := "/teacher/classes/" + inv.ID
+	return &models.UserNotificationDB{
+		RecipientUserID: inv.OwnerTeacherID,
+		Kind:            kind,
+		Severity:        "INFO",
+		Source:          "system",
+		ActionURL:       &actionURL,
+		DedupeKey:       &dedupeKey,
+	}
+}
+
+func studentName(studentID string) string {
+	if name := ownerDisplayName(studentID); name != "" {
+		return name
+	}
+	return "Ученик"
+}
+
+// notifyStudentJoined: one row per class and UTC day, a class joining on its first lesson would
+// otherwise fill the bell. It counts joins, not people: JoinClass calls it for someone who was
+// off the roster, so a student who left and came back appears twice, after the "left" row.
+func (u *UseCaseImpl) notifyStudentJoined(studentID string, inv *models.ClassInviteDB) {
+	day := time.Now().UTC().Format("2006-01-02")
+	row := ownerNotification(studentID, inv, "class_members_joined", "class_members_joined:"+inv.ID+":"+day)
+	if row == nil {
+		return
+	}
+	if err := u.notify.AddToDigest(row, "Вступлений в класс: ", "«"+inv.DisplayName+"»: ", studentName(studentID)); err != nil {
+		log.Printf("teacherclass: notify class %s owner: %v", inv.ID, err)
+	}
+}
+
+// notifyStudentLeft: one row per student and class, leaving again refreshes it.
+func (u *UseCaseImpl) notifyStudentLeft(studentID string, inv *models.ClassInviteDB) {
+	row := ownerNotification(studentID, inv, "class_member_left", "class_member_left:"+inv.ID+":"+studentID)
+	if row == nil {
+		return
+	}
+	row.Title = "Ученик покинул класс"
+	row.Body = fmt.Sprintf("%s больше не в классе «%s». Сданные работы остались на доске класса.", studentName(studentID), inv.DisplayName)
+	if err := u.notify.CreateOrUpdateByDedupe(row); err != nil {
+		log.Printf("teacherclass: notify class %s owner: %v", inv.ID, err)
+	}
 }
 
 func (u *UseCaseImpl) ListStudentClasses(studentID string) ([]teacherclass.ClassDTO, error) {
@@ -1041,6 +1169,18 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	// The due date only marks late work; closing the assignment stops hand-ins.
 	if a.ClosedAt != nil {
 		return teacherclass.ErrAssignmentClosed
+	}
+	// The copy outlives membership: a student who left keeps it but hands in nothing.
+	inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID)
+	if err != nil {
+		return teacherclass.ErrNotFound
+	}
+	member, err := u.isClassMember(studentID, inv)
+	if err != nil {
+		return err
+	}
+	if !member {
+		return teacherclass.ErrForbidden
 	}
 	now := time.Now().UTC()
 	return u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now)

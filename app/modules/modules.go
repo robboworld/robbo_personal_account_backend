@@ -289,7 +289,7 @@ func SetupUseCase(gateway GatewayModule, portalGateway portalgateway.Gateway, us
 	if err != nil {
 		return UseCaseModule{}, err
 	}
-	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase, userFilesUC)
+	tcUC := tcusecase.SetupTeacherClassUseCase(gateway.TeacherClassGateway, edxMod.UseCase, userFilesUC, gateway.NotificationsGateway)
 	projectPageUC := ppageusecase.SetupProjectPageUseCase(
 		gateway.ProjectPageGateway,
 		gateway.ProjectsGateway,

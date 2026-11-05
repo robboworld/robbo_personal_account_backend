@@ -67,6 +67,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 	student := router.Group("/api/student")
 	{
 		student.GET("/classes", h.ListStudentClasses)
+		student.POST("/classes/:classId/leave", h.LeaveClass)
 		student.GET("/classes/:classId/assignments", h.ListAssignmentsStudent)
 		student.POST("/projects/:projectId/submit", h.SubmitProject)
 		student.POST("/assignments/:assignmentId/files", h.AttachFile)
@@ -326,6 +327,18 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 		return
 	}
 	if err := h.uc.RemoveMember(userID, role, c.Param("classId"), c.Param("username")); err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) LeaveClass(c *gin.Context) {
+	userID, _, ok := h.identity(c, studentRoles())
+	if !ok {
+		return
+	}
+	if err := h.uc.LeaveClass(userID, c.Param("classId")); err != nil {
 		writeErr(c, err)
 		return
 	}

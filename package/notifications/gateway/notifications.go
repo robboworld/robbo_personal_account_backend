@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -62,6 +63,40 @@ func (g *NotificationGateway) CreateOrUpdateByDedupe(notification *models.UserNo
 		notification.Source,
 		notification.ActionURL,
 		notification.DedupeKey,
+	).Error
+}
+
+// digestBodyLimit: the bell shows three lines; past this the count still grows, the body does not.
+const digestBodyLimit = 1000
+
+// AddToDigest is one upsert, so simultaneous events neither overwrite nor miscount each other.
+// The count sits in the title because the table has no column for it: the title is only ever
+// titlePrefix and a number, while the body holds names people chose themselves.
+func (g *NotificationGateway) AddToDigest(notification *models.UserNotificationDB, titlePrefix, bodyPrefix, item string) error {
+	return g.db.Exec(`
+		INSERT INTO user_notifications AS n (
+			recipient_user_id, title, body, kind, severity, source, action_url, dedupe_key
+		) VALUES (
+			@recipient, CAST(@titlePrefix AS text) || '1', CAST(@bodyPrefix AS text) || CAST(@item AS text),
+			@kind, @severity, @source, @actionURL, @dedupeKey
+		)
+		ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL
+		DO UPDATE SET
+			title = CAST(@titlePrefix AS text) || (CAST(substring(n.title from '[0-9]+$') AS integer) + 1)::text,
+			body = CASE WHEN length(n.body) < @bodyLimit THEN n.body || ', ' || CAST(@item AS text) ELSE n.body END,
+			read_at = NULL,
+			created_at = now()
+	`,
+		sql.Named("recipient", notification.RecipientUserID),
+		sql.Named("titlePrefix", titlePrefix),
+		sql.Named("bodyPrefix", bodyPrefix),
+		sql.Named("item", item),
+		sql.Named("kind", notification.Kind),
+		sql.Named("severity", notification.Severity),
+		sql.Named("source", notification.Source),
+		sql.Named("actionURL", notification.ActionURL),
+		sql.Named("dedupeKey", notification.DedupeKey),
+		sql.Named("bodyLimit", digestBodyLimit),
 	).Error
 }
 
