@@ -201,3 +201,50 @@ func TestSendFromTeacherDailyLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestSendFromTeacherGoesIntoTheClassHistory(t *testing.T) {
+	stubLMS(t)
+	type record struct {
+		sender, classID string
+		recipients      []string
+	}
+	var recorded []record
+	prev := notifications.ClassMessageRecorder
+	notifications.ClassMessageRecorder = func(sender string, _ models.Role, classID string, recipients []string) {
+		recorded = append(recorded, record{sender, classID, recipients})
+	}
+	t.Cleanup(func() { notifications.ClassMessageRecorder = prev })
+	uc := &NotificationUseCase{gateway: &fakeGateway{}}
+	msg := notifications.TeacherMessageInput{
+		SenderUserID: "10", SenderRole: models.Teacher, RecipientUserIDs: []string{"797", "797", "798"},
+		Title: "t", Body: "b", ClassID: " c1 ",
+	}
+
+	if _, _, err := uc.SendFromTeacher(msg); err != nil {
+		t.Fatal(err)
+	}
+	if len(recorded) != 1 || recorded[0].sender != "10" || recorded[0].classID != "c1" ||
+		strings.Join(recorded[0].recipients, ",") != "797,798" {
+		t.Fatalf("recorded = %+v", recorded)
+	}
+
+	// Sent from elsewhere, or not sent at all: nothing for the history.
+	recorded = nil
+	outside := msg
+	outside.ClassID = ""
+	if _, _, err := uc.SendFromTeacher(outside); err != nil {
+		t.Fatal(err)
+	}
+	stranger := msg
+	stranger.RecipientUserIDs = []string{"999"}
+	if _, _, err := uc.SendFromTeacher(stranger); !errors.Is(err, ErrNotYourStudent) {
+		t.Fatalf("stranger err = %v", err)
+	}
+	full := &NotificationUseCase{gateway: &fakeGateway{sends: map[string]int{"10": teacherDailySends}}}
+	if _, _, err := full.SendFromTeacher(msg); !errors.Is(err, notifications.ErrTeacherDailyLimit) {
+		t.Fatalf("over the limit err = %v", err)
+	}
+	if len(recorded) != 0 {
+		t.Fatalf("recorded = %+v", recorded)
+	}
+}

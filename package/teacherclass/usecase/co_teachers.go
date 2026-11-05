@@ -134,6 +134,9 @@ func (u *UseCaseImpl) AddCoTeacher(teacherID string, role models.Role, classID, 
 	if err := u.gw.AddCoTeacher(row, maxCoTeachers()); err != nil {
 		return nil, err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryCoTeacherAdded, models.ClassHistoryEventDB{
+		TargetUserID: coTeacherID, Detail: expiresAt.Format(time.RFC3339),
+	})
 	u.notifyCoTeacherChange(teacherID, inv, coTeacherID,
 		"Назначен со-преподаватель",
 		fmt.Sprintf("Класс «%s»: %s, до %s.", inv.DisplayName, teacherName(coTeacherID), coTeacherDate(expiresAt)))
@@ -157,6 +160,9 @@ func (u *UseCaseImpl) ExtendCoTeacher(teacherID string, role models.Role, classI
 		}
 		return nil, err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryCoTeacherExtended, models.ClassHistoryEventDB{
+		TargetUserID: coTeacherID, Detail: expiresAt.Format(time.RFC3339),
+	})
 	u.notifyCoTeacherChange(teacherID, inv, coTeacherID,
 		"Срок со-преподавателя изменён",
 		fmt.Sprintf("Класс «%s»: %s, теперь до %s.", inv.DisplayName, teacherName(coTeacherID), coTeacherDate(expiresAt)))
@@ -182,6 +188,11 @@ func (u *UseCaseImpl) RemoveCoTeacher(teacherID string, role models.Role, classI
 		}
 		return err
 	}
+	action := models.HistoryCoTeacherRemoved
+	if teacherID == coTeacherID {
+		action = models.HistoryCoTeacherLeft
+	}
+	u.recordTeacherAction(inv, teacherID, role, action, models.ClassHistoryEventDB{TargetUserID: coTeacherID})
 	u.notifyCoTeacherChange(teacherID, inv, coTeacherID,
 		"Со-преподавание завершено",
 		fmt.Sprintf("Класс «%s»: %s больше не со-преподаватель. Работы и задания остались в классе.",

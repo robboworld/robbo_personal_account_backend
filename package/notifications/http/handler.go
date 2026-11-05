@@ -261,6 +261,7 @@ type teacherSendRequest struct {
 	RecipientUserIDs []string `json:"recipientUserIds"`
 	Title            string   `json:"title"`
 	Body             string   `json:"body"`
+	ClassID          string   `json:"classId"`
 }
 
 // TeacherSend: a teacher messages students of their own classes (SuperAdmin: anyone).
@@ -281,6 +282,7 @@ func (h *Handler) TeacherSend(c *gin.Context) {
 		RecipientUserIDs: request.RecipientUserIDs,
 		Title:            request.Title,
 		Body:             request.Body,
+		ClassID:          request.ClassID,
 	})
 	if err != nil {
 		writeError(c, err)

@@ -186,7 +186,7 @@ func (u *UseCaseImpl) CreateClass(teacherID string, role models.Role, in teacher
 		return nil, teacherclass.ErrBadRequest
 	}
 	if !in.LinkLMS {
-		return u.createLocalClass(teacherID, in.DisplayName)
+		return u.createLocalClass(teacherID, role, in.DisplayName)
 	}
 	if in.CourseID == "" {
 		return nil, teacherclass.ErrBadRequest
@@ -240,6 +240,7 @@ func (u *UseCaseImpl) CreateClass(teacherID string, role models.Role, in teacher
 	if err := u.gw.CreateInvite(inv); err != nil {
 		return nil, err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryClassCreated, models.ClassHistoryEventDB{Title: inv.DisplayName})
 	dto := u.toDTO(inv)
 	u.fillOwnerName(dto)
 	return dto, nil
@@ -247,7 +248,7 @@ func (u *UseCaseImpl) CreateClass(teacherID string, role models.Role, in teacher
 
 // createLocalClass makes a class the LMS knows nothing about: no course, no cohort, the
 // roster lives in class_members.
-func (u *UseCaseImpl) createLocalClass(teacherID, displayName string) (*teacherclass.ClassDTO, error) {
+func (u *UseCaseImpl) createLocalClass(teacherID string, role models.Role, displayName string) (*teacherclass.ClassDTO, error) {
 	code, err := genInviteCode()
 	if err != nil {
 		return nil, err
@@ -270,6 +271,7 @@ func (u *UseCaseImpl) createLocalClass(teacherID, displayName string) (*teacherc
 	if err := u.gw.CreateInvite(inv); err != nil {
 		return nil, err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryClassCreated, models.ClassHistoryEventDB{Title: inv.DisplayName})
 	dto := u.toDTO(inv)
 	u.fillOwnerName(dto)
 	return dto, nil
@@ -444,9 +446,13 @@ func (u *UseCaseImpl) RenameClass(teacherID string, role models.Role, classID, d
 			return nil, fmt.Errorf("%w: rename cohort", teacherclass.ErrInternal)
 		}
 	}
+	oldName := inv.DisplayName
 	inv.DisplayName = displayName
 	if err := u.gw.UpdateInvite(inv); err != nil {
 		return nil, err
+	}
+	if oldName != displayName {
+		u.recordTeacherAction(inv, teacherID, role, models.HistoryClassRenamed, models.ClassHistoryEventDB{Title: displayName, Detail: oldName})
 	}
 	return u.toDTO(inv), nil
 }
@@ -459,7 +465,11 @@ func (u *UseCaseImpl) ArchiveClass(teacherID string, role models.Role, classID s
 	now := time.Now().UTC()
 	inv.ArchivedAt = &now
 	inv.IsActive = false
-	return u.gw.UpdateInvite(inv)
+	if err := u.gw.UpdateInvite(inv); err != nil {
+		return err
+	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryClassArchived, models.ClassHistoryEventDB{})
+	return nil
 }
 
 func (u *UseCaseImpl) RotateInvite(teacherID string, role models.Role, classID string) (*teacherclass.ClassDTO, error) {
@@ -483,6 +493,7 @@ func (u *UseCaseImpl) RotateInvite(teacherID string, role models.Role, classID s
 	if err := u.gw.UpdateInvite(inv); err != nil {
 		return nil, err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryInviteRotated, models.ClassHistoryEventDB{})
 	return u.toDTO(inv), nil
 }
 
@@ -619,6 +630,7 @@ func (u *UseCaseImpl) join(studentID string, inv *models.ClassInviteDB) (*teache
 		_, _ = u.gw.ForkProjectForStudent(tpl, studentID, a.Title, a)
 	}
 	if !wasMember {
+		u.recordStudentAction(inv, studentID, models.HistoryMemberJoined, models.ClassHistoryEventDB{})
 		u.notifyStudentJoined(studentID, inv)
 	}
 	dto := u.toDTO(inv)
@@ -644,6 +656,7 @@ func (u *UseCaseImpl) LeaveClass(studentID, classID string) error {
 	if err := u.removeFromRoster(studentID, inv); err != nil {
 		return err
 	}
+	u.recordStudentAction(inv, studentID, models.HistoryMemberLeft, models.ClassHistoryEventDB{})
 	u.notifyStudentLeft(studentID, inv)
 	return nil
 }
@@ -929,16 +942,26 @@ func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, clas
 			missing = append(missing, email)
 			continue
 		}
+		userID := strconv.FormatInt(row.ID, 10)
+		// Adding someone already here changes nothing. When that cannot be told, an extra row
+		// in the history beats a lost one.
+		wasMember, memberErr := u.isClassMember(userID, inv)
+		if memberErr != nil {
+			log.Printf("teacherclass: class %s membership: %v", inv.ID, memberErr)
+		}
 		if inv.LmsLinked {
 			err = u.enrollAndAdd(row.Username, inv.EdxCourseID, inv.EdxCohortID)
 		} else {
-			err = u.gw.AddMember(inv.ID, strconv.FormatInt(row.ID, 10))
+			err = u.gw.AddMember(inv.ID, userID)
 		}
 		if err != nil {
 			missing = append(missing, email)
 			continue
 		}
 		added = append(added, email)
+		if memberErr != nil || !wasMember {
+			u.recordTeacherAction(inv, teacherID, role, models.HistoryMemberAdded, models.ClassHistoryEventDB{TargetUserID: userID})
+		}
 	}
 	return added, missing, nil
 }
@@ -951,32 +974,52 @@ func (u *UseCaseImpl) RemoveMember(teacherID string, role models.Role, classID, 
 		return err
 	}
 	if !inv.LmsLinked {
-		return u.removeLocalMember(inv.ID, username)
+		userID, err := u.removeLocalMember(inv.ID, username)
+		if err != nil {
+			return err
+		}
+		if userID != "" {
+			u.recordTeacherAction(inv, teacherID, role, models.HistoryMemberRemoved, models.ClassHistoryEventDB{TargetUserID: userID})
+		}
+		return nil
 	}
 	cohortID, _ := strconv.Atoi(inv.EdxCohortID)
-	return u.edx.RemoveCohortUser(username, inv.EdxCourseID, cohortID)
+	if err := u.edx.RemoveCohortUser(username, inv.EdxCourseID, cohortID); err != nil {
+		return err
+	}
+	e := models.ClassHistoryEventDB{TargetUserID: lmsUserID(username)}
+	if e.TargetUserID == "" {
+		e.Detail = username
+	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryMemberRemoved, e)
+	return nil
 }
 
-func (u *UseCaseImpl) removeLocalMember(classID, member string) error {
+// removeLocalMember returns the id of who was removed, "" if they were not on the roster.
+func (u *UseCaseImpl) removeLocalMember(classID, member string) (string, error) {
 	member = strings.TrimSpace(member)
 	if member == "" {
-		return teacherclass.ErrBadRequest
+		return "", teacherclass.ErrBadRequest
 	}
 	if ok, err := u.gw.IsMemberOfAny(member, []string{classID}); err != nil {
-		return err
+		return "", err
 	} else if ok {
-		return u.gw.RemoveMember(classID, member)
+		return member, u.gw.RemoveMember(classID, member)
 	}
 	reader, err := lmsdb.NewReaderFromConfig()
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer reader.Close()
 	row, err := reader.LookupAuthUserByUsername(member)
 	if err != nil || row == nil {
-		return teacherclass.ErrNotFound
+		return "", teacherclass.ErrNotFound
 	}
-	return u.gw.RemoveMember(classID, strconv.FormatInt(row.ID, 10))
+	userID := strconv.FormatInt(row.ID, 10)
+	if ok, err := u.gw.IsMemberOfAny(userID, []string{classID}); err != nil || !ok {
+		return "", err
+	}
+	return userID, u.gw.RemoveMember(classID, userID)
 }
 
 func assignmentDTO(a *models.ClassAssignmentDB) teacherclass.AssignmentDTO {
@@ -1037,6 +1080,7 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 		if err := u.gw.CreateAssignment(a); err != nil {
 			return nil, err
 		}
+		u.recordTeacherAction(inv, teacherID, role, models.HistoryAssignmentCreated, models.ClassHistoryEventDB{Title: a.Title})
 		dto := assignmentDTO(a)
 		if starter != nil {
 			ref := teacherclass.FileRef(starter)
@@ -1061,6 +1105,7 @@ func (u *UseCaseImpl) CreateAssignment(teacherID string, role models.Role, class
 	if err := u.gw.CreateAssignment(a); err != nil {
 		return nil, err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryAssignmentCreated, models.ClassHistoryEventDB{Title: a.Title})
 	members, err := u.ListMembers(teacherID, role, classID)
 	if err != nil {
 		return nil, err
@@ -1209,6 +1254,9 @@ func (u *UseCaseImpl) IssueToLatecomers(teacherID string, role models.Role, clas
 			log.Printf("teacherclass: assignment %s: late copy for student %s: %v", a.ID, m.UserID, err)
 		}
 	}
+	if issued > 0 {
+		u.recordTeacherAction(inv, teacherID, role, models.HistoryAssignmentIssuedLate, models.ClassHistoryEventDB{Title: a.Title, Detail: strconv.Itoa(issued)})
+	}
 	return issued, nil
 }
 
@@ -1221,8 +1269,16 @@ func (u *UseCaseImpl) SetAssignmentClosed(teacherID string, role models.Role, cl
 	if err != nil || a.EdxCohortID != inv.EdxCohortID {
 		return nil, teacherclass.ErrNotFound
 	}
+	wasClosed := a.ClosedAt != nil
 	if err := u.gw.SetAssignmentClosed(a.ID, closed); err != nil {
 		return nil, err
+	}
+	if wasClosed != closed {
+		action := models.HistoryAssignmentReopened
+		if closed {
+			action = models.HistoryAssignmentClosed
+		}
+		u.recordTeacherAction(inv, teacherID, role, action, models.ClassHistoryEventDB{Title: a.Title})
 	}
 	if a, err = u.gw.GetAssignment(a.ID); err != nil {
 		return nil, err
@@ -1231,29 +1287,29 @@ func (u *UseCaseImpl) SetAssignmentClosed(teacherID string, role models.Role, cl
 	return &dto, nil
 }
 
-// openAssignmentOf is an assignment that still takes the student's work.
-func (u *UseCaseImpl) openAssignmentOf(studentID, assignmentID string) (*models.ClassAssignmentDB, error) {
+// openAssignmentOf is an assignment that still takes the student's work, with its class.
+func (u *UseCaseImpl) openAssignmentOf(studentID, assignmentID string) (*models.ClassAssignmentDB, *models.ClassInviteDB, error) {
 	a, err := u.gw.GetAssignment(assignmentID)
 	if err != nil {
-		return nil, teacherclass.ErrNotFound
+		return nil, nil, teacherclass.ErrNotFound
 	}
 	// The due date only marks late work; closing the assignment stops hand-ins.
 	if a.ClosedAt != nil {
-		return nil, teacherclass.ErrAssignmentClosed
+		return nil, nil, teacherclass.ErrAssignmentClosed
 	}
 	// The copy outlives membership: a student who left keeps it but hands in nothing.
 	inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID)
 	if err != nil {
-		return nil, teacherclass.ErrNotFound
+		return nil, nil, teacherclass.ErrNotFound
 	}
 	member, err := u.isClassMember(studentID, inv)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !member {
-		return nil, teacherclass.ErrForbidden
+		return nil, nil, teacherclass.ErrForbidden
 	}
-	return a, nil
+	return a, inv, nil
 }
 
 func (u *UseCaseImpl) UpdateProjectNote(studentID, projectID, note string) error {
@@ -1271,7 +1327,7 @@ func (u *UseCaseImpl) UpdateProjectNote(studentID, projectID, note string) error
 	if p.AssignmentID == nil || strings.TrimSpace(*p.AssignmentID) == "" {
 		return teacherclass.ErrBadRequest
 	}
-	if _, err := u.openAssignmentOf(studentID, *p.AssignmentID); err != nil {
+	if _, _, err := u.openAssignmentOf(studentID, *p.AssignmentID); err != nil {
 		return err
 	}
 	return u.gw.SetProjectNote(projectID, note)
@@ -1299,7 +1355,7 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID, note string) error 
 	default:
 		return teacherclass.ErrAlreadyHandedIn
 	}
-	a, err := u.openAssignmentOf(studentID, *p.AssignmentID)
+	a, inv, err := u.openAssignmentOf(studentID, *p.AssignmentID)
 	if err != nil {
 		return err
 	}
@@ -1314,6 +1370,7 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID, note string) error 
 	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", "", handIn); err != nil {
 		return err
 	}
+	u.recordSubmitted(inv, studentID, a, handIn)
 	u.notifyWorkSubmitted(studentID, a)
 	return nil
 }
@@ -1366,6 +1423,9 @@ func (u *UseCaseImpl) ReviewSubmission(teacherID string, role models.Role, proje
 	if err := u.gw.UpdateReview(projectID, status, comment, teacherID, nil); err != nil {
 		return err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryWorkReviewed, models.ClassHistoryEventDB{
+		TargetUserID: p.OwnerUserID, Title: p.Title, Detail: status,
+	})
 	u.notifyWorkReviewed(p.OwnerUserID, p.ID, p.Title, status, comment)
 	return nil
 }

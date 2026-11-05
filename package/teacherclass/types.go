@@ -203,6 +203,33 @@ type ProgressRowDTO struct {
 	Cells  []ProgressCellDTO `json:"cells"`
 }
 
+// HistoryEventDTO is one line of the class history. Detail depends on Action, see
+// models.ClassHistoryEventDB. A name is empty when the LMS no longer knows the user.
+type HistoryEventDTO struct {
+	ID         string    `json:"id"`
+	Action     string    `json:"action"`
+	ActorID    string    `json:"actorId"`
+	ActorName  string    `json:"actorName,omitempty"`
+	ActorRole  string    `json:"actorRole"`
+	TargetID   string    `json:"targetId,omitempty"`
+	TargetName string    `json:"targetName,omitempty"`
+	Title      string    `json:"title,omitempty"`
+	Detail     string    `json:"detail,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// HistoryPageDTO: NextCursor is empty on the last page.
+type HistoryPageDTO struct {
+	Items      []HistoryEventDTO `json:"items"`
+	NextCursor string            `json:"nextCursor,omitempty"`
+}
+
+// HistoryCursor is the last event of a page: the next one starts after it.
+type HistoryCursor struct {
+	At time.Time
+	ID string
+}
+
 type Gateway interface {
 	CreateInvite(inv *models.ClassInviteDB) error
 	UpdateInvite(inv *models.ClassInviteDB) error
@@ -239,6 +266,11 @@ type Gateway interface {
 	// ClaimExpiringCoTeachers marks the running terms ending by `before` as reminded and
 	// returns them, so each is reminded of once however many backends run.
 	ClaimExpiringCoTeachers(before time.Time) ([]models.ClassCoTeacherDB, error)
+
+	AddHistoryEvent(e *models.ClassHistoryEventDB) error
+	// ListHistoryEvents returns the class's events newest first, older than before when it is
+	// set; no actions means all of them.
+	ListHistoryEvents(classID string, actions []string, before *HistoryCursor, limit int) ([]models.ClassHistoryEventDB, error)
 
 	CreateAssignment(a *models.ClassAssignmentDB) error
 	ListAssignments(courseID, cohortID string) ([]models.ClassAssignmentDB, error)
@@ -306,6 +338,11 @@ type UseCase interface {
 	RemoveCoTeacher(teacherID string, role models.Role, classID, coTeacherID string) error
 	// RemindExpiringCoTeachers tells both sides that a term ends within a day; returns how many.
 	RemindExpiringCoTeachers(now time.Time) (int, error)
+
+	// ListHistory is a page of the class history for its teachers, see historyCategories.
+	ListHistory(teacherID string, role models.Role, classID, category, cursor string) (*HistoryPageDTO, error)
+	// RecordClassMessage puts a message sent from the class board into the history.
+	RecordClassMessage(teacherID string, role models.Role, classID string, recipientIDs []string)
 
 	ListMembers(teacherID string, role models.Role, classID string) ([]CohortUserDTO, error)
 	AddMembersByEmail(teacherID string, role models.Role, classID string, emails []string) (added []string, missing []string, err error)

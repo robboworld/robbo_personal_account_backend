@@ -57,6 +57,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.POST("/classes/:classId/co-teachers", h.AddCoTeacher)
 		api.PATCH("/classes/:classId/co-teachers/:teacherId", h.ExtendCoTeacher)
 		api.DELETE("/classes/:classId/co-teachers/:teacherId", h.RemoveCoTeacher)
+		api.GET("/classes/:classId/history", h.ListHistory)
 		api.GET("/classes/:classId/assignments", h.ListAssignmentsTeacher)
 		api.POST("/classes/:classId/assignments", h.CreateAssignment)
 		api.POST("/classes/:classId/assignments/:assignmentId/issue-late", h.IssueLate)
@@ -430,6 +431,19 @@ func (h *Handler) RemoveCoTeacher(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ListHistory(c *gin.Context) {
+	userID, role, ok := h.identity(c, teacherRoles())
+	if !ok {
+		return
+	}
+	page, err := h.uc.ListHistory(userID, role, c.Param("classId"), c.Query("category"), c.Query("cursor"))
+	if err != nil {
+		writeErr(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, page)
 }
 
 func (h *Handler) LeaveClass(c *gin.Context) {

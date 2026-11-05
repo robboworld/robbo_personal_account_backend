@@ -34,7 +34,13 @@ type TeacherMessageInput struct {
 	RecipientUserIDs []string
 	Title            string
 	Body             string
+	// ClassID is set when the message was sent from a class board.
+	ClassID string
 }
+
+// ClassMessageRecorder puts a sent message into the class history. A hook: teacherclass already
+// depends on this package. Nil in tests and wherever classes are not set up.
+var ClassMessageRecorder func(senderUserID string, senderRole models.Role, classID string, recipientUserIDs []string)
 
 type AnnouncementInput struct {
 	Title           string

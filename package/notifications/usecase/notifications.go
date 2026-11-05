@@ -347,6 +347,9 @@ func (u *NotificationUseCase) SendFromTeacher(input notifications.TeacherMessage
 	if err != nil {
 		return 0, quotaOf(limit, used), err
 	}
+	if classID := strings.TrimSpace(input.ClassID); classID != "" && notifications.ClassMessageRecorder != nil {
+		notifications.ClassMessageRecorder(sender, input.SenderRole, classID, recipients)
+	}
 	return len(rows), quotaOf(limit, used+1), nil
 }
 

@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"io"
+	"log"
 	"slices"
 	"strings"
 	"time"
@@ -312,6 +313,11 @@ func (u *UseCaseImpl) SubmitFiles(studentID, assignmentID, note string) error {
 	if err := u.gw.UpdateFileReview(sub.ID, models.ReviewSubmitted, "", "", handIn); err != nil {
 		return err
 	}
+	if inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID); err != nil {
+		log.Printf("teacherclass: assignment %s history: %v", a.ID, err)
+	} else {
+		u.recordSubmitted(inv, studentID, a, handIn)
+	}
 	u.notifyWorkSubmitted(studentID, a)
 	return nil
 }
@@ -348,34 +354,34 @@ func (u *UseCaseImpl) OpenStarterFile(viewerID string, role models.Role, assignm
 	return row, rc, nil
 }
 
-// managedFileSubmission is a submission of a class the teacher manages, with its assignment.
-func (u *UseCaseImpl) managedFileSubmission(teacherID string, role models.Role, submissionID string) (*models.ClassFileSubmissionDB, *models.ClassAssignmentDB, error) {
+// managedFileSubmission is a submission of a class the teacher manages, with its assignment and class.
+func (u *UseCaseImpl) managedFileSubmission(teacherID string, role models.Role, submissionID string) (*models.ClassFileSubmissionDB, *models.ClassAssignmentDB, *models.ClassInviteDB, error) {
 	sub, err := u.gw.GetFileSubmission(submissionID)
 	if err != nil {
-		return nil, nil, teacherclass.ErrNotFound
+		return nil, nil, nil, teacherclass.ErrNotFound
 	}
 	a, err := u.gw.GetAssignment(sub.AssignmentID)
 	if err != nil {
-		return nil, nil, teacherclass.ErrNotFound
+		return nil, nil, nil, teacherclass.ErrNotFound
 	}
 	inv, err := u.gw.GetInviteByCourseCohort(a.EdxCourseID, a.EdxCohortID)
 	if err != nil {
-		return nil, nil, teacherclass.ErrForbidden
+		return nil, nil, nil, teacherclass.ErrForbidden
 	}
 	if teaches, err := u.canTeach(inv, teacherID, role); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	} else if !teaches {
-		return nil, nil, teacherclass.ErrForbidden
+		return nil, nil, nil, teacherclass.ErrForbidden
 	}
 	// A draft is the student's own work, as with Scratch copies.
 	if !draftVisibleStatus(role, sub.ReviewStatus) {
-		return nil, nil, teacherclass.ErrNotFound
+		return nil, nil, nil, teacherclass.ErrNotFound
 	}
-	return sub, a, nil
+	return sub, a, inv, nil
 }
 
 func (u *UseCaseImpl) OpenSubmissionFile(teacherID string, role models.Role, submissionID, fileID string) (*models.UserFileDB, io.ReadSeekCloser, error) {
-	sub, _, err := u.managedFileSubmission(teacherID, role, submissionID)
+	sub, _, _, err := u.managedFileSubmission(teacherID, role, submissionID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -400,13 +406,16 @@ func (u *UseCaseImpl) ReviewFileSubmission(teacherID string, role models.Role, s
 	if !reviewStatusAllowed(status) {
 		return teacherclass.ErrBadRequest
 	}
-	sub, a, err := u.managedFileSubmission(teacherID, role, submissionID)
+	sub, a, inv, err := u.managedFileSubmission(teacherID, role, submissionID)
 	if err != nil {
 		return err
 	}
 	if err := u.gw.UpdateFileReview(sub.ID, status, comment, teacherID, nil); err != nil {
 		return err
 	}
+	u.recordTeacherAction(inv, teacherID, role, models.HistoryWorkReviewed, models.ClassHistoryEventDB{
+		TargetUserID: sub.StudentUserID, Title: a.Title, Detail: status,
+	})
 	u.notifyWorkReviewed(sub.StudentUserID, sub.ID, a.Title, status, comment)
 	return nil
 }
