@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"sync"
@@ -160,7 +161,7 @@ func text(size int64) io.Reader { return bytes.NewReader(bytes.Repeat([]byte("a"
 
 func TestUploadOpenDelete(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
-	row, err := uc.Upload("1", "notes.txt", text(100))
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(100))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +197,14 @@ func TestUploadOpenDelete(t *testing.T) {
 
 func TestUploadFlagsPythonScripts(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
-	row, err := uc.Upload("1", "homework.zip", bytes.NewReader(zipOf(t, map[string]string{"main.py": "print(1)"})))
+	row, err := uc.Upload(context.Background(), "1", "homework.zip", bytes.NewReader(zipOf(t, map[string]string{"main.py": "print(1)"})))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !row.HasScripts || !row.ToHTTP().HasScripts {
 		t.Fatalf("zip with main.py is not flagged: %+v", row)
 	}
-	if row, err = uc.Upload("1", "notes.txt", text(10)); err != nil || row.HasScripts {
+	if row, err = uc.Upload(context.Background(), "1", "notes.txt", text(10)); err != nil || row.HasScripts {
 		t.Fatalf("plain text flagged: row=%+v err=%v", row, err)
 	}
 }
@@ -212,13 +213,13 @@ func TestUploadRateLimitCountsDeletedFiles(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
 	uc.cfg.MaxUploadsPerHour = 3
 	for i := 0; i < 3; i++ {
-		row, err := uc.Upload("1", "n.txt", text(1))
+		row, err := uc.Upload(context.Background(), "1", "n.txt", text(1))
 		if err != nil {
 			t.Fatal(err)
 		}
 		uc.Delete("1", row.ID)
 	}
-	if _, err := uc.Upload("1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrUploadRateLimited) {
+	if _, err := uc.Upload(context.Background(), "1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrUploadRateLimited) {
 		t.Fatalf("err=%v, want UPLOAD_RATE_LIMITED", err)
 	}
 }
@@ -230,7 +231,7 @@ func TestConcurrentUploadSlots(t *testing.T) {
 		t.Fatal(err)
 	}
 	r2, _ := uc.acquireSlot("1")
-	if _, err := uc.Upload("1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrTooManyUploads) {
+	if _, err := uc.Upload(context.Background(), "1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrTooManyUploads) {
 		t.Fatalf("third upload at once: err=%v", err)
 	}
 	if _, err := uc.acquireSlot("2"); err != nil {
@@ -238,7 +239,7 @@ func TestConcurrentUploadSlots(t *testing.T) {
 	}
 	r1()
 	r2()
-	if _, err := uc.Upload("1", "n.txt", text(1)); err != nil {
+	if _, err := uc.Upload(context.Background(), "1", "n.txt", text(1)); err != nil {
 		t.Fatalf("after the others finished: %v", err)
 	}
 }
@@ -251,7 +252,7 @@ func TestUploadStopsOnLowDisk(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
 	uc.cfg.MinFreeDiskMB = 1024
 	uc.blobs = fullDisk{uc.blobs}
-	if _, err := uc.Upload("1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrStorageUnavailable) {
+	if _, err := uc.Upload(context.Background(), "1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrStorageUnavailable) {
 		t.Fatalf("err=%v, want STORAGE_UNAVAILABLE", err)
 	}
 }
@@ -259,16 +260,16 @@ func TestUploadStopsOnLowDisk(t *testing.T) {
 func TestUploadLimits(t *testing.T) {
 	// Free: 10 MB per file, 100 MB per account with the projects.
 	uc, _ := newUseCase(t, 95*mb)
-	if _, err := uc.Upload("1", "big.txt", text(10*mb+1)); !errors.Is(err, userfiles.ErrFileSizeExceeded) {
+	if _, err := uc.Upload(context.Background(), "1", "big.txt", text(10*mb+1)); !errors.Is(err, userfiles.ErrFileSizeExceeded) {
 		t.Fatalf("file over the tariff size: err=%v", err)
 	}
-	if _, err := uc.Upload("1", "fits.txt", text(5*mb)); err != nil {
+	if _, err := uc.Upload(context.Background(), "1", "fits.txt", text(5*mb)); err != nil {
 		t.Fatalf("file up to exactly the quota: %v", err)
 	}
-	if _, err := uc.Upload("1", "one-more.txt", text(1)); !errors.Is(err, storage.ErrStorageQuotaExceeded) {
+	if _, err := uc.Upload(context.Background(), "1", "one-more.txt", text(1)); !errors.Is(err, storage.ErrStorageQuotaExceeded) {
 		t.Fatalf("file with the quota used up: err=%v", err)
 	}
-	if _, err := uc.Upload("1", "page.html", text(10)); !errors.Is(err, userfiles.ErrFileTypeNotAllowed) {
+	if _, err := uc.Upload(context.Background(), "1", "page.html", text(10)); !errors.Is(err, userfiles.ErrFileTypeNotAllowed) {
 		t.Fatalf("html: err=%v", err)
 	}
 }
@@ -276,11 +277,11 @@ func TestUploadLimits(t *testing.T) {
 func TestUploadCountLimit(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
 	for i := 0; i < 3; i++ {
-		if _, err := uc.Upload("1", "n.txt", text(1)); err != nil {
+		if _, err := uc.Upload(context.Background(), "1", "n.txt", text(1)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := uc.Upload("1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrFileCountExceeded) {
+	if _, err := uc.Upload(context.Background(), "1", "n.txt", text(1)); !errors.Is(err, userfiles.ErrFileCountExceeded) {
 		t.Fatalf("err=%v, want FILE_COUNT_EXCEEDED", err)
 	}
 }
@@ -293,7 +294,7 @@ func TestParallelUploadsCannotOvershootQuota(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			_, errs[i] = uc.Upload("1", "half.txt", text(5*mb))
+			_, errs[i] = uc.Upload(context.Background(), "1", "half.txt", text(5*mb))
 		}(i)
 	}
 	wg.Wait()
@@ -312,7 +313,7 @@ func TestParallelUploadsCannotOvershootQuota(t *testing.T) {
 
 func TestCollectGarbageRemovesOldDeleted(t *testing.T) {
 	uc, gw := newUseCase(t, 0)
-	row, err := uc.Upload("1", "notes.txt", text(10))
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -335,7 +336,7 @@ func TestCollectGarbageRemovesOldDeleted(t *testing.T) {
 
 func TestDisabled(t *testing.T) {
 	uc := NewUserFilesUseCase(Config{}, newMemGateway(), nil, nil, nil)
-	if _, err := uc.Upload("1", "a.txt", text(1)); !errors.Is(err, userfiles.ErrDisabled) {
+	if _, err := uc.Upload(context.Background(), "1", "a.txt", text(1)); !errors.Is(err, userfiles.ErrDisabled) {
 		t.Fatalf("err=%v", err)
 	}
 }

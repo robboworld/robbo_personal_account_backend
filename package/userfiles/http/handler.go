@@ -23,6 +23,8 @@ const (
 	// Covers the multipart headers and boundaries around the file.
 	multipartSlackBytes  = 1 << 20
 	defaultUploadTimeout = 10 * time.Minute
+	// nginx's code for "the client left"; nobody reads it, it only marks the log line.
+	statusClientClosed = 499
 )
 
 type Handler struct {
@@ -133,8 +135,13 @@ func (h *Handler) Upload(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "file is required"})
 		return
 	}
-	row, err := h.uc.Upload(userID, part.FileName(), part)
+	row, err := h.uc.Upload(c.Request.Context(), userID, part.FileName(), part)
 	if err != nil {
+		// A cancelled upload is not a server failure, whatever error the broken body gave.
+		if c.Request.Context().Err() != nil {
+			c.AbortWithStatus(statusClientClosed)
+			return
+		}
 		if isTooLarge(err) {
 			err = userfiles.ErrFileSizeExceeded
 		}

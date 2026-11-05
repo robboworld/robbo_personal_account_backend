@@ -249,7 +249,9 @@ func withExt(name, kind string) string {
 	return strings.TrimSuffix(name, filepath.Ext(name)) + ".png"
 }
 
-func (u *UserFilesUseCaseImpl) Upload(ownerUserID, name string, r io.Reader) (*models.UserFileDB, error) {
+// Upload stores the file unless ctx ends first: the checks can outlast the transfer, and a
+// file the user cancelled at 100 % must not appear in the list and take quota.
+func (u *UserFilesUseCaseImpl) Upload(ctx context.Context, ownerUserID, name string, r io.Reader) (*models.UserFileDB, error) {
 	if !u.Enabled() {
 		return nil, userfiles.ErrDisabled
 	}
@@ -318,6 +320,9 @@ func (u *UserFilesUseCaseImpl) Upload(ownerUserID, name string, r io.Reader) (*m
 	}
 	if scanned {
 		row.ScannedAt = &row.CreatedAt
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if err := u.blobs.Publish(staged, row.ID); err != nil {
 		return nil, err

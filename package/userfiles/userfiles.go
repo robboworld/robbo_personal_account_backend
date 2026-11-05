@@ -3,6 +3,7 @@
 package userfiles
 
 import (
+	"context"
 	"errors"
 	"io"
 	"time"
@@ -62,7 +63,7 @@ type Gateway interface {
 type UseCase interface {
 	Enabled() bool
 	MaxUploadBytes(ownerUserID string) (int64, error)
-	Upload(ownerUserID, name string, r io.Reader) (*models.UserFileDB, error)
+	Upload(ctx context.Context, ownerUserID, name string, r io.Reader) (*models.UserFileDB, error)
 	List(ownerUserID string) ([]*models.UserFileDB, error)
 	CountFiles(ownerUserID string) (int64, error)
 	Open(ownerUserID, id string) (*models.UserFileDB, io.ReadSeekCloser, error)

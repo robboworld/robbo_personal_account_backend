@@ -30,11 +30,39 @@ func withScanner(uc *UserFilesUseCaseImpl, s antivirus.Scanner, required bool) {
 	uc.cfg.Antivirus = antivirus.Config{Address: "clamd:3310", Timeout: time.Second, Required: required}
 }
 
+// cancellingScanner is the client leaving while the antivirus runs.
+type cancellingScanner struct {
+	fakeScanner
+	cancel context.CancelFunc
+}
+
+func (s *cancellingScanner) Scan(ctx context.Context, r io.Reader) (string, error) {
+	s.cancel()
+	return s.fakeScanner.Scan(ctx, r)
+}
+
+func TestUploadCancelledDuringChecksLeavesNothing(t *testing.T) {
+	uc, gw := newUseCase(t, 0)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	withScanner(uc, &cancellingScanner{cancel: cancel}, true)
+
+	if _, err := uc.Upload(ctx, "1", "notes.txt", text(10)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
+	}
+	if len(gw.rows) != 0 {
+		t.Fatalf("a cancelled upload left a row: %+v", gw.rows)
+	}
+	if len(uc.inFlight) != 0 {
+		t.Fatalf("a cancelled upload kept its slot: %v", uc.inFlight)
+	}
+}
+
 func TestUploadScannedClean(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
 	sc := &fakeScanner{}
 	withScanner(uc, sc, true)
-	row, err := uc.Upload("1", "sketch.ino", text(10))
+	row, err := uc.Upload(context.Background(), "1", "sketch.ino", text(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +77,7 @@ func TestUploadScannedClean(t *testing.T) {
 func TestUploadInfectedRefused(t *testing.T) {
 	uc, gw := newUseCase(t, 0)
 	withScanner(uc, &fakeScanner{sig: "Win.Test.EICAR_HDB-1"}, false)
-	if _, err := uc.Upload("1", "notes.txt", text(10)); !errors.Is(err, userfiles.ErrFileInfected) {
+	if _, err := uc.Upload(context.Background(), "1", "notes.txt", text(10)); !errors.Is(err, userfiles.ErrFileInfected) {
 		t.Fatalf("err = %v, want ErrFileInfected", err)
 	}
 	if n, _ := gw.CountForOwner("1"); n != 0 {
@@ -62,13 +90,13 @@ func TestUploadScannerDown(t *testing.T) {
 
 	uc, _ := newUseCase(t, 0)
 	withScanner(uc, down, true)
-	if _, err := uc.Upload("1", "notes.txt", text(10)); !errors.Is(err, userfiles.ErrScanUnavailable) {
+	if _, err := uc.Upload(context.Background(), "1", "notes.txt", text(10)); !errors.Is(err, userfiles.ErrScanUnavailable) {
 		t.Fatalf("required: err = %v, want ErrScanUnavailable", err)
 	}
 
 	uc, _ = newUseCase(t, 0)
 	withScanner(uc, down, false)
-	row, err := uc.Upload("1", "notes.txt", text(10))
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(10))
 	if err != nil {
 		t.Fatalf("not required: %v", err)
 	}
@@ -82,12 +110,12 @@ func TestUploadScannerDown(t *testing.T) {
 
 func TestUploadWithoutScanner(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
-	row, err := uc.Upload("1", "notes.txt", text(10))
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(10))
 	if err != nil || row.ScannedAt != nil {
 		t.Fatalf("row=%+v err=%v; want stored unscanned", row, err)
 	}
 	uc.cfg.Antivirus.Required = true
-	if _, err := uc.Upload("1", "notes.txt", text(10)); !errors.Is(err, userfiles.ErrScanUnavailable) {
+	if _, err := uc.Upload(context.Background(), "1", "notes.txt", text(10)); !errors.Is(err, userfiles.ErrScanUnavailable) {
 		t.Fatalf("required without clamd: err = %v", err)
 	}
 }
@@ -95,7 +123,7 @@ func TestUploadWithoutScanner(t *testing.T) {
 func TestEnsureScannedOldFile(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
 	// Uploaded before the scanner was configured.
-	row, err := uc.Upload("1", "notes.txt", text(10))
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(10))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +140,7 @@ func TestEnsureScannedOldFile(t *testing.T) {
 		t.Fatalf("someone else's file: err = %v", err)
 	}
 
-	bad, _ := uc.Upload("1", "other.txt", text(5))
+	bad, _ := uc.Upload(context.Background(), "1", "other.txt", text(5))
 	bad.ScannedAt = nil // the stored row, as if it was never scanned
 	withScanner(uc, &fakeScanner{sig: "Eicar"}, true)
 	if _, err := uc.EnsureScanned("1", bad.ID); !errors.Is(err, userfiles.ErrFileInfected) {
@@ -122,7 +150,7 @@ func TestEnsureScannedOldFile(t *testing.T) {
 
 func TestDeleteFileInUse(t *testing.T) {
 	uc, _ := newUseCase(t, 0)
-	row, err := uc.Upload("1", "notes.txt", text(10))
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(10))
 	if err != nil {
 		t.Fatal(err)
 	}
