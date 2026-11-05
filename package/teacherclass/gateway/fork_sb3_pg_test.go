@@ -70,4 +70,25 @@ func TestForkProjectForStudentCopiesCurrentSb3(t *testing.T) {
 		t.Errorf("copy's version: archive %q, seq %d; want the template's current archive as version 1",
 			got.Archive, got.VersionSeq)
 	}
+
+	if saved, err := g.HasOwnSave(copyRow.ID); err != nil || saved {
+		t.Errorf("issued copy: HasOwnSave = %v, %v", saved, err)
+	}
+	addVersion := func(seq int, body, source string) {
+		t.Helper()
+		sum := sha256.Sum256([]byte(body))
+		if err := db.Exec(`INSERT INTO scratch_project_versions
+			(id, project_id, version_seq, archive, size_bytes, checksum_sha256, created_by_user_id, save_source)
+			VALUES (?, ?, ?, ?, ?, ?, 'student', ?)`, uuid.NewString(), copyRow.ID, seq, []byte(body), len(body), sum[:], source).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	addVersion(2, "backfilled", "class.assignment.backfill")
+	if saved, err := g.HasOwnSave(copyRow.ID); err != nil || saved {
+		t.Errorf("backfilled copy: HasOwnSave = %v, %v", saved, err)
+	}
+	addVersion(3, "student's", "lk.upload")
+	if saved, err := g.HasOwnSave(copyRow.ID); err != nil || !saved {
+		t.Errorf("after a save: HasOwnSave = %v, %v", saved, err)
+	}
 }

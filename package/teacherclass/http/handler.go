@@ -104,7 +104,8 @@ func writeErr(c *gin.Context, err error) {
 	case errors.Is(err, teacherclass.ErrConflict), errors.Is(err, teacherclass.ErrAlreadyIn),
 		errors.Is(err, teacherclass.ErrAssignmentClosed), errors.Is(err, teacherclass.ErrAlreadyHandedIn),
 		errors.Is(err, teacherclass.ErrFileAssignmentsDisabled), errors.Is(err, teacherclass.ErrFileKindNotAllowed),
-		errors.Is(err, teacherclass.ErrTooManySubmissionFiles), errors.Is(err, teacherclass.ErrNoSubmissionFiles):
+		errors.Is(err, teacherclass.ErrTooManySubmissionFiles), errors.Is(err, teacherclass.ErrNoSubmissionFiles),
+		errors.Is(err, teacherclass.ErrWorkNotEdited):
 		status = http.StatusConflict
 	// From "Мои файлы": the ЛК shows the same messages as on upload.
 	case errors.Is(err, userfiles.ErrFileInfected):

@@ -15,8 +15,10 @@ type studentGateway struct {
 	teacherclass.Gateway
 	projects    map[string]*models.ScratchProjectDB
 	assignments map[string]*models.ClassAssignmentDB
-	reviewed    string
-	newStatus   string
+	// unsaved lists copies the student never saved.
+	unsaved   map[string]bool
+	reviewed  string
+	newStatus string
 }
 
 // GetAssignment: an entry of assignments, else an open assignment of cohort 7.
@@ -67,6 +69,10 @@ func (g *studentGateway) GetProject(id string) (*models.ScratchProjectDB, error)
 		}
 	}
 	return nil, gorm.ErrRecordNotFound
+}
+
+func (g *studentGateway) HasOwnSave(id string) (bool, error) {
+	return !g.unsaved[id], nil
 }
 
 func (g *studentGateway) UpdateReview(projectID, status string, _ string, _ *time.Time) error {

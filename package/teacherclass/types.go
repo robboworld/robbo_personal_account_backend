@@ -28,6 +28,8 @@ var (
 	ErrTooManySubmissionFiles = errors.New("too_many_submission_files")
 	// A file assignment is handed in with at least one file.
 	ErrNoSubmissionFiles = errors.New("no_submission_files")
+	// The Scratch copy is still what the student was given: there is no work to hand in.
+	ErrWorkNotEdited = errors.New("work_not_edited")
 )
 
 type CreateClassInput struct {
@@ -190,6 +192,8 @@ type Gateway interface {
 	GetProject(id string) (*models.ScratchProjectDB, error)
 	// ForkProjectForStudent with a nil template issues an empty project.
 	ForkProjectForStudent(template *models.ScratchProjectDB, studentUserID, title string, assignment *models.ClassAssignmentDB) (*models.ScratchProjectDB, error)
+	// HasOwnSave reports whether the project has a version other than the one it was issued with.
+	HasOwnSave(projectID string) (bool, error)
 	ListSubmissions(assignmentID string) ([]models.ScratchProjectDB, error)
 	ListSubmissionsForAssignments(assignmentIDs []string) ([]models.ScratchProjectDB, error)
 	ListProjectsByCohortAssignment(cohortID, assignmentID string) ([]models.ScratchProjectDB, error)

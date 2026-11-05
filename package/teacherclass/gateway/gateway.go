@@ -236,6 +236,21 @@ func (g *GatewayImpl) ForkProjectForStudent(template *models.ScratchProjectDB, s
 	return &row, nil
 }
 
+// saveSourceAssignmentCopy marks the version a copy is issued with; the backfill script of old
+// copies (robbo_projects_db/scripts/backfill_assignment_sb3) adds a suffix to it.
+const saveSourceAssignmentCopy = "class.assignment"
+
+// HasOwnSave: retention drops old versions, so the issued one may be gone; it is not the count
+// of versions that tells, but a version from anywhere else. Versions older than save_source
+// have none and count as the student's.
+func (g *GatewayImpl) HasOwnSave(projectID string) (bool, error) {
+	var n int64
+	err := g.db.Model(&models.ScratchProjectVersionDB{}).
+		Where("project_id = ? AND (save_source IS NULL OR save_source NOT LIKE ?)", projectID, saveSourceAssignmentCopy+"%").
+		Count(&n).Error
+	return n > 0, err
+}
+
 // copyCurrentSb3 gives the copy the template's .sb3 as its first version. Costumes and
 // sounds live only in the archive: a JSON-only copy fails in the player with
 // "costume.asset is null" for any asset not bundled with the editor.
@@ -256,7 +271,7 @@ func copyCurrentSb3(tx *gorm.DB, template, row *models.ScratchProjectDB) error {
 	if err != nil {
 		return err
 	}
-	saveSource := "class.assignment"
+	saveSource := saveSourceAssignmentCopy
 	ver := models.ScratchProjectVersionDB{
 		ProjectID:       row.ID,
 		VersionSeq:      1,

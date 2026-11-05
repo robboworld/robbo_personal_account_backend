@@ -1182,6 +1182,13 @@ func (u *UseCaseImpl) SubmitAssignment(studentID, projectID string) error {
 	if !member {
 		return teacherclass.ErrForbidden
 	}
+	unedited, err := u.workUnedited(p, a)
+	if err != nil {
+		return err
+	}
+	if unedited {
+		return teacherclass.ErrWorkNotEdited
+	}
 	now := time.Now().UTC()
 	if err := u.gw.UpdateReview(projectID, models.ReviewSubmitted, "", &now); err != nil {
 		return err
