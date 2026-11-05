@@ -74,10 +74,16 @@ func (g *UserFilesGatewayImpl) GetByOwnerAndID(ownerUserID, id string) (*models.
 	return &row, nil
 }
 
+// createSlots stays below the connection pool (25): each CreateLocked holds a connection for
+// its transaction while check needs another, so a full pool of them would wait forever.
+var createSlots = make(chan struct{}, 8)
+
 // CreateLocked runs check and the insert under one advisory lock per owner. check reads the
 // usage through other connections; that is safe because the previous holder committed
 // before it released the lock.
 func (g *UserFilesGatewayImpl) CreateLocked(row *models.UserFileDB, check func() error) error {
+	createSlots <- struct{}{}
+	defer func() { <-createSlots }()
 	return g.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(`SELECT pg_advisory_xact_lock(hashtext(?))`, "storage:"+row.OwnerUserID).Error; err != nil {
 			return err
