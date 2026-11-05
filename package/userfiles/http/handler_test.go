@@ -55,6 +55,15 @@ func (u *fakeUC) Upload(ctx context.Context, _ string, name string, r io.Reader)
 	}
 	return &models.UserFileDB{ID: "f1", OriginalName: name, SizeBytes: n, CreatedAt: time.Now()}, nil
 }
+func (u *fakeUC) Rename(_, id, name string) (*models.UserFileDB, error) {
+	if id != "f1" {
+		return nil, userfiles.ErrFileNotFound
+	}
+	if name == "a.exe" {
+		return nil, userfiles.ErrFileTypeNotAllowed
+	}
+	return &models.UserFileDB{ID: "f1", OriginalName: name, CreatedAt: time.Now()}, nil
+}
 func (u *fakeUC) Open(owner, id string) (*models.UserFileDB, io.ReadSeekCloser, error) {
 	if id != "f1" {
 		return nil, nil, userfiles.ErrFileNotFound
@@ -210,6 +219,29 @@ func TestCancelAfterTheBodyReachesTheUseCase(t *testing.T) {
 	cancel()
 	<-done
 	waitStatus(t, status, statusClientClosed)
+}
+
+func TestRename(t *testing.T) {
+	r := router(&fakeUC{enabled: true})
+	rename := func(id, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPatch, "/api/files/"+id, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+		return w
+	}
+	if w := rename("f1", `{"name":"Отчёт.pdf"}`); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"name":"Отчёт.pdf"`) {
+		t.Fatalf("status=%d body=%q", w.Code, w.Body)
+	}
+	if w := rename("f1", `{"name":"a.exe"}`); w.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("another extension: %d", w.Code)
+	}
+	if w := rename("other", `{"name":"a.pdf"}`); w.Code != http.StatusNotFound {
+		t.Fatalf("someone else's file: %d", w.Code)
+	}
+	if w := rename("f1", `not json`); w.Code != http.StatusBadRequest {
+		t.Fatalf("bad body: %d", w.Code)
+	}
 }
 
 func TestDownloadHeaders(t *testing.T) {

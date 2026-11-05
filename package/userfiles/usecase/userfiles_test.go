@@ -92,6 +92,17 @@ func (g *memGateway) CreateLocked(row *models.UserFileDB, check func() error) er
 	return nil
 }
 
+func (g *memGateway) Rename(owner, id, name string) error {
+	r, err := g.GetByOwnerAndID(owner, id)
+	if err != nil {
+		return err
+	}
+	g.mu.Lock()
+	r.OriginalName = name
+	g.mu.Unlock()
+	return nil
+}
+
 func (g *memGateway) SoftDelete(owner, id string) error {
 	r, err := g.GetByOwnerAndID(owner, id)
 	if err != nil {
@@ -192,6 +203,49 @@ func TestUploadOpenDelete(t *testing.T) {
 	// The bytes go at once: upload-and-delete in a loop must not fill the disk.
 	if _, err := uc.blobs.Open(row.ID); !errors.Is(err, blobstore.ErrNotFound) {
 		t.Fatalf("blob of a deleted file is still on disk: %v", err)
+	}
+}
+
+func TestRenameKeepsTheExtension(t *testing.T) {
+	uc, gw := newUseCase(t, 0)
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	renamed, err := uc.Rename("1", row.ID, `../  Домашка 5.TXT `)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renamed.OriginalName != "Домашка 5.TXT" || renamed.Mime != row.Mime || renamed.Kind != row.Kind {
+		t.Fatalf("renamed=%+v", renamed)
+	}
+	for _, name := range []string{"notes.exe", "notes.html", "notes", "", ".txt", "notes.txt.exe"} {
+		if _, err := uc.Rename("1", row.ID, name); !errors.Is(err, userfiles.ErrFileTypeNotAllowed) {
+			t.Fatalf("Rename(%q): err=%v", name, err)
+		}
+	}
+	if got, _ := gw.GetByOwnerAndID("1", row.ID); got.OriginalName != "Домашка 5.TXT" {
+		t.Fatalf("a refused rename changed the name: %q", got.OriginalName)
+	}
+}
+
+func TestRenameFindsOnlyOwnLiveFiles(t *testing.T) {
+	uc, _ := newUseCase(t, 0)
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.Rename("2", row.ID, "x.txt"); !errors.Is(err, userfiles.ErrFileNotFound) {
+		t.Fatalf("another user renamed the file: err=%v", err)
+	}
+	if _, err := uc.Rename("1", "not-a-uuid", "x.txt"); !errors.Is(err, userfiles.ErrFileNotFound) {
+		t.Fatalf("bad id: err=%v", err)
+	}
+	if err := uc.Delete("1", row.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.Rename("1", row.ID, "x.txt"); !errors.Is(err, userfiles.ErrFileNotFound) {
+		t.Fatalf("renamed a deleted file: err=%v", err)
 	}
 }
 

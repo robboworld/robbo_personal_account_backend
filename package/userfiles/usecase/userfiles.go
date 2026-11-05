@@ -395,6 +395,31 @@ func (u *UserFilesUseCaseImpl) EnsureScanned(ownerUserID, id string) (*models.Us
 	return row, nil
 }
 
+// Rename keeps the extension: the kind, the MIME type and the content checks were settled by
+// it at upload, and the download gives the name to the user's system, which opens the file by
+// that extension. A new extension would turn a checked file into any other type.
+func (u *UserFilesUseCaseImpl) Rename(ownerUserID, id, name string) (*models.UserFileDB, error) {
+	if !u.Enabled() {
+		return nil, userfiles.ErrDisabled
+	}
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, userfiles.ErrFileNotFound
+	}
+	row, err := u.gateway.GetByOwnerAndID(ownerUserID, id)
+	if err != nil {
+		return nil, err
+	}
+	name = SanitizeName(name)
+	if !strings.EqualFold(filepath.Ext(name), filepath.Ext(row.OriginalName)) {
+		return nil, userfiles.ErrFileTypeNotAllowed
+	}
+	if err := u.gateway.Rename(ownerUserID, id, name); err != nil {
+		return nil, err
+	}
+	row.OriginalName = name
+	return row, nil
+}
+
 // Delete frees the quota and the disk at once: the bytes go now, the row stays for
 // userFiles.retainDeletedDays as a record. Keeping the bytes too would let an account fill
 // the volume by uploading and deleting in a loop.

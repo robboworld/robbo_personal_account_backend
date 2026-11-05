@@ -89,6 +89,17 @@ func (g *UserFilesGatewayImpl) CreateLocked(row *models.UserFileDB, check func()
 	})
 }
 
+func (g *UserFilesGatewayImpl) Rename(ownerUserID, id, name string) error {
+	res := live(g.db, ownerUserID).Where("id = ?", id).Update("original_name", name)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return userfiles.ErrFileNotFound
+	}
+	return nil
+}
+
 func (g *UserFilesGatewayImpl) SoftDelete(ownerUserID, id string) error {
 	res := live(g.db, ownerUserID).Where("id = ?", id).Update("deleted_at", time.Now().UTC())
 	if res.Error != nil {

@@ -47,6 +47,7 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.GET("", h.List)
 		api.POST("", h.Upload)
 		api.GET("/:fileId/download", h.Download)
+		api.PATCH("/:fileId", h.Rename)
 		api.DELETE("/:fileId", h.Delete)
 	}
 }
@@ -192,6 +193,27 @@ func SetDownloadHeaders(w http.ResponseWriter, mime, name, etag string) {
 func ServeFile(c *gin.Context, row *models.UserFileDB, rc io.ReadSeeker) {
 	SetDownloadHeaders(c.Writer, row.Mime, row.OriginalName, strings.TrimSpace(row.SHA256))
 	http.ServeContent(c.Writer, c.Request, "", row.CreatedAt, rc)
+}
+
+// Rename takes the whole new name, {"name": "Отчёт.pdf"}, with the same extension.
+func (h *Handler) Rename(c *gin.Context) {
+	userID, ok := h.identity(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid_body"})
+		return
+	}
+	row, err := h.uc.Rename(userID, c.Param("fileId"), body.Name)
+	if err != nil {
+		errorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"file": row.ToHTTP()})
 }
 
 func (h *Handler) Delete(c *gin.Context) {

@@ -54,8 +54,20 @@ func TestGatewayRoundTrip(t *testing.T) {
 	if _, err := g.GetByOwnerAndID("someone-else", row.ID); !errors.Is(err, userfiles.ErrFileNotFound) {
 		t.Fatalf("someone else's file: %v", err)
 	}
+	if err := g.Rename("someone-else", row.ID, "x.txt"); !errors.Is(err, userfiles.ErrFileNotFound) {
+		t.Fatalf("rename someone else's file: %v", err)
+	}
+	if err := g.Rename(owner, row.ID, "Новое имя.txt"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := g.GetByOwnerAndID(owner, row.ID); err != nil || got.OriginalName != "Новое имя.txt" {
+		t.Fatalf("after rename: %+v err=%v", got, err)
+	}
 	if err := g.SoftDelete(owner, row.ID); err != nil {
 		t.Fatal(err)
+	}
+	if err := g.Rename(owner, row.ID, "y.txt"); !errors.Is(err, userfiles.ErrFileNotFound) {
+		t.Fatalf("rename a deleted file: %v", err)
 	}
 	if n, _ := g.CountForOwner(owner); n != 0 {
 		t.Fatalf("count after delete=%d", n)

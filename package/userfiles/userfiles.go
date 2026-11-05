@@ -53,6 +53,8 @@ type Gateway interface {
 	// CreateLocked inserts row after check passes, both under one per-owner lock, so two
 	// uploads at once cannot both fit into the last free megabytes.
 	CreateLocked(row *models.UserFileDB, check func() error) error
+	// Rename returns ErrFileNotFound for a deleted file or someone else's.
+	Rename(ownerUserID, id, name string) error
 	SoftDelete(ownerUserID, id string) error
 	// MarkScanned records that ClamAV found the file clean.
 	MarkScanned(id string, at time.Time) error
@@ -75,6 +77,9 @@ type UseCase interface {
 	// EnsureScanned returns the owner's file, scanning it first if it never was (uploaded
 	// before the scanner). ErrFileInfected for a match, ErrScanUnavailable without clamd.
 	EnsureScanned(ownerUserID, id string) (*models.UserFileDB, error)
+	// Rename changes the name but not the extension: ErrFileTypeNotAllowed if name has
+	// another one. The new name reaches whoever else sees the file through a class.
+	Rename(ownerUserID, id, name string) (*models.UserFileDB, error)
 	Delete(ownerUserID, id string) error
 	// CollectGarbage removes rows of files deleted longer ago than the retention, and
 	// leftovers of interrupted uploads. The bytes go at Delete already.
