@@ -11,7 +11,7 @@ type UserFileDB struct {
 	Mime         string `gorm:"column:mime"`
 	SizeBytes    int64  `gorm:"column:size_bytes"`
 	SHA256       string `gorm:"column:sha256"`
-	HasScripts   bool   `gorm:"column:has_scripts"` // Python scripts inside a zip or FreeCAD model
+	HasScripts   bool   `gorm:"column:has_scripts"` // code the ЛК warns about: Python, Blender, apps, scripts in an archive
 	// ScannedAt: when ClamAV found the file clean; nil if it was never scanned.
 	ScannedAt *time.Time `gorm:"column:scanned_at"`
 	CreatedAt time.Time  `gorm:"column:created_at"`

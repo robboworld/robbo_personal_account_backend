@@ -276,7 +276,7 @@ func (u *AdminContentUseCase) DeleteFile(actor, target, fileID, reason string) e
 	}); err != nil {
 		return err
 	}
-	if err := u.d.Files.Delete(row.OwnerUserID, row.ID); err != nil {
+	if err := u.d.Files.ModerateDelete(row.OwnerUserID, row.ID); err != nil {
 		if errors.Is(err, userfiles.ErrFileNotFound) {
 			return admincontent.ErrNotFound
 		}

@@ -13,7 +13,7 @@ import (
 // object streams cannot be read.
 var pdfBlockedNames = map[string]bool{
 	"JavaScript": true, "JS": true, "Launch": true, "EmbeddedFile": true, "EmbeddedFiles": true,
-	"RichMedia": true, "XFA": true, "GoToE": true, "Encrypt": true,
+	"RichMedia": true, "XFA": true, "GoToE": true, "Encrypt": true, "EF": true, "FileAttachment": true,
 }
 
 const (
@@ -51,9 +51,13 @@ func unhex(b byte) (byte, bool) {
 type pdfScanner struct {
 	inflated int64
 	objStm   bool // the current object is an object stream
+	params   bool // the current object has DecodeParms: a predictor changes the inflated bytes
+	inType   bool // the last name was /Type
 }
 
-// scan returns ErrFileContentNotAllowed at the first blocked name.
+// scan returns ErrFileContentNotAllowed at the first blocked name. Comments and strings are
+// scanned like everything else: skipping them needs a parser that agrees with every reader,
+// and a "%" inside a string would hide the rest of its line.
 func (s *pdfScanner) scan(r *bufio.Reader, nested bool) error {
 	for {
 		b, err := r.ReadByte()
@@ -72,19 +76,23 @@ func (s *pdfScanner) scan(r *bufio.Reader, nested bool) error {
 			if pdfBlockedNames[name] {
 				return userfiles.ErrFileContentNotAllowed
 			}
-			if name == "ObjStm" {
+			switch name {
+			case "ObjStm":
 				s.objStm = true
+			case "DecodeParms", "DP":
+				s.params = true
 			}
-		case b == '%':
-			// Comment to the end of the line.
-			if _, err := r.ReadSlice('\n'); err != nil && err != bufio.ErrBufferFull && err != io.EOF {
-				return err
-			}
+			s.inType = name == "Type"
 		case !isPDFDelimiter(b):
 			word := readPDFWord(r, b)
+			// "/Type 5 0 R": the type of a stream, hidden in another object, could be ObjStm.
+			if s.inType && b >= '0' && b <= '9' {
+				return userfiles.ErrFileContentNotAllowed
+			}
+			s.inType = false
 			switch word {
 			case "endobj":
-				s.objStm = false
+				s.objStm, s.params = false, false
 			case "stream":
 				if s.objStm && !nested {
 					if err := s.scanObjStm(r); err != nil {
@@ -139,8 +147,12 @@ func readPDFWord(r *bufio.Reader, first byte) string {
 }
 
 // scanObjStm inflates the object stream that starts after "stream" and scans its contents.
-// A stream that is not Flate-encoded is left to the outer scan.
+// Anything but plain Flate is refused: other filters and predictors would need decoding too,
+// and real object streams are plain Flate.
 func (s *pdfScanner) scanObjStm(r *bufio.Reader) error {
+	if s.params {
+		return userfiles.ErrFileContentNotAllowed
+	}
 	s.objStm = false
 	// "stream" is followed by CRLF or LF.
 	if b, _ := r.Peek(1); len(b) == 1 && b[0] == '\r' {
@@ -151,7 +163,7 @@ func (s *pdfScanner) scanObjStm(r *bufio.Reader) error {
 	}
 	zr, err := zlib.NewReader(r)
 	if err != nil {
-		return nil
+		return userfiles.ErrFileContentNotAllowed
 	}
 	defer zr.Close()
 	budget := min(int64(maxObjStmInflate), maxPDFInflate-s.inflated)

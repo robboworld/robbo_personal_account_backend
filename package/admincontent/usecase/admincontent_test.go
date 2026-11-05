@@ -90,7 +90,7 @@ func (f *fakeFiles) Open(owner, id string) (*models.UserFileDB, io.ReadSeekClose
 	}
 	return r, nopCloser{bytes.NewReader([]byte("data"))}, nil
 }
-func (f *fakeFiles) Delete(owner, id string) error {
+func (f *fakeFiles) ModerateDelete(owner, id string) error {
 	f.deleted = append(f.deleted, owner+"|"+id)
 	delete(f.rows, id)
 	return nil

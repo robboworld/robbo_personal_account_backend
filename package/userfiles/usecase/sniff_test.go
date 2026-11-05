@@ -40,6 +40,8 @@ func TestClassifyAccepts(t *testing.T) {
 	sb3 := zipOf(t, map[string]string{"project.json": "{}"})
 	plain := zipOf(t, map[string]string{"a.txt": "hi"})
 	fcstd := zipOf(t, map[string]string{"Document.xml": "<Document/>", "GuiDocument.xml": "<Document/>"})
+	sjr := zipOf(t, map[string]string{"project/data.json": "{}", "project/thumbnails/a.png": "x"})
+	sjrAndroid := zipOf(t, map[string]string{"/project/data.json": "{}", "/project/characters/cat.svg": "<svg/>"})
 	// Binary STL: the header may start with "solid" too; the size decides.
 	stl := append([]byte("solid exported by CAD"), make([]byte, 59)...)
 	stl = append(stl, 2, 0, 0, 0)
@@ -64,6 +66,9 @@ func TestClassifyAccepts(t *testing.T) {
 		{"office-in-a.zip", docx, kindZIP},
 		{"old.sb", append([]byte("ScratchV02"), 0, 0, 0, 0x10, 0xFF), kindSB},
 		{"game.sb2", sb3, kindSB2},
+		{"pets.sjr", sjr, kindSJR},
+		{"pets-android.SJR", sjrAndroid, kindSJR},
+		{"pets-in-a.zip", sjr, kindZIP},
 		{"blink.ino", []byte("void setup() { pinMode(13, OUTPUT); }\n"), kindINO},
 		{"part.stl", stl, kindSTL},
 		{"part.STL", []byte("solid cube\n facet normal 0 0 1\n endfacet\nendsolid cube\n"), kindSTL},
@@ -102,6 +107,9 @@ func TestClassifyRejects(t *testing.T) {
 		{"photo.sb", []byte("\x89PNG\r\n\x1a\n")},
 		{"sketch.ino", []byte("MZ\x90\x00\x03\x00\x00\x00")},
 		{"game.sb2", zipOf(t, map[string]string{"a.txt": "hi"})},
+		{"game.sjr", sb3},
+		{"pets.sjr", zipOf(t, map[string]string{"a.txt": "hi"})},
+		{"pets.sjr", []byte("\x89PNG\r\n\x1a\n")},
 		{"model.fcstd", sb3},
 		{"house.skp", []byte("%PDF-1.7\n")},
 		{"house.skp", zipOf(t, map[string]string{"project.json": "{}"})},

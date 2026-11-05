@@ -118,6 +118,8 @@ func TestZipContentChecks(t *testing.T) {
 		{"game.sb3", zipWith(t, zipEntry{name: "project.json", body: "{}"}, zipEntry{name: "cat.svg", body: "<svg/>"})},
 		{"homework.zip", zipWith(t, zipEntry{name: "notes.txt", body: "hi"}, zipEntry{name: "pic.png", body: "\x89PNG"})},
 		{"game.sb2", zipWith(t, zipEntry{name: "project.json", body: "{}"}, zipEntry{name: "1.svg", body: "<svg/>"})},
+		{"pets.sjr", zipWith(t, zipEntry{name: "project/data.json", body: "{}"}, zipEntry{name: "project/characters/cat.svg", body: "<svg/>"})},
+		{"pets-android.sjr", zipWith(t, zipEntry{name: "/project/data.json", body: "{}"}, zipEntry{name: "/project/characters/cat.svg", body: "<svg/>"})},
 		{"house.skp", zipWith(t, zipEntry{name: "model.dat", body: "x"})},
 		{"wall.FCStd", fcstd(t, pyObj("ArchWall", "_Wall", base64.StdEncoding.EncodeToString([]byte(`{"Type": "Wall"}`)), true),
 			`<Map count="1"><Item key="Author" value="Robbo"/></Map>`)},
@@ -150,6 +152,9 @@ func TestZipContentChecks(t *testing.T) {
 		{"zip slip", "a.zip", zipWith(t, zipEntry{name: "../../.bashrc", body: "x"})},
 		{"zip slip, backslash", "a.zip", zipWith(t, zipEntry{name: `docs\..\..\autorun.txt`, body: "x"})},
 		{"absolute path", "a.sb3", zipWith(t, zipEntry{name: "project.json", body: "{}"}, zipEntry{name: "/etc/cron.d/x", body: "x"})},
+		{"absolute path in ScratchJr", "a.sjr", zipWith(t, zipEntry{name: "/project/data.json", body: "{}"}, zipEntry{name: "/etc/cron.d/x", body: "x"})},
+		{"zip slip in ScratchJr", "a.sjr", zipWith(t, zipEntry{name: "/project/data.json", body: "{}"}, zipEntry{name: "/project/../../x", body: "x"})},
+		{"exe in ScratchJr", "a.sjr", zipWith(t, zipEntry{name: "project/data.json", body: "{}"}, zipEntry{name: "project/sounds/a.exe", body: "x"})},
 		{"drive letter", "a.zip", zipWith(t, zipEntry{name: "C:/Users/Public/x.txt", body: "x"})},
 		{"symlink", "a.zip", zipWith(t, zipEntry{name: "link", body: "/etc/passwd", symlink: true})},
 		{"HTML in a SketchUp zip", "a.skp", zipWith(t, zipEntry{name: "index.html", body: "<script>"})},
@@ -203,6 +208,9 @@ func TestPDFChecks(t *testing.T) {
 	if err := check("ok.pdf", []byte(head+"1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"+objStm(t, "1 0 <</Type/Page>>")+"%%EOF")); err != nil {
 		t.Fatalf("plain PDF refused: %v", err)
 	}
+	if err := check("percent.pdf", []byte(head+"1 0 obj<</Title(100%)/Type/Catalog>>endobj\n%%EOF")); err != nil {
+		t.Fatalf("a percent sign refused: %v", err)
+	}
 	bad := map[string]string{
 		"OpenAction JavaScript": head + "1 0 obj<</Type/Catalog/OpenAction<</S/JavaScript/JS(app.alert(1))>>>>endobj",
 		"hex-escaped name":      head + "1 0 obj<</OpenAction<</S/Java#53cript/JS 3 0 R>>>>endobj",
@@ -210,6 +218,12 @@ func TestPDFChecks(t *testing.T) {
 		"attached file":         head + "1 0 obj<</Names<</EmbeddedFiles 4 0 R>>>>endobj",
 		"script in ObjStm":      head + objStm(t, "6 0 <</S/JavaScript/JS(app.alert(1))>>") + "%%EOF",
 		"encrypted":             head + "trailer<</Encrypt 9 0 R>>",
+		"percent in a string":   head + "1 0 obj<</Title(%)/OpenAction<</S/JavaScript/JS(app.alert(1))>>>>endobj",
+		"comment ended by CR":   head + "%note\r1 0 obj<</OpenAction<</S/Launch/F(cmd.exe)>>>>endobj\n",
+		"attachment by EF":      head + "1 0 obj<</Subtype/FileAttachment/FS<</EF<</F 4 0 R>>>>>>endobj",
+		"hex ObjStm":            head + "5 0 obj<</Type/ObjStm/Filter/ASCIIHexDecode/Length 4>>\nstream\n2F4A>\nendstream\nendobj",
+		"ObjStm with predictor": head + strings.Replace(objStm(t, "1 0 <<>>"), "/N 1", "/DecodeParms<</Predictor 12>>/N 1", 1),
+		"indirect stream type":  head + "5 0 obj<</Type 6 0 R/Filter/FlateDecode/Length 9>>\nstream\nx\nendstream\nendobj",
 	}
 	for why, pdf := range bad {
 		if err := check("a.pdf", []byte(pdf)); !errors.Is(err, userfiles.ErrFileContentNotAllowed) {

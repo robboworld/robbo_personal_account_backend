@@ -13,8 +13,9 @@ import (
 )
 
 // The whitelist. A file is accepted only when its contents are one of these kinds and its
-// extension names that same kind. HTML, SVG, XML, scripts and executables are never stored:
-// they are a way to run code in a child's browser or on their computer.
+// extension names that same kind. HTML, SVG, XML and executables are never stored: they are a
+// way to run code in a child's browser or on their computer. The only code kept is what the
+// courses produce (Python, Blender, App Inventor apps), and the ЛК warns before a download.
 const (
 	kindPNG  = "png"
 	kindJPEG = "jpeg"
@@ -31,13 +32,19 @@ const (
 	kindPPTX = "pptx"
 	kindODT  = "odt"
 	kindSB3  = "sb3"
-	// Robbo course formats: Scratch 1.4 and 2, Arduino sketches, 3D models.
+	// Robbo course formats: Scratch 1.4 and 2, ScratchJr, Arduino sketches, 3D models, Python,
+	// Blender, App Inventor projects and the apps built from them.
 	kindSB    = "sb"
 	kindSB2   = "sb2"
+	kindSJR   = "sjr"
 	kindINO   = "ino"
 	kindSTL   = "stl"
 	kindFCSTD = "fcstd"
 	kindSKP   = "skp"
+	kindPY    = "py"
+	kindBLEND = "blend"
+	kindAIA   = "aia"
+	kindAPK   = "apk"
 )
 
 var kindByExt = map[string]string{
@@ -45,7 +52,8 @@ var kindByExt = map[string]string{
 	".pdf": kindPDF, ".txt": kindTXT, ".mp3": kindMP3, ".wav": kindWAV, ".ogg": kindOGG,
 	".zip": kindZIP, ".docx": kindDOCX, ".xlsx": kindXLSX, ".pptx": kindPPTX, ".odt": kindODT,
 	".sb3": kindSB3, ".sb": kindSB, ".sb2": kindSB2, ".ino": kindINO, ".stl": kindSTL,
-	".fcstd": kindFCSTD, ".skp": kindSKP,
+	".sjr": kindSJR, ".fcstd": kindFCSTD, ".skp": kindSKP, ".py": kindPY, ".blend": kindBLEND, ".aia": kindAIA,
+	".apk": kindAPK,
 }
 
 // The stored and served type comes from here, never from the client.
@@ -67,11 +75,16 @@ var mimeByKind = map[string]string{
 	kindSB3:  "application/x.scratch.sb3",
 	kindSB:   "application/x.scratch.sb",
 	kindSB2:  "application/x.scratch.sb2",
+	kindSJR:  "application/x.scratchjr.sjr",
 	kindINO:  "text/plain",
 	kindSTL:  "model/stl",
 	// FreeCAD has no registered type; this one is never sniffed into something a browser runs.
 	kindFCSTD: "application/x.freecad.fcstd",
 	kindSKP:   "application/vnd.sketchup.skp",
+	kindPY:    "text/x-python",
+	kindBLEND: "application/x.blender.blend",
+	kindAIA:   "application/x.appinventor.aia",
+	kindAPK:   "application/vnd.android.package-archive",
 }
 
 // AcceptedKinds are the kinds a stored file can have: WebP is kept as PNG.
@@ -108,6 +121,12 @@ func Classify(name string, head []byte, ra io.ReaderAt, size int64) (kind, mime 
 		}
 		return claimed, mimeByKind[claimed], nil
 	}
+	if claimed == kindBLEND {
+		if !isBlend(io.NewSectionReader(ra, 0, size)) {
+			return "", "", userfiles.ErrFileTypeNotAllowed
+		}
+		return claimed, mimeByKind[claimed], nil
+	}
 	detected, err := detectKind(head, ra, size)
 	if err != nil {
 		return "", "", err
@@ -118,9 +137,11 @@ func Classify(name string, head []byte, ra io.ReaderAt, size int64) (kind, mime 
 	return claimed, mimeByKind[claimed], nil
 }
 
-// compatible: an Office document, a Scratch project or a FreeCAD model is also a zip, so
-// .zip accepts them. Scratch 2 and 3 projects look alike (project.json at the root); an
-// Arduino sketch is plain text; SketchUp 2021+ saves a zip whose layout is not published.
+// compatible: an Office document, a Scratch, ScratchJr or App Inventor project or a FreeCAD
+// model is also a zip, so .zip accepts them. An APK is not: renamed back after the download,
+// it would have skipped the app checks. Scratch 2 and 3 projects look alike (project.json at
+// the root); a sketch or a Python script is plain text; SketchUp 2021+ saves a zip whose
+// layout is not published.
 func compatible(claimed, detected string) bool {
 	if claimed == detected {
 		return true
@@ -128,12 +149,12 @@ func compatible(claimed, detected string) bool {
 	switch claimed {
 	case kindZIP:
 		switch detected {
-		case kindDOCX, kindXLSX, kindPPTX, kindODT, kindSB3, kindFCSTD:
+		case kindDOCX, kindXLSX, kindPPTX, kindODT, kindSB3, kindSJR, kindAIA, kindFCSTD:
 			return true
 		}
 	case kindSB2:
 		return detected == kindSB3
-	case kindINO:
+	case kindINO, kindPY:
 		return detected == kindTXT
 	case kindSKP:
 		return detected == kindZIP
@@ -232,6 +253,10 @@ func zipKind(ra io.ReaderAt, size int64) (string, error) {
 		}
 		return false
 	}
+	// First: an app with an Office or Scratch layout on top is still an app.
+	if has("AndroidManifest.xml") && (has("classes.dex") || has("resources.arsc")) {
+		return kindAPK, nil
+	}
 	if has("[Content_Types].xml") {
 		switch {
 		case hasPrefix("word/"):
@@ -259,6 +284,13 @@ func zipKind(ra io.ReaderAt, size int64) (string, error) {
 	}
 	if has("project.json") {
 		return kindSB3, nil
+	}
+	// ScratchJr on Android writes every entry with a leading slash.
+	if has("project/data.json") || has("/project/data.json") {
+		return kindSJR, nil
+	}
+	if has("youngandroidproject/project.properties") {
+		return kindAIA, nil
 	}
 	return kindZIP, nil
 }

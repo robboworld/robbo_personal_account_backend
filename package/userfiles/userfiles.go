@@ -19,7 +19,8 @@ var (
 	ErrFileSizeExceeded   = errors.New("FILE_SIZE_EXCEEDED")
 	ErrFileCountExceeded  = errors.New("FILE_COUNT_EXCEEDED")
 	// ErrFileContentNotAllowed — the type is allowed but the contents are not: macros,
-	// scripts, executables or archives inside, an image too large to decode, an encrypted PDF.
+	// scripts, executables or archives inside, an image too large to decode, an encrypted PDF,
+	// an APK that is not an App Inventor build.
 	ErrFileContentNotAllowed = errors.New("FILE_CONTENT_NOT_ALLOWED")
 	// ErrTooManyUploads — the account already has userFiles.maxConcurrentUploads in progress.
 	ErrTooManyUploads = errors.New("TOO_MANY_UPLOADS")
@@ -81,6 +82,8 @@ type UseCase interface {
 	// another one. The new name reaches whoever else sees the file through a class.
 	Rename(ownerUserID, id, name string) (*models.UserFileDB, error)
 	Delete(ownerUserID, id string) error
+	// ModerateDelete is Delete for a moderator: a class still using the file does not stop it.
+	ModerateDelete(ownerUserID, id string) error
 	// CollectGarbage removes rows of files deleted longer ago than the retention, and
 	// leftovers of interrupted uploads. The bytes go at Delete already.
 	CollectGarbage(now time.Time) (removed int, err error)

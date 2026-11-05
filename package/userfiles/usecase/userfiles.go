@@ -211,11 +211,14 @@ func (u *UserFilesUseCaseImpl) checkRoom(ownerUserID string, size int64) error {
 }
 
 // inspectContent refuses files of an allowed type whose contents can run code when opened,
-// and reports Python scripts inside an archive (allowed, but the ЛК warns about them).
+// and reports code the courses need (allowed, but the ЛК warns about it).
 func inspectContent(kind string, ra io.ReaderAt, size int64) (hasScripts bool, err error) {
 	switch kind {
-	case kindZIP, kindDOCX, kindXLSX, kindPPTX, kindODT, kindSB3, kindSB2, kindFCSTD:
+	case kindZIP, kindDOCX, kindXLSX, kindPPTX, kindODT, kindSB3, kindSB2, kindSJR, kindAIA, kindAPK, kindFCSTD:
 		return inspectZip(kind, ra, size)
+	case kindPY, kindBLEND:
+		// Blender runs a file's scripts when its auto-run is on.
+		return true, nil
 	case kindSKP:
 		// SketchUp 2021+ saves a zip; older versions their own binary stream.
 		magic := make([]byte, 4)
@@ -427,8 +430,9 @@ func (u *UserFilesUseCaseImpl) Delete(ownerUserID, id string) error {
 	if !u.Enabled() {
 		return userfiles.ErrDisabled
 	}
-	if _, err := uuid.Parse(id); err != nil {
-		return userfiles.ErrFileNotFound
+	id, err := canonicalID(id)
+	if err != nil {
+		return err
 	}
 	if userfiles.FileInUse != nil {
 		inUse, err := userfiles.FileInUse(ownerUserID, id)
@@ -439,6 +443,31 @@ func (u *UserFilesUseCaseImpl) Delete(ownerUserID, id string) error {
 			return userfiles.ErrFileInUse
 		}
 	}
+	return u.remove(ownerUserID, id)
+}
+
+func (u *UserFilesUseCaseImpl) ModerateDelete(ownerUserID, id string) error {
+	if !u.Enabled() {
+		return userfiles.ErrDisabled
+	}
+	id, err := canonicalID(id)
+	if err != nil {
+		return err
+	}
+	return u.remove(ownerUserID, id)
+}
+
+// canonicalID: the database matches a UUID in any spelling, the blob key only in this one, and
+// a delete must not free the quota while the bytes stay on disk.
+func canonicalID(id string) (string, error) {
+	parsed, err := uuid.Parse(id)
+	if err != nil {
+		return "", userfiles.ErrFileNotFound
+	}
+	return parsed.String(), nil
+}
+
+func (u *UserFilesUseCaseImpl) remove(ownerUserID, id string) error {
 	if err := u.gateway.SoftDelete(ownerUserID, id); err != nil {
 		return err
 	}

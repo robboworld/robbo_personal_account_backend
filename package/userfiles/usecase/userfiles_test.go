@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -392,5 +393,38 @@ func TestDisabled(t *testing.T) {
 	uc := NewUserFilesUseCase(Config{}, newMemGateway(), nil, nil, nil)
 	if _, err := uc.Upload(context.Background(), "1", "a.txt", text(1)); !errors.Is(err, userfiles.ErrDisabled) {
 		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestDeleteTakesBlobInAnySpelling(t *testing.T) {
+	uc, _ := newUseCase(t, 0)
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := uc.Delete("1", strings.ToUpper(row.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := uc.blobs.Open(row.ID); !errors.Is(err, blobstore.ErrNotFound) {
+		t.Fatalf("the bytes stayed on disk: err=%v", err)
+	}
+}
+
+func TestModeratorDeletesFileInUse(t *testing.T) {
+	uc, _ := newUseCase(t, 0)
+	row, err := uc.Upload(context.Background(), "1", "notes.txt", text(100))
+	if err != nil {
+		t.Fatal(err)
+	}
+	userfiles.FileInUse = func(string, string) (bool, error) { return true, nil }
+	t.Cleanup(func() { userfiles.FileInUse = nil })
+	if err := uc.Delete("1", row.ID); !errors.Is(err, userfiles.ErrFileInUse) {
+		t.Fatalf("owner: err=%v", err)
+	}
+	if err := uc.ModerateDelete("1", row.ID); err != nil {
+		t.Fatalf("moderator: %v", err)
+	}
+	if list, _ := uc.List("1"); len(list) != 0 {
+		t.Fatalf("the file stayed: %+v", list)
 	}
 }
