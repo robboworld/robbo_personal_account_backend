@@ -94,6 +94,12 @@ services:
     # Past a limit clamd stops looking and answers OK unless AlertExceedsMax is on: padding
     # entries in a zip hid a virus from it. The limits sit above what zipcheck.go lets through
     # (20000 entries, 1 GB unpacked). In the entrypoint because a release ships compose files only.
+    # ConcurrentDatabaseReload no: a reload keeps one copy of the signatures in RAM instead of two;
+    # scans wait for it. CLAMAV_MIRRORS replaces the ClamAV CDN, which answers 403 to Russian IPs;
+    # freshclam still checks Talos's signature on each file, so a mirror cannot alter them. The
+    # 403 cool-down in freshclam.dat would hold the mirror back too, hence the rm. No .cdiff there,
+    # and it runs behind the version in DNS: with DNS on, every check downloads the same file
+    # three times and reloads clamd for nothing.
     entrypoint:
       - /bin/sh
       - -c
@@ -103,10 +109,29 @@ services:
         MaxFiles 25000
         MaxScanSize 1200M
         MaxFileSize 1200M
+        ConcurrentDatabaseReload no
         EOF
+        if [ -n "$$CLAMAV_MIRRORS" ]; then
+          sed -i '/^DatabaseMirror/d;/^DNSDatabaseInfo/d;s/^ScriptedUpdates .*/ScriptedUpdates no/' /etc/clamav/freshclam.conf
+          for m in $$CLAMAV_MIRRORS; do echo "DatabaseMirror $$m" >> /etc/clamav/freshclam.conf; done
+          echo 'DNSDatabaseInfo no' >> /etc/clamav/freshclam.conf
+          rm -f /var/lib/clamav/freshclam.dat
+          # After a 403 freshclam exits and the container stays healthy, with no updates: start it
+          # again. Same arguments as /init; the mirror's cool-down stays in freshclam.dat. A dead
+          # freshclam stays a zombie under the tail that /init ends with, so pgrep would still see it.
+          (
+            while sleep 3600; do
+              ps -o stat,comm | grep -Eq '^[^Z ]+ +freshclam$$' || freshclam --checks="$${FRESHCLAM_CHECKS:-1}" \
+                --daemon --foreground --stdout --user=clamav &
+            done
+          ) &
+        fi
         exec /init
     restart: unless-stopped
     mem_limit: ${CLAMD_MEM_LIMIT:-3g}
+    environment:
+      # Space-separated, tried in order. Empty: the ClamAV CDN.
+      - CLAMAV_MIRRORS=${CLAMAV_MIRRORS:-}
     volumes:
       # Signatures freshclam keeps updating; kept across restarts and image updates.
       - clamav:/var/lib/clamav
