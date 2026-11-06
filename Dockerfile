@@ -8,7 +8,12 @@ RUN go mod download
 
 COPY . .
 # timetzdata: streak time zones work without tzdata in the runtime image.
-RUN CGO_ENABLED=0 GOMAXPROCS=1 go build -p 1 -trimpath -buildvcs=false -tags timetzdata -o /out/robbo_server .
+# COPY above invalidates this layer on any source change; the cache mount keeps compiled packages.
+# A parallel cold compile needs 4 GB: at 3 GB it gets OOM-killed. With less free memory pass
+# --build-arg GOMAXPROCS=1 (go build takes -p from it): 2 GB is enough, 2-3 times slower.
+ARG GOMAXPROCS
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build -trimpath -buildvcs=false -tags timetzdata -o /out/robbo_server .
 
 # Runtime stage: binary + config template + addon placeholder, no sources or toolchain.
 FROM alpine:3.22
