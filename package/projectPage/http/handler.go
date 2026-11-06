@@ -78,6 +78,7 @@ func (h *Handler) InitProjectRoutes(router *gin.Engine) {
 	projectPageGroup := router.Group("/projectPage")
 	{
 		projectPageGroup.POST("/", h.CreateProjectPage)
+		projectPageGroup.POST("/import", h.ImportProjectSb3)
 		projectPageGroup.GET("/public", h.GetPublicProjectPages)
 		projectPageGroup.PUT("/landing-featured/reorder", h.ReorderLandingFeatured)
 		projectPageGroup.GET("/reaction-types", h.ListReactionTypes)
@@ -440,6 +441,51 @@ const (
 	sb3MultipartMemoryBytes = 32 << 20 // larger parts go to a temp file
 )
 
+// readSb3Upload reads the multipart "file" field as an .sb3 of at most maxBytes. On failure it
+// has already written the response and returns ok=false.
+func readSb3Upload(c *gin.Context, maxBytes int64) (data []byte, ok bool) {
+	// Cut the body off while it streams in; the slack covers multipart headers and boundaries.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes+sb3MultipartSlackBytes)
+	if err := c.Request.ParseMultipartForm(sb3MultipartMemoryBytes); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
+			return nil, false
+		}
+		c.AbortWithStatusJSON(http.StatusBadRequest, "invalid multipart form")
+		return nil, false
+	}
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "file is required")
+		return nil, false
+	}
+	if !strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".sb3") {
+		c.AbortWithStatusJSON(http.StatusBadRequest, "only .sb3 files are supported")
+		return nil, false
+	}
+	if fileHeader.Size > maxBytes {
+		ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
+		return nil, false
+	}
+	file, err := fileHeader.Open()
+	if err != nil {
+		ErrorHandling(err, c)
+		return nil, false
+	}
+	defer file.Close()
+	data, err = io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		ErrorHandling(err, c)
+		return nil, false
+	}
+	if int64(len(data)) > maxBytes {
+		ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
+		return nil, false
+	}
+	return data, true
+}
+
 func (h *Handler) UploadProjectSb3(c *gin.Context) {
 	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
 	if userIdentityErr != nil {
@@ -456,43 +502,8 @@ func (h *Handler) UploadProjectSb3(c *gin.Context) {
 		ErrorHandling(err, c)
 		return
 	}
-	// Cut the body off while it streams in; the slack covers multipart headers and boundaries.
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes+sb3MultipartSlackBytes)
-	if err := c.Request.ParseMultipartForm(sb3MultipartMemoryBytes); err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
-			return
-		}
-		c.AbortWithStatusJSON(http.StatusBadRequest, "invalid multipart form")
-		return
-	}
-	fileHeader, err := c.FormFile("file")
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusBadRequest, "file is required")
-		return
-	}
-	if !strings.HasSuffix(strings.ToLower(fileHeader.Filename), ".sb3") {
-		c.AbortWithStatusJSON(http.StatusBadRequest, "only .sb3 files are supported")
-		return
-	}
-	if fileHeader.Size > maxBytes {
-		ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
-		return
-	}
-	file, err := fileHeader.Open()
-	if err != nil {
-		ErrorHandling(err, c)
-		return
-	}
-	defer file.Close()
-	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
-	if err != nil {
-		ErrorHandling(err, c)
-		return
-	}
-	if int64(len(data)) > maxBytes {
-		ErrorHandling(projectPage.ErrProjectSizeExceeded, c)
+	data, ok := readSb3Upload(c, maxBytes)
+	if !ok {
 		return
 	}
 	if err := h.projectPageDelegate.UploadProjectSb3(projectPageId, userId, data); err != nil {
@@ -537,6 +548,35 @@ func (h *Handler) TouchEditing(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, state)
+}
+
+// ImportProjectSb3 creates a new project from an uploaded .sb3 (multipart "file" and "title").
+func (h *Handler) ImportProjectSb3(c *gin.Context) {
+	userId, role, userIdentityErr := h.authDelegate.UserIdentity(c)
+	if userIdentityErr != nil {
+		ErrorHandling(userIdentityErr, c)
+		return
+	}
+	if accessErr := h.authDelegate.UserAccess(role, projectCreateRoles(), c); accessErr != nil {
+		ErrorHandling(accessErr, c)
+		return
+	}
+	maxBytes, err := h.projectPageDelegate.MaxSb3UploadBytes(userId)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	data, ok := readSb3Upload(c, maxBytes)
+	if !ok {
+		return
+	}
+	locale := projectPage.LocaleFromAcceptLanguage(c.GetHeader("Accept-Language"))
+	created, err := h.projectPageDelegate.ImportProjectSb3(userId, c.PostForm("title"), locale, data)
+	if err != nil {
+		ErrorHandling(err, c)
+		return
+	}
+	c.JSON(http.StatusCreated, createProjectPageResponse{&created})
 }
 
 type getAllProjectPageResponse struct {

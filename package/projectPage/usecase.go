@@ -18,6 +18,7 @@ type EditingState struct {
 
 type UseCase interface {
 	CreateProjectPage(authorId string, locale string) (newProjectPage *models.ProjectPageCore, err error)
+	ImportProjectSb3(authorId string, title string, locale string, data []byte) (newProjectPage *models.ProjectPageCore, err error)
 	UpdateProjectPage(projectPage *models.ProjectPageCore, authorId string, role models.Role) (projectPageUpdated *models.ProjectPageCore, err error)
 	DeleteProjectPage(projectId string, authorId string) (err error)
 	GetAllProjectPageByUserId(authorId string, viewerId string, page int, pageSize int) (projectPages []*models.ProjectPageCore, countRows int64, err error)

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/adminaudit"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
@@ -103,11 +104,54 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale strin
 	if err := p.enforceStorageQuota(authorId, "", 0); err != nil {
 		return nil, err
 	}
-	defaultTitle := projectPage.DefaultProjectTitle(locale)
+	return p.createProject(authorId, projectPage.DefaultProjectTitle(locale), emptyProjectJson2)
+}
+
+// maxImportTitleRunes caps the title given with an uploaded .sb3.
+const maxImportTitleRunes = 200
+
+// ImportProjectSb3 creates a project from an .sb3 uploaded in the LK, without opening Scratch.
+// Every check runs before anything is created, so a rejected file leaves no empty project.
+func (p *ProjectPageUseCaseImpl) ImportProjectSb3(authorId, title, locale string, data []byte) (*models.ProjectPageCore, error) {
+	if err := p.enforceProjectSizeLimit(authorId, int64(len(data))); err != nil {
+		return nil, err
+	}
+	if err := p.quota.AllowGrowth(authorId, 0, int64(len(data))); err != nil {
+		return nil, err
+	}
+	if err := validateSb3Archive(data); err != nil {
+		return nil, err
+	}
+	vmJSON, err := models.ProjectJSONFromSb3(data)
+	if err != nil {
+		return nil, projectPage.ErrInvalidProjectFile
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		title = projectPage.DefaultProjectTitle(locale)
+	}
+	if utf8.RuneCountInString(title) > maxImportTitleRunes {
+		title = string([]rune(title)[:maxImportTitleRunes])
+	}
+
+	created, err := p.createProject(authorId, title, vmJSON)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.projectPageGateway.SaveSb3Archive(created.ProjectPageId, authorId, data, "lk.import"); err != nil {
+		if delErr := p.projectGateway.DeleteProject(created.ProjectId); delErr != nil {
+			log.Printf("projectPage: roll back import %s: %v", created.ProjectId, delErr)
+		}
+		return nil, err
+	}
+	return created, nil
+}
+
+func (p *ProjectPageUseCaseImpl) createProject(authorId, title, vmJSON string) (newProjectPage *models.ProjectPageCore, err error) {
 	project := models.ProjectCore{}
 	project.AuthorId = authorId
-	project.Json = emptyProjectJson2
-	project.Name = defaultTitle
+	project.Json = vmJSON
+	project.Name = title
 
 	projectId, createProjectErr := p.projectGateway.CreateProject(&project)
 	if createProjectErr != nil {
@@ -115,7 +159,7 @@ func (p *ProjectPageUseCaseImpl) CreateProjectPage(authorId string, locale strin
 	}
 
 	page := &models.ProjectPageCore{
-		Title:       defaultTitle,
+		Title:       title,
 		ProjectId:   projectId,
 		Instruction: "",
 		Notes:       "",

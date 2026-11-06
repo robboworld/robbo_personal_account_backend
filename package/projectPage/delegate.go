@@ -4,6 +4,7 @@ import "github.com/skinnykaen/robbo_student_personal_account.git/package/models"
 
 type Delegate interface {
 	CreateProjectPage(authorId string, locale string) (newProjectPage models.ProjectPageHTTP, err error)
+	ImportProjectSb3(authorId string, title string, locale string, data []byte) (newProjectPage models.ProjectPageHTTP, err error)
 	UpdateProjectPage(projectPage *models.ProjectPageHTTP, authorId string, role models.Role) (projectPageUpdated models.ProjectPageHTTP, err error)
 	DeleteProjectPage(projectId string, authorId string) (err error)
 	GetProjectPageById(projectPageId string, viewerId string, role models.Role) (projectPage models.ProjectPageHTTP, err error)

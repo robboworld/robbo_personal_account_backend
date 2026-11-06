@@ -36,6 +36,16 @@ func (p *ProjectPageDelegateImpl) CreateProjectPage(authorId string, locale stri
 	return
 }
 
+func (p *ProjectPageDelegateImpl) ImportProjectSb3(authorId, title, locale string, data []byte) (newProjectPage models.ProjectPageHTTP, err error) {
+	newProjectPageCore, err := p.UseCase.ImportProjectSb3(authorId, title, locale, data)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	newProjectPage.FromCore(newProjectPageCore)
+	return
+}
+
 func (p *ProjectPageDelegateImpl) DeleteProjectPage(projectId string, authorId string) (err error) {
 	return p.UseCase.DeleteProjectPage(projectId, authorId)
 }
