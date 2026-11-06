@@ -27,6 +27,10 @@ type Resolver struct {
 	projectPageDelegate projectPage.Delegate
 }
 
+// SignInAttemptAllowed is the shared password-attempt budget (server.AllowLoginAttempt).
+// Each alias of SingIn in one request spends one attempt.
+var SignInAttemptAllowed func(ip string) bool
+
 type MutationResolver struct{ *Resolver }
 type QueryResolver struct{ *Resolver }
 

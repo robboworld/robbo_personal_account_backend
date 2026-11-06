@@ -16,10 +16,6 @@ import (
 	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
-// SignInAttemptAllowed is the shared password-attempt budget (server.AllowLoginAttempt).
-// Each alias of SingIn in one request spends one attempt.
-var SignInAttemptAllowed func(ip string) bool
-
 // SingIn is the resolver for the SingIn field.
 func (r *mutationResolver) SingIn(ctx context.Context, input models.SignInInput) (models.SignInResult, error) {
 	ginContext, getGinContextErr := GinContextFromContext(ctx)
