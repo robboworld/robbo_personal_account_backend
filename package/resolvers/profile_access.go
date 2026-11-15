@@ -10,7 +10,8 @@ import (
 )
 
 // profileSelfOrAdminAccess allows a user to update their own profile (matching JWT user_id)
-// or admins listed in adminRoles to update any profile.
+// or admins listed in adminRoles to update any profile. A kid account's session updates none:
+// the teacher typed all the data such an account may hold (auth.ErrKidAccount).
 func profileSelfOrAdminAccess(
 	ctx context.Context,
 	ginCtx *gin.Context,
@@ -19,6 +20,9 @@ func profileSelfOrAdminAccess(
 	selfRole models.Role,
 	adminRoles []models.Role,
 ) error {
+	if auth.IsKidAccountSession(ginCtx) {
+		return auth.ErrKidAccount
+	}
 	callerRole := roleFromGin(ginCtx)
 	callerID, _ := ginCtx.Value("user_id").(string)
 	if callerRole == selfRole && strings.TrimSpace(targetUserID) == strings.TrimSpace(callerID) {

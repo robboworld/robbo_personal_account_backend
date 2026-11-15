@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/skinnykaen/robbo_student_personal_account.git/package/auth"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/licensing"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/lmsdb"
 	"github.com/skinnykaen/robbo_student_personal_account.git/package/models"
@@ -73,6 +74,7 @@ func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 			c.Set("user_id", userID)
 			c.Set("user_role", models.Role(claims.Role))
 			c.Set("session_sid", claims.Sid)
+			auth.MarkKidAccountSession(c, claims.Email)
 			return true
 		}
 	}
@@ -91,6 +93,7 @@ func applyOidcSession(c *gin.Context, sessions licensing.Gateway) bool {
 				c.Set("user_id", userID)
 				c.Set("user_role", models.Role(claims.Role))
 				c.Set("session_sid", claims.Sid)
+				auth.MarkKidAccountSession(c, claims.Email)
 				return true
 			}
 		}

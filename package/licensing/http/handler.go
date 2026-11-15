@@ -645,11 +645,15 @@ func (h *Handler) ListFeatureInterestAnswers(c *gin.Context) {
 }
 
 // SaveFeatureInterest: POST /licensing/interest — stores the account's answer (replaces an
-// earlier one).
+// earlier one). A kid account gives none: the answer has free text and the school's name.
 func (h *Handler) SaveFeatureInterest(c *gin.Context) {
 	userID, _, err := h.sessionIdentity(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if auth.IsKidAccountSession(c) {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": auth.ErrKidAccount.Error()})
 		return
 	}
 	var body featureInterestRequest
