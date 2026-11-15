@@ -35,6 +35,8 @@ type UseCaseImpl struct {
 	// (two tabs, a retry) all see a non-member: the teacher's count grows by each of them and
 	// every assignment is copied once per request.
 	joins singleflight.Group
+	// kids is class sign-in for young students (kid_login.go); nil turns it off.
+	kids teacherclass.KidLoginGateway
 }
 
 type UseCaseModule struct {
@@ -43,7 +45,7 @@ type UseCaseModule struct {
 }
 
 func SetupTeacherClassUseCase(gw teacherclass.Gateway, edxUC edx.UseCase, files userfiles.UseCase, notify notifications.Gateway) UseCaseModule {
-	return UseCaseModule{UseCase: &UseCaseImpl{gw: gw, edx: edxUC, files: files, notify: notify}}
+	return UseCaseModule{UseCase: &UseCaseImpl{gw: gw, edx: edxUC, files: files, notify: notify, kids: kidGateway(gw)}}
 }
 
 func (u *UseCaseImpl) toDTO(inv *models.ClassInviteDB) *teacherclass.ClassDTO {
@@ -493,6 +495,7 @@ func (u *UseCaseImpl) RotateInvite(teacherID string, role models.Role, classID s
 	if err := u.gw.UpdateInvite(inv); err != nil {
 		return nil, err
 	}
+	u.rotateKidLoginSlug(inv.ID)
 	u.recordTeacherAction(inv, teacherID, role, models.HistoryInviteRotated, models.ClassHistoryEventDB{})
 	return u.toDTO(inv), nil
 }
@@ -593,6 +596,11 @@ func (u *UseCaseImpl) JoinClass(studentID string, codeOrSlug string) (*teachercl
 		return nil, err
 	} else if was {
 		return nil, teacherclass.ErrCoTeacherCannotJoin
+	}
+	if kid, err := u.kidElsewhere(studentID, inv.ID); err != nil {
+		return nil, err
+	} else if kid {
+		return nil, teacherclass.ErrKidAccount
 	}
 	dto, err, _ := u.joins.Do(inv.ID+":"+studentID, func() (interface{}, error) {
 		return u.join(studentID, inv)
@@ -943,6 +951,11 @@ func (u *UseCaseImpl) AddMembersByEmail(teacherID string, role models.Role, clas
 			continue
 		}
 		userID := strconv.FormatInt(row.ID, 10)
+		// A kid account belongs to its own class (ADR_CLASS_KID_LOGIN.md).
+		if kid, kidErr := u.kidElsewhere(userID, inv.ID); kidErr != nil || kid {
+			missing = append(missing, email)
+			continue
+		}
 		// Adding someone already here changes nothing. When that cannot be told, an extra row
 		// in the history beats a lost one.
 		wasMember, memberErr := u.isClassMember(userID, inv)

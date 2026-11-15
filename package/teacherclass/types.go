@@ -395,6 +395,7 @@ type Gateway interface {
 }
 
 type UseCase interface {
+	KidLoginUseCase
 	CreateClass(teacherID string, role models.Role, in CreateClassInput) (*ClassDTO, error)
 	ListMyClasses(teacherID string, role models.Role) ([]ClassDTO, error)
 	ListCourses(teacherID string, role models.Role) ([]CourseDTO, error)

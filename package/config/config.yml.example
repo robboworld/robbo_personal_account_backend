@@ -114,6 +114,12 @@ classes:
   maxCoTeachers: 3
   coTeacherMaxDays: 90
   coTeacherReminderInterval: 1h
+  # Class sign-in for young students (architecture/ADR_CLASS_KID_LOGIN.md).
+  kidLogin:
+    maxBatch: 40
+    maxPerClass: 60
+    lockAfter: 5
+    sessionTTL: 3h
 
 # Super admin "Хранилище": the low-space alert to every super admin's bell (at most daily while
 # low) and the top of accounts by stored bytes.

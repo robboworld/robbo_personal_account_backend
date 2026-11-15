@@ -126,7 +126,8 @@ func writeErr(c *gin.Context, err error) {
 		errors.Is(err, teacherclass.ErrNotOnReview),
 		errors.Is(err, teacherclass.ErrWorkNotEdited), errors.Is(err, teacherclass.ErrAlreadyCoTeacher),
 		errors.Is(err, teacherclass.ErrTooManyCoTeachers),
-		errors.Is(err, teacherclass.ErrGalleryClosed), errors.Is(err, teacherclass.ErrTooManyGalleryFiles):
+		errors.Is(err, teacherclass.ErrGalleryClosed), errors.Is(err, teacherclass.ErrTooManyGalleryFiles),
+		errors.Is(err, teacherclass.ErrKidAccount):
 		status = http.StatusConflict
 	// From "Мои файлы": the ЛК shows the same messages as on upload.
 	case errors.Is(err, userfiles.ErrFileInfected):

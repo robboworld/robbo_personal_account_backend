@@ -406,6 +406,7 @@ type HandlerModule struct {
 	UserSearchHandler    usersearchhttp.Handler
 	ModerationHandler    modhttp.Handler
 	TeacherClassHandler  tchtpp.Handler
+	KidLoginHandler      tchtpp.KidLoginHandler
 	UserFilesHandler     ufhttp.Handler
 	AdminContentHandler  achttp.Handler
 	OIDCHandler          *oidchttp.Handler
@@ -477,6 +478,7 @@ func SetupHandler(
 		UserSearchHandler:    usersearchhttp.NewHandler(delegate.AuthDelegate, userSearch),
 		ModerationHandler:    modhttp.NewHandler(delegate.AuthDelegate, delegate.ModerationDelegate),
 		TeacherClassHandler:  tchtpp.NewTeacherClassHandler(delegate.AuthDelegate, usecase.TeacherClassUseCase),
+		KidLoginHandler:      tchtpp.NewKidLoginHandler(delegate.AuthDelegate, usecase.TeacherClassUseCase, gateway.LicensingGateway),
 		UserFilesHandler:     ufhttp.NewUserFilesHandler(delegate.AuthDelegate, usecase.UserFilesUseCase),
 		AdminContentHandler:  achttp.NewAdminContentHandler(delegate.AuthDelegate, usecase.AdminContentUseCase),
 		OIDCHandler:          oidcHandler,

@@ -23,6 +23,11 @@ func SessionTTLSeconds() int {
 }
 
 func IssueSessionToken(sub, edxUserID, email string, role uint, sid string) (string, error) {
+	return IssueSessionTokenTTL(sub, edxUserID, email, role, sid, time.Duration(SessionTTLSeconds())*time.Second)
+}
+
+// IssueSessionTokenTTL is IssueSessionToken with its own lifetime (class sign-in: a lesson).
+func IssueSessionTokenTTL(sub, edxUserID, email string, role uint, sid string, ttl time.Duration) (string, error) {
 	if strings.TrimSpace(sid) == "" {
 		return "", errors.New("session sid is required")
 	}
@@ -33,14 +38,16 @@ func IssueSessionToken(sub, edxUserID, email string, role uint, sid string) (str
 		Role:      role,
 		Sid:       sid,
 	}
-	ttl := SessionTTLSeconds()
+	if ttl <= 0 {
+		return "", errors.New("session ttl must be positive")
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":         claims.Sub,
 		"edx_user_id": claims.EdxUserID,
 		"email":       claims.Email,
 		"role":        claims.Role,
 		"sid":         claims.Sid,
-		"exp":         time.Now().Add(time.Duration(ttl) * time.Second).Unix(),
+		"exp":         time.Now().Add(ttl).Unix(),
 		"typ":         sessionTokenType,
 	})
 	return token.SignedString([]byte(viper.GetString("auth.access_signing_key")))
