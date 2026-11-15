@@ -3,6 +3,7 @@ package http
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -69,6 +70,7 @@ func (h *Handler) InitLicensingRoutes(router *gin.Engine) {
 		api.GET("/entitlements", h.GetEntitlements)
 		api.GET("/interest", h.GetFeatureInterest)
 		api.POST("/interest", h.SaveFeatureInterest)
+		api.GET("/interest/answers", h.ListFeatureInterestAnswers)
 		api.GET("/:licenseId", h.GetLicense)
 		api.DELETE("/:licenseId/seats/:seatId", h.RevokeSeat)
 		api.POST("/device/link/confirm", h.ConfirmDeviceLink)
@@ -605,6 +607,41 @@ func (h *Handler) GetFeatureInterest(c *gin.Context) {
 		"notify":    answer.Notify,
 		"updatedAt": answer.UpdatedAt.UTC().Format(time.RFC3339),
 	}})
+}
+
+// ListFeatureInterestAnswers: GET /licensing/interest/answers?limit=&offset= — all survey
+// answers for a SuperAdmin. Account ids are not returned: the view is for reading feedback.
+func (h *Handler) ListFeatureInterestAnswers(c *gin.Context) {
+	_, role, err := h.sessionIdentity(c)
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if role != models.SuperAdmin {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "forbidden"})
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	rows, total, err := h.licensingDelegate.ListFeatureInterest(limit, offset)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	items := make([]gin.H, 0, len(rows))
+	for _, a := range rows {
+		items = append(items, gin.H{
+			"role":      a.Role,
+			"feature":   a.Feature,
+			"other":     a.Other,
+			"pain":      a.Pain,
+			"org":       a.Org,
+			"notify":    a.Notify,
+			"source":    a.Source,
+			"updatedAt": a.UpdatedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	c.JSON(http.StatusOK, gin.H{"answers": items, "total": total})
 }
 
 // SaveFeatureInterest: POST /licensing/interest — stores the account's answer (replaces an

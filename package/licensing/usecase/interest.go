@@ -24,3 +24,14 @@ func (u *LicensingUseCaseImpl) GetFeatureInterest(lmsUserID string) (*models.Fea
 	}
 	return answer, err
 }
+
+// ListFeatureInterest returns a page of answers for the SuperAdmin view; limit is clamped to 1..200.
+func (u *LicensingUseCaseImpl) ListFeatureInterest(limit, offset int) ([]models.FeatureInterestCore, int64, error) {
+	if limit < 1 || limit > 200 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return u.gateway.ListFeatureInterest(limit, offset)
+}

@@ -43,4 +43,6 @@ type Gateway interface {
 	// Paid-edition interest survey: one answer per account.
 	SaveFeatureInterest(answer *models.FeatureInterestCore) error
 	GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error)
+	// ListFeatureInterest returns answers, newest first (SuperAdmin view).
+	ListFeatureInterest(limit, offset int) ([]models.FeatureInterestCore, int64, error)
 }

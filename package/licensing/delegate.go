@@ -25,4 +25,5 @@ type Delegate interface {
 
 	SaveFeatureInterest(answer models.FeatureInterestCore) error
 	GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error)
+	ListFeatureInterest(limit, offset int) ([]models.FeatureInterestCore, int64, error)
 }

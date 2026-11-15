@@ -35,5 +35,6 @@ type UseCase interface {
 	ResolveEntitlements(lmsUserID string) (Entitlements, error)
 	SaveFeatureInterest(answer models.FeatureInterestCore) error
 	GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error)
+	ListFeatureInterest(limit, offset int) ([]models.FeatureInterestCore, int64, error)
 	RevokeActiveOrderLicenses(lmsUserID, exceptLicenseID string) error
 }

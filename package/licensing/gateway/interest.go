@@ -34,3 +34,20 @@ func (g *LicensingGatewayImpl) GetFeatureInterest(lmsUserID string) (*models.Fea
 	}
 	return row.ToCore(), nil
 }
+
+// ListFeatureInterest returns a page of answers, newest first, and the total count.
+func (g *LicensingGatewayImpl) ListFeatureInterest(limit, offset int) ([]models.FeatureInterestCore, int64, error) {
+	var total int64
+	if err := g.db.Model(&models.FeatureInterestDB{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []models.FeatureInterestDB
+	if err := g.db.Order("updated_at DESC, lms_user_id").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	out := make([]models.FeatureInterestCore, 0, len(rows))
+	for i := range rows {
+		out = append(out, *rows[i].ToCore())
+	}
+	return out, total, nil
+}

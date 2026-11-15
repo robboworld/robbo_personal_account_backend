@@ -84,3 +84,7 @@ func (d *LicensingDelegateImpl) SaveFeatureInterest(answer models.FeatureInteres
 func (d *LicensingDelegateImpl) GetFeatureInterest(lmsUserID string) (*models.FeatureInterestCore, error) {
 	return d.usecase.GetFeatureInterest(lmsUserID)
 }
+
+func (d *LicensingDelegateImpl) ListFeatureInterest(limit, offset int) ([]models.FeatureInterestCore, int64, error) {
+	return d.usecase.ListFeatureInterest(limit, offset)
+}
