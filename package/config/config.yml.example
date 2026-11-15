@@ -103,11 +103,14 @@ userFiles:
     timeout: 2m
     required: false
 
-# Classes. A file assignment's submission holds at most this many files. A class has at most
-# maxCoTeachers co-teachers at a time, each for at most coTeacherMaxDays at a go.
-# Env: CLASSES_MAXSUBMISSIONFILES, CLASSES_MAXCOTEACHERS, CLASSES_COTEACHERMAXDAYS
+# Classes. A file assignment's submission holds at most this many files. A student shares at
+# most maxGalleryFilesPerUser files in one lesson gallery (teachers have no such limit). A class
+# has at most maxCoTeachers co-teachers at a time, each for at most coTeacherMaxDays at a go.
+# Env: CLASSES_MAXSUBMISSIONFILES, CLASSES_MAXGALLERYFILESPERUSER, CLASSES_MAXCOTEACHERS,
+# CLASSES_COTEACHERMAXDAYS
 classes:
   maxSubmissionFiles: 10
+  maxGalleryFilesPerUser: 10
   maxCoTeachers: 3
   coTeacherMaxDays: 90
   coTeacherReminderInterval: 1h

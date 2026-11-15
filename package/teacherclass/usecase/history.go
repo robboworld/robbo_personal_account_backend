@@ -37,6 +37,9 @@ var historyCategories = map[string][]string{
 	},
 	"work":     {models.HistoryWorkSubmitted, models.HistoryWorkReviewed, models.HistoryWorkEdited, models.HistoryWorkRestored},
 	"messages": {models.HistoryMessageSent},
+	"gallery": {
+		models.HistoryGalleryFileAdded, models.HistoryGalleryFileRemoved, models.HistoryGalleryClosed, models.HistoryGalleryReopened,
+	},
 }
 
 func (u *UseCaseImpl) recordHistory(inv *models.ClassInviteDB, actorID, actorRole, action string, e models.ClassHistoryEventDB) {

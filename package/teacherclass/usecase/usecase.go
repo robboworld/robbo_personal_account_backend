@@ -1176,6 +1176,9 @@ func (u *UseCaseImpl) ListAssignments(viewerID string, role models.Role, classID
 	if err := u.fillTemplateFiles(out, list); err != nil {
 		return nil, err
 	}
+	if err := u.fillGalleryCounts(out, list); err != nil {
+		return nil, err
+	}
 	var myProjects []string
 	for i := range list {
 		dto := &out[i]

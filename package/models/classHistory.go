@@ -10,7 +10,9 @@ import "time"
 //   - HistoryWorkReviewed: the review status;
 //   - HistoryWorkEdited, HistoryWorkRestored: nothing, the blocks are the work itself;
 //   - HistoryMessageSent: how many students got it; TargetUserID is set for one student;
-//   - HistoryMemberRemoved: the LMS login when its user id could not be found.
+//   - HistoryMemberRemoved: the LMS login when its user id could not be found;
+//   - HistoryGalleryFileAdded, HistoryGalleryFileRemoved: the file name, Title is the assignment;
+//     TargetUserID is the uploader when a teacher removes someone else's file.
 type ClassHistoryEventDB struct {
 	ID           string    `gorm:"type:uuid;default:gen_random_uuid();primaryKey;column:id"`
 	ClassID      string    `gorm:"column:class_id;type:uuid"`
@@ -61,6 +63,11 @@ const (
 	HistoryWorkRestored  = "work_restored"
 
 	HistoryMessageSent = "message_sent"
+
+	HistoryGalleryFileAdded   = "gallery_file_added"
+	HistoryGalleryFileRemoved = "gallery_file_removed"
+	HistoryGalleryClosed      = "gallery_closed"
+	HistoryGalleryReopened    = "gallery_reopened"
 )
 
 // HistoryLate is the detail of HistoryWorkSubmitted for work handed in after the due date.

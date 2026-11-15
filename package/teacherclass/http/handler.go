@@ -69,6 +69,10 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		api.POST("/submissions/:projectId/review", h.ReviewSubmission)
 		api.GET("/file-submissions/:submissionId/files/:fileId/download", h.DownloadSubmissionFile)
 		api.POST("/file-submissions/:submissionId/review", h.ReviewFileSubmission)
+		api.PATCH("/assignments/:assignmentId/gallery/:itemId", h.UpdateGalleryItem)
+		api.PUT("/assignments/:assignmentId/gallery/order", h.ReorderGallery)
+		api.POST("/assignments/:assignmentId/gallery/close", h.CloseGallery)
+		api.POST("/assignments/:assignmentId/gallery/reopen", h.ReopenGallery)
 	}
 
 	student := router.Group("/api/student")
@@ -83,6 +87,11 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 		student.POST("/assignments/:assignmentId/submit", h.SubmitFiles)
 		student.PUT("/assignments/:assignmentId/note", h.UpdateFileNote)
 		student.GET("/assignments/:assignmentId/starter", h.DownloadStarterFile)
+		// The lesson gallery: the class's members and its teachers alike.
+		student.GET("/assignments/:assignmentId/gallery", h.GetGallery)
+		student.POST("/assignments/:assignmentId/gallery", h.AddGalleryFile)
+		student.DELETE("/assignments/:assignmentId/gallery/:itemId", h.RemoveGalleryItem)
+		student.GET("/assignments/:assignmentId/gallery/:itemId/download", h.DownloadGalleryFile)
 	}
 }
 
@@ -116,7 +125,8 @@ func writeErr(c *gin.Context, err error) {
 		errors.Is(err, teacherclass.ErrTooManySubmissionFiles), errors.Is(err, teacherclass.ErrNoSubmissionFiles),
 		errors.Is(err, teacherclass.ErrNotOnReview),
 		errors.Is(err, teacherclass.ErrWorkNotEdited), errors.Is(err, teacherclass.ErrAlreadyCoTeacher),
-		errors.Is(err, teacherclass.ErrTooManyCoTeachers):
+		errors.Is(err, teacherclass.ErrTooManyCoTeachers),
+		errors.Is(err, teacherclass.ErrGalleryClosed), errors.Is(err, teacherclass.ErrTooManyGalleryFiles):
 		status = http.StatusConflict
 	// From "Мои файлы": the ЛК shows the same messages as on upload.
 	case errors.Is(err, userfiles.ErrFileInfected):

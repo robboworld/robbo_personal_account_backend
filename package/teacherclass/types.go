@@ -42,6 +42,10 @@ var (
 	ErrBadCoTeacherTerm = errors.New("bad_co_teacher_term")
 	// A co-teacher knows the invite code: it must not let them back in as a student.
 	ErrCoTeacherCannotJoin = errors.New("co_teacher_cannot_join")
+	// A teacher closed the lesson gallery, or the class is archived: students add nothing.
+	ErrGalleryClosed = errors.New("gallery_closed")
+	// The student already shares classes.maxGalleryFilesPerUser files in this gallery.
+	ErrTooManyGalleryFiles = errors.New("too_many_gallery_files")
 )
 
 type CreateClassInput struct {
@@ -144,6 +148,11 @@ type AssignmentDTO struct {
 	MyFiles        []FileRefDTO `json:"myFiles,omitempty"`
 	// MaxFiles a submission may hold (file assignments).
 	MaxFiles int `json:"maxFiles,omitempty"`
+	// GalleryEnabled: the lesson has a gallery (files may cross accounts, see GetGallery).
+	// GalleryCount is how many files it shows; GalleryClosed: students add none.
+	GalleryEnabled bool `json:"galleryEnabled,omitempty"`
+	GalleryCount   int  `json:"galleryCount"`
+	GalleryClosed  bool `json:"galleryClosed,omitempty"`
 	// CreateAssignment only: copies made, failed (issue-late retries them) and skipped
 	// (a cohort member without an LMS user id cannot own a project).
 	CopiesIssued  int `json:"copiesIssued,omitempty"`
@@ -196,6 +205,40 @@ type SubmissionDTO struct {
 	CanRestore   bool       `json:"canRestore,omitempty"`
 	// Editors: who has the work open in the editor right now.
 	Editors []models.ProjectEditor `json:"editors,omitempty"`
+}
+
+// GalleryItemDTO is a file in the lesson gallery. The class sees who shared it, by name.
+type GalleryItemDTO struct {
+	ID           string     `json:"id"`
+	File         FileRefDTO `json:"file"`
+	UploaderID   string     `json:"uploaderId"`
+	UploaderName string     `json:"uploaderName,omitempty"`
+	Caption      string     `json:"caption,omitempty"`
+	Pinned       bool       `json:"pinned,omitempty"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	// Mine: the viewer shared it. CanRemove: the viewer may take it out of the gallery.
+	Mine      bool `json:"mine,omitempty"`
+	CanRemove bool `json:"canRemove,omitempty"`
+}
+
+// GalleryDTO is the gallery of one assignment, pinned files first, then in the teachers' order.
+type GalleryDTO struct {
+	AssignmentID string           `json:"assignmentId"`
+	Title        string           `json:"title"`
+	Items        []GalleryItemDTO `json:"items"`
+	Closed       bool             `json:"closed,omitempty"`
+	// CanManage: the viewer teaches the class (captions, order, pins, closing, removing any file).
+	CanManage bool `json:"canManage,omitempty"`
+	// CanUpload: the viewer may add a file now.
+	CanUpload bool `json:"canUpload,omitempty"`
+	// MaxFilesPerUser a student may share here; teachers have no such limit.
+	MaxFilesPerUser int `json:"maxFilesPerUser"`
+}
+
+// GalleryItemUpdate is a teacher's change to a gallery file; nil fields stay.
+type GalleryItemUpdate struct {
+	Caption *string
+	Pinned  *bool
 }
 
 // HandIn is what a hand-in adds to a review update.
@@ -332,6 +375,23 @@ type Gateway interface {
 	// FileInUse: the file is handed in (not returned) or the starter file of an open
 	// assignment, in a class that is not archived.
 	FileInUse(ownerUserID, fileID string) (bool, error)
+
+	// Lesson gallery. Items whose file was deleted from "Мои файлы" are left out everywhere.
+	// ListGalleryItems: pinned first, then by position, then oldest first.
+	ListGalleryItems(assignmentID string) ([]models.ClassGalleryItemDB, error)
+	// CountGalleryItems: the number of live items per assignment.
+	CountGalleryItems(assignmentIDs []string) (map[string]int, error)
+	GetGalleryItem(id string) (*models.ClassGalleryItemDB, error)
+	// AddGalleryItem appends the item at the end. With maxPerUploader > 0 it fails with
+	// ErrTooManyGalleryFiles when the uploader already has that many there. A file already in
+	// the gallery is not added twice: the existing row is returned in item and created is false.
+	AddGalleryItem(item *models.ClassGalleryItemDB, maxPerUploader int) (created bool, err error)
+	DeleteGalleryItem(id string) error
+	UpdateGalleryItem(id string, in GalleryItemUpdate) error
+	// ReorderGallery numbers the listed items of the assignment in that order; ids of other
+	// assignments are ignored.
+	ReorderGallery(assignmentID string, itemIDs []string) error
+	SetGalleryClosed(assignmentID string, closed bool) error
 }
 
 type UseCase interface {
@@ -394,4 +454,14 @@ type UseCase interface {
 	// OpenSubmissionFile is a file of handed-in work for the class's teachers (any work for a SuperAdmin).
 	OpenSubmissionFile(teacherID string, role models.Role, submissionID, fileID string) (*models.UserFileDB, io.ReadSeekCloser, error)
 	ReviewFileSubmission(teacherID string, role models.Role, submissionID, status, comment string) error
+
+	// Lesson gallery of an assignment: the class's members and teachers see it and add files;
+	// a student removes only their own, a teacher any and edits the rest.
+	GetGallery(viewerID string, role models.Role, assignmentID string) (*GalleryDTO, error)
+	AddGalleryFile(viewerID string, role models.Role, assignmentID, fileID string) (*GalleryDTO, error)
+	RemoveGalleryItem(viewerID string, role models.Role, assignmentID, itemID string) (*GalleryDTO, error)
+	OpenGalleryFile(viewerID string, role models.Role, assignmentID, itemID string) (*models.UserFileDB, io.ReadSeekCloser, error)
+	UpdateGalleryItem(teacherID string, role models.Role, assignmentID, itemID string, in GalleryItemUpdate) (*GalleryDTO, error)
+	ReorderGallery(teacherID string, role models.Role, assignmentID string, itemIDs []string) (*GalleryDTO, error)
+	SetGalleryClosed(teacherID string, role models.Role, assignmentID string, closed bool) (*GalleryDTO, error)
 }

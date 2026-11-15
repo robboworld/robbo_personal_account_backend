@@ -73,6 +73,8 @@ type ClassAssignmentDB struct {
 	AllowedKinds pq.StringArray `gorm:"column:allowed_kinds;type:text[];not null;default:'{}'"`
 	// TemplateFileID is the teacher's optional starter file for a file assignment.
 	TemplateFileID *string `gorm:"column:template_file_id;type:uuid"`
+	// GalleryClosedAt: a teacher stopped students adding files to the lesson gallery.
+	GalleryClosedAt *time.Time `gorm:"column:gallery_closed_at"`
 }
 
 func (ClassAssignmentDB) TableName() string { return "class_assignments" }
