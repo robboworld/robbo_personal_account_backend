@@ -512,6 +512,26 @@ func (s *Service) searchMySQL(q string, limit int, includeInactive bool) ([]Hit,
 	if err != nil {
 		return nil, err
 	}
+	return hitsFromRows(rows), nil
+}
+
+// List pages through users newest first, for the admin users page before a query is typed;
+// beforeID is the id of the last user already shown (0 for the first page).
+// Always MySQL: the order is the auth_user primary key, and the ES index has no numeric id to sort on.
+func (s *Service) List(limit int, beforeID int64, includeInactive bool) ([]Hit, error) {
+	reader, err := lmsdb.NewReaderFromConfig()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	rows, err := reader.ListRecentAuthUsers(limit, beforeID, includeInactive)
+	if err != nil {
+		return nil, err
+	}
+	return withCourseTeamRoles(hitsFromRows(rows)), nil
+}
+
+func hitsFromRows(rows []lmsdb.AuthUserSearchHit) []Hit {
 	out := make([]Hit, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, Hit{
@@ -523,7 +543,7 @@ func (s *Service) searchMySQL(q string, limit int, includeInactive bool) ([]Hit,
 			Role:     roleFromFlags(r.IsStaff, r.IsSuperuser),
 		})
 	}
-	return out, nil
+	return out
 }
 
 // ResolveUsernameToID looks up an active LMS user by username and returns string id.

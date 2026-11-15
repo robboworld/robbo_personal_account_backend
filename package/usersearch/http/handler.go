@@ -29,38 +29,43 @@ func (h *Handler) InitRoutes(router *gin.Engine) {
 	group.POST("/search/reindex", h.Reindex)
 }
 
-func (h *Handler) requireAdmin(c *gin.Context, roles []models.Role) bool {
+func (h *Handler) requireAdmin(c *gin.Context, roles []models.Role) (models.Role, bool) {
 	_, role, err := h.authDelegate.UserIdentity(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return false
+		return role, false
 	}
 	if err := h.authDelegate.UserAccess(role, roles, c); err != nil {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": err.Error()})
-		return false
+		return role, false
 	}
-	return true
+	return role, true
 }
 
-// Search godoc: GET /api/users/search?q=&limit=20&includeInactive=true
+// Search godoc: GET /api/users/search?q=&limit=20&beforeId=&includeInactive=true
+// Without q a SuperAdmin gets every user newest first (the users page); the next page passes
+// the last id shown as beforeId. A UnitAdmin still has to type a query.
 func (h *Handler) Search(c *gin.Context) {
-	if !h.requireAdmin(c, []models.Role{models.UnitAdmin, models.SuperAdmin}) {
+	role, ok := h.requireAdmin(c, []models.Role{models.UnitAdmin, models.SuperAdmin})
+	if !ok {
 		return
 	}
 	q := strings.TrimSpace(c.Query("q"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
-	includeInactive := false
-	if strings.EqualFold(c.Query("includeInactive"), "true") || c.Query("includeInactive") == "1" {
-		_, role, err := h.authDelegate.UserIdentity(c)
-		if err == nil && role == models.SuperAdmin {
-			includeInactive = true
-		}
-	}
-	if h.service == nil {
+	includeInactive := role == models.SuperAdmin &&
+		(strings.EqualFold(c.Query("includeInactive"), "true") || c.Query("includeInactive") == "1")
+	if h.service == nil || (q == "" && role != models.SuperAdmin) {
 		c.JSON(http.StatusOK, gin.H{"items": []usersearch.Hit{}})
 		return
 	}
-	items, err := h.service.Search(c.Request.Context(), q, limit, includeInactive)
+	var items []usersearch.Hit
+	var err error
+	if q == "" {
+		beforeID, _ := strconv.ParseInt(c.Query("beforeId"), 10, 64)
+		items, err = h.service.List(limit, beforeID, includeInactive)
+	} else {
+		items, err = h.service.Search(c.Request.Context(), q, limit, includeInactive)
+	}
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -73,7 +78,7 @@ func (h *Handler) Search(c *gin.Context) {
 
 // Reindex godoc: POST /api/users/search/reindex (SuperAdmin)
 func (h *Handler) Reindex(c *gin.Context) {
-	if !h.requireAdmin(c, []models.Role{models.SuperAdmin}) {
+	if _, ok := h.requireAdmin(c, []models.Role{models.SuperAdmin}); !ok {
 		return
 	}
 	if h.service == nil {

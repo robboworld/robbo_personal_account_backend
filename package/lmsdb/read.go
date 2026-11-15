@@ -305,6 +305,63 @@ func (r *Reader) ListAuthUsersForIndex(limit, offset int) ([]AuthUserSearchHit, 
 	return out, rows.Err()
 }
 
+// ListRecentAuthUsers pages through users newest first (highest auth_user.id), for the admin
+// users page before a query is typed. beforeID > 0 continues after the last user of the
+// previous page, so sign-ups and bans between pages neither repeat nor skip anyone.
+// When includeInactive is false, only active users.
+func (r *Reader) ListRecentAuthUsers(limit int, beforeID int64, includeInactive bool) ([]AuthUserSearchHit, error) {
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	where := []string{}
+	args := []any{}
+	if beforeID > 0 {
+		where = append(where, "u.id < ?")
+		args = append(args, beforeID)
+	}
+	if !includeInactive {
+		where = append(where, "u.is_active = 1")
+	}
+	filter := ""
+	if len(where) > 0 {
+		filter = "WHERE " + strings.Join(where, " AND ")
+	}
+	sqlQ := `
+		SELECT u.id, u.username, u.email,
+			` + authUserFullName + ` AS full_name,
+			u.is_active, u.is_staff, u.is_superuser
+		FROM auth_user u
+		` + authUserProfileJoin + `
+		` + filter + `
+		ORDER BY u.id DESC
+		LIMIT ?`
+	args = append(args, limit)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	rows, err := r.db.QueryContext(ctx, sqlQ, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []AuthUserSearchHit
+	for rows.Next() {
+		var h AuthUserSearchHit
+		var isActive, isStaff, isSuper int
+		if err := rows.Scan(&h.ID, &h.Username, &h.Email, &h.FullName, &isActive, &isStaff, &isSuper); err != nil {
+			return nil, err
+		}
+		h.IsActive = isActive != 0
+		h.IsStaff = isStaff != 0
+		h.IsSuperuser = isSuper != 0
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 // CourseRow is one Open edX course for pickers.
 type CourseRow struct {
 	ID   string `json:"id"`
