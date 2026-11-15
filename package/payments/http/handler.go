@@ -122,6 +122,10 @@ func (h *Handler) Checkout(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	// A kid account buys nothing and has no orders (auth.AbortIfKidAccount).
+	if auth.AbortIfKidAccount(c) {
+		return
+	}
 	var body checkoutRequest
 	if err := c.ShouldBindJSON(&body); err != nil || strings.TrimSpace(body.ProductID) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
@@ -147,6 +151,10 @@ func (h *Handler) GetOrder(c *gin.Context) {
 	userID, _, err := h.sessionIdentity(c)
 	if err != nil || userID == "" {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	// A kid account buys nothing and has no orders (auth.AbortIfKidAccount).
+	if auth.AbortIfKidAccount(c) {
 		return
 	}
 	orderNumber := c.Param("orderNumber")

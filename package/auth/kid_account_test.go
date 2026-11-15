@@ -40,3 +40,22 @@ func TestKidAccountSessionMark(t *testing.T) {
 		t.Fatal("nil context taken for a kid session")
 	}
 }
+
+func TestAbortIfKidAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	MarkKidAccountSession(c, "parent@example.com")
+	if AbortIfKidAccount(c) || c.IsAborted() {
+		t.Fatal("a full account's request aborted")
+	}
+	rec = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(rec)
+	MarkKidAccountSession(c, "k-abc@kids.robbo.invalid")
+	if !AbortIfKidAccount(c) || !c.IsAborted() {
+		t.Fatal("a kid account's request went on")
+	}
+	if rec.Code != 403 || rec.Body.String() != `{"error":"kid_account"}` {
+		t.Fatalf("want 403 kid_account, got %d %s", rec.Code, rec.Body.String())
+	}
+}

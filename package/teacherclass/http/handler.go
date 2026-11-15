@@ -463,6 +463,10 @@ func (h *Handler) LeaveClass(c *gin.Context) {
 	if !ok {
 		return
 	}
+	// A kid account lives in its one class: leaving it would close the class sign-in.
+	if auth.AbortIfKidAccount(c) {
+		return
+	}
 	if err := h.uc.LeaveClass(userID, c.Param("classId")); err != nil {
 		writeErr(c, err)
 		return

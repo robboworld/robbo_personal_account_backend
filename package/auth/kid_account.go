@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -14,7 +15,9 @@ var ErrKidAccount = errors.New("kid_account")
 // A kid account is made by a teacher for the class sign-in (architecture/ADR_CLASS_KID_LOGIN.md).
 // Its address is a stand-in, <username>@kids.robbo.invalid, and no parent agreed to anything
 // beyond what the teacher typed. So such an account writes no data about the child itself: its
-// own profile and survey answers are refused (ErrKidAccount). Admins still edit it as before.
+// own profile and survey answers are refused (ErrKidAccount). Nor does it have what a full
+// account adds: licenses, payments, device links, leaving its class. The SPA only hides those
+// sections; the server refuses them too (AbortIfKidAccount). Admins still edit it as before.
 
 // KidEmailDomain is the stand-in domain of kid accounts. The class sign-in creates them with it.
 const KidEmailDomain = "kids.robbo.invalid"
@@ -42,4 +45,14 @@ func IsKidAccountSession(c *gin.Context) bool {
 	v, ok := c.Get(kidAccountKey)
 	kid, _ := v.(bool)
 	return ok && kid
+}
+
+// AbortIfKidAccount answers 403 kid_account to a kid account's session and reports whether it did.
+// Handlers of what only a full account may do call it right after the identity check.
+func AbortIfKidAccount(c *gin.Context) bool {
+	if !IsKidAccountSession(c) {
+		return false
+	}
+	c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": ErrKidAccount.Error()})
+	return true
 }

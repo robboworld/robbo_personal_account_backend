@@ -368,6 +368,9 @@ func (h *Handler) ConfirmDeviceLink(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	if auth.AbortIfKidAccount(c) {
+		return
+	}
 	var body confirmDeviceLinkRequest
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "bad_request"})
@@ -481,6 +484,9 @@ func (h *Handler) ListMyLicenses(c *gin.Context) {
 	userID, _, err := h.sessionIdentity(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if auth.AbortIfKidAccount(c) {
 		return
 	}
 	list, err := h.licensingDelegate.ListMyLicenses(userID)
@@ -652,8 +658,7 @@ func (h *Handler) SaveFeatureInterest(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
-	if auth.IsKidAccountSession(c) {
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": auth.ErrKidAccount.Error()})
+	if auth.AbortIfKidAccount(c) {
 		return
 	}
 	var body featureInterestRequest
@@ -688,6 +693,9 @@ func (h *Handler) GetLicense(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+	if auth.AbortIfKidAccount(c) {
+		return
+	}
 	lic, err := h.licensingDelegate.GetLicense(userID, c.Param("licenseId"))
 	if err != nil {
 		writeActivationError(c, err)
@@ -700,6 +708,9 @@ func (h *Handler) RevokeSeat(c *gin.Context) {
 	userID, _, err := h.sessionIdentity(c)
 	if err != nil {
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+	if auth.AbortIfKidAccount(c) {
 		return
 	}
 	err = h.licensingDelegate.RevokeSeat(userID, c.Param("licenseId"), c.Param("seatId"))
