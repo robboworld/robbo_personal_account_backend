@@ -179,6 +179,13 @@ func escapeLike(s string) string {
 	return s
 }
 
+// authUserFullName is the display name of auth_user u: auth_userprofile.name (where Open edX
+// and the LK keep it), else auth_user first/last name. Needs authUserProfileJoin.
+const authUserFullName = `COALESCE(NULLIF(TRIM(p.name), ''), TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))))`
+
+// authUserProfileJoin adds the profile (one per user, may be missing) as p.
+const authUserProfileJoin = `LEFT JOIN auth_userprofile p ON p.user_id = u.id`
+
 // SearchAuthUsersPrefix finds users by username/email/name prefix or substring.
 // When includeInactive is false, only active users are returned.
 func (r *Reader) SearchAuthUsersPrefix(q string, limit int, includeInactive bool) ([]AuthUserSearchHit, error) {
@@ -200,13 +207,14 @@ func (r *Reader) SearchAuthUsersPrefix(q string, limit int, includeInactive bool
 	}
 	sqlQ := fmt.Sprintf(`
 		SELECT u.id, u.username, u.email,
-			TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+			`+authUserFullName+` AS full_name,
 			u.is_active, u.is_staff, u.is_superuser
 		FROM auth_user u
+		`+authUserProfileJoin+`
 		WHERE %s (
 			LOWER(u.username) LIKE LOWER(?) ESCAPE '\\'
 			OR LOWER(u.email) LIKE LOWER(?) ESCAPE '\\'
-			OR LOWER(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) LIKE LOWER(?) ESCAPE '\\'
+			OR LOWER(`+authUserFullName+`) LIKE LOWER(?) ESCAPE '\\'
 		  )
 		ORDER BY
 			CASE WHEN LOWER(u.username) LIKE LOWER(?) ESCAPE '\\' THEN 0 ELSE 1 END,
@@ -240,9 +248,10 @@ func (r *Reader) GetAuthUserForIndex(userID int64) (*AuthUserSearchHit, error) {
 	}
 	const sqlQ = `
 		SELECT u.id, u.username, u.email,
-			TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+			` + authUserFullName + ` AS full_name,
 			u.is_active, u.is_staff, u.is_superuser
 		FROM auth_user u
+		` + authUserProfileJoin + `
 		WHERE u.id = ?
 		LIMIT 1`
 	var h AuthUserSearchHit
@@ -269,9 +278,10 @@ func (r *Reader) ListAuthUsersForIndex(limit, offset int) ([]AuthUserSearchHit, 
 	}
 	const sqlQ = `
 		SELECT u.id, u.username, u.email,
-			TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+			` + authUserFullName + ` AS full_name,
 			u.is_active, u.is_staff, u.is_superuser
 		FROM auth_user u
+		` + authUserProfileJoin + `
 		ORDER BY u.id ASC
 		LIMIT ? OFFSET ?`
 	rows, err := r.db.Query(sqlQ, limit, offset)
@@ -411,9 +421,10 @@ func (r *Reader) LookupAuthUsersByIDs(ids []int64) (map[int64]AuthUserSearchHit,
 		}
 		rows, err := r.db.Query(`
 			SELECT u.id, u.username, u.email,
-				TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''))) AS full_name,
+				`+authUserFullName+` AS full_name,
 				u.is_active, u.is_staff, u.is_superuser
 			FROM auth_user u
+			`+authUserProfileJoin+`
 			WHERE u.id IN (`+placeholders+`)`, args...)
 		if err != nil {
 			return nil, err
